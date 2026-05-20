@@ -9,6 +9,7 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+from parser import parse_transaction
 
 # Load environment variables from .env file
 load_dotenv()
@@ -55,8 +56,18 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     message = update.effective_message
     user_name = message.from_user.username or message.from_user.first_name
     print(f"收到群消息 [{message.chat.title}] {user_name}: {message.text}")
-    await context.bot.send_message(chat_id=update.effective_chat.id, text=f"群內收到：{message.text}")
-      
+    # Parse the message to check if it contains a transaction
+    transaction = parse_transaction(message.text)
+    if transaction:
+        print(f"✅ 檢測到有效交易: {transaction['agent_name']} - {transaction['amount']}元")
+        # Respond in the group chat to confirm the transaction was recorded
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=f"已紀錄交易：{transaction['agent_name']} 成交 {transaction['amount']}元"
+        )
+    else:
+        print("ℹ️ 普通消息，無需處理")
+  
 # Main function to run the bot    
 def main():
     # Create the bot application

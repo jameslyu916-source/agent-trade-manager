@@ -30,7 +30,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/start - 開始使用\n"
         "/help - 顯示幫助信息\n"
         "/hello - 打招呼\n"
-        "你也可以發送任何消息，我會回復你！"
+        "私聊發送文字我會覆述，群裡發文字我會記錄！"
     )
     
 # Echo handler for any text message
@@ -50,6 +50,13 @@ async def say_hello(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text=f"你好 {update.effective_user.first_name}！很高興認識你"
     )
 
+# Handler for messages in group chats
+async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = update.effective_message
+    user_name = message.from_user.username or message.from_user.first_name
+    print(f"收到群消息 [{message.chat.title}] {user_name}: {message.text}")
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=f"群內收到：{message.text}")
+      
 # Main function to run the bot    
 def main():
     # Create the bot application
@@ -60,7 +67,15 @@ def main():
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("hello", say_hello))
     # Register message handler for echoing text messages
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+    application.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
+        echo
+    ))
+    # Register message handler for group messages
+    application.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
+        handle_group_message
+    ))
     
     # Start the bot
     print("Bot 已啓動，按 Ctrl+C 停止...")

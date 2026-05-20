@@ -8,6 +8,7 @@ from telegram.ext import (
     CommandHandler,
     MessageHandler,
     filters,
+    JobQueue
 )
 # Import the transaction parser
 from parser import parse_transaction
@@ -17,6 +18,7 @@ from database import TransactionDB
 db = TransactionDB()
 # Import the report generator
 from reporter import generate_daily_report
+from datetime import datetime, time
 
 # Load environment variables from .env file
 load_dotenv()
@@ -63,6 +65,7 @@ async def say_hello(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     user_name = message.from_user.username or message.from_user.first_name
+    print(f"当前群ID: {update.effective_chat.id}")
     print(f"收到群消息 [{message.chat.title}] {user_name}: {message.text}")
     # Parse the message to check if it contains a transaction
     transaction = parse_transaction(message.text)
@@ -101,7 +104,24 @@ async def daily_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=update.effective_chat.id,
             document=open(filename, "rb")
         )
-          
+        
+# Job handler for automatic daily report        
+async def auto_daily_report(context: ContextTypes.DEFAULT_TYPE):
+    """自動發送每日報表給指定群組"""
+    filename, report_text = generate_daily_report()
+    chat_id = context.job.data
+    
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=f"🔔 自動每日報表\n\n{report_text}"
+    )
+    
+    if filename:
+        await context.bot.send_document(
+            chat_id=chat_id,
+            document=open(filename, "rb")
+        )
+                  
 # Main function to run the bot    
 def main():
     # Create the bot application
@@ -123,6 +143,17 @@ def main():
     ))
     # Register the daily report command handler
     application.add_handler(CommandHandler("daily", daily_report))
+    
+    # Set up a daily job to send the report at 8 PM every day
+    job_queue = application.job_queue
+    GROUP_CHAT_ID = -5201982600
+    job_queue.run_daily(
+        auto_daily_report,
+        time=time(hour=20, minute=00),
+        data=GROUP_CHAT_ID
+    )
+    # Test job to run 10 seconds after startup
+    job_queue.run_once(auto_daily_report, when=10, data=GROUP_CHAT_ID)
     
     # Start the bot
     print("Bot 已啓動，按 Ctrl+C 停止...")

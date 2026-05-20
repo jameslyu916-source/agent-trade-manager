@@ -15,6 +15,8 @@ from parser import parse_transaction
 from database import TransactionDB
 # Initialize the database connection
 db = TransactionDB()
+# Import the report generator
+from reporter import generate_daily_report
 
 # Load environment variables from .env file
 load_dotenv()
@@ -36,6 +38,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/start - 開始使用\n"
         "/help - 顯示幫助信息\n"
         "/hello - 打招呼\n"
+        "/daily - 生成今日交易報表\n\n"
         "私聊發送文字我會覆述，群裡發文字我會記錄！"
     )
     
@@ -80,7 +83,25 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
         )
     else:
         print("ℹ️ 普通消息，無需處理")
-  
+
+# Handler for the /daily command to generate and send the daily report
+async def daily_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """生成並發送每日報表"""
+    filename, report_text = generate_daily_report()
+    
+    # Send the report text
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=report_text
+    )
+    
+    # Send the Excel file if it was generated
+    if filename:
+        await context.bot.send_document(
+            chat_id=update.effective_chat.id,
+            document=open(filename, "rb")
+        )
+          
 # Main function to run the bot    
 def main():
     # Create the bot application
@@ -100,6 +121,8 @@ def main():
         filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
         handle_group_message
     ))
+    # Register the daily report command handler
+    application.add_handler(CommandHandler("daily", daily_report))
     
     # Start the bot
     print("Bot 已啓動，按 Ctrl+C 停止...")

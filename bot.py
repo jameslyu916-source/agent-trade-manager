@@ -9,7 +9,12 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+# Import the transaction parser
 from parser import parse_transaction
+# Import the database handler
+from database import TransactionDB
+# Initialize the database connection
+db = TransactionDB()
 
 # Load environment variables from .env file
 load_dotenv()
@@ -60,6 +65,14 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     transaction = parse_transaction(message.text)
     if transaction:
         print(f"✅ 檢測到有效交易: {transaction['agent_name']} - {transaction['amount']}元")
+        # Save the transaction to the database
+        db.add_transaction(
+            agent_name=transaction['agent_name'],
+            amount=transaction['amount'],
+            timestamp=transaction['timestamp'],
+            raw_message=transaction['raw_message']
+        )
+        print("💾 交易紀錄已保存")
         # Respond in the group chat to confirm the transaction was recorded
         await context.bot.send_message(
             chat_id=update.effective_chat.id,

@@ -1,0 +1,25 @@
+# Ignore .env files
+.env
+*.env
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment directories
+venv/
+env/
+
+# IDE and editor files
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
+
+# Excel files
+~$*.xlsx
+*.xlsx
+*.xls

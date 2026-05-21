@@ -20,6 +20,7 @@ db = TransactionDB()
 from reporter import generate_daily_report
 from datetime import datetime, time
 from config import GROUP_CHAT_ID
+from ai_parser import parse_natural_language_query
 
 # Load environment variables from .env file
 load_dotenv()
@@ -47,8 +48,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/agent - 查詢代理統計（用法：/agent 或 /agent 代理名稱）\n"
         "/addagent - 添加代理到白名單（用法：/addagent 代理名稱）\n"
         "/delagent - 從白名單刪除代理（用法：/delagent 代理名稱）\n"
-        "/agents - 查看所有白名單代理\n"
-        "\n私聊發送文字我會覆述，群裡發文字我會記錄！"
+        "/agents - 查看所有白名單代理\n\n"
+        "私聊發送文字我會覆述，群裡發文字我會記錄！\n"
+        "也可以直接用自然語言提問，例如：「今天總成交額是多少？」"
     )
     
 # Echo handler for any text message
@@ -229,8 +231,39 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                 chat_id=update.effective_chat.id,
                 text=f"⚠️ 代理 {transaction['agent_name']} 不在白名單中，交易未记录"
             )
-    else:
-        print("ℹ️ 普通消息，無需處理")
+        return
+        
+    # Then check if the message looks like a natural language query about transactions (e.g. contains keywords like "多少", "统计", "总额", "成交" or ends with a question mark)
+    if message.text.endswith("？") or any(keyword in message.text for keyword in ["多少", "統計", "總額", "成交"]):
+        print(f"🔍 檢測到自然語言查詢: {message.text}")
+        query_result = parse_natural_language_query(message.text)
+        
+        if query_result["type"] == "today_total":
+            total = db.get_daily_total()
+            await update.message.reply_text(f"今日總成交額是{total}元")
+        elif query_result["type"] == "week_total":
+            total = db.get_period_total(days=7)
+            await update.message.reply_text(f"本周總成交額是{total}元")
+        elif query_result["type"] == "agent_daily":
+            agent = query_result["agent"]
+            amount = db.get_agent_daily_total(agent)
+            await update.message.reply_text(f"{agent}今日成交額是{amount}元")
+        elif query_result["type"] == "agent_week":
+            agent = query_result["agent"]
+            amount = db.get_agent_total(agent, days=7)
+            await update.message.reply_text(f"{agent}本周成交額是{amount}元")
+        elif query_result["type"] == "all_agents_daily":
+            agents = db.get_all_agents()
+            text = "今日各代理成交額：\n"
+            for agent in agents:
+                amount = db.get_agent_daily_total(agent)
+                text += f"- {agent}：{amount}元\n"
+            await update.message.reply_text(text)
+        else:
+            await update.message.reply_text("抱歉，我沒理解你的查詢，請換一種說法試試")
+        return
+   
+    print("ℹ️ 普通消息，無需處理")
         
 # Handler for checking abnormal transactions and sending alerts
 async def check_abnormal_transactions(context: ContextTypes.DEFAULT_TYPE):

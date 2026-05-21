@@ -6,6 +6,7 @@ class TransactionDB:
         """初始化數據庫連接，創建表"""
         self.conn = sqlite3.connect(db_name)
         self.create_table()
+        self.create_agents_table()
     
     def create_table(self):
         """創建交易表"""
@@ -98,6 +99,51 @@ class TransactionDB:
         ''', (days,))
         result = cursor.fetchone()
         return result[0] if result[0] else 0
+    
+    def create_agents_table(self):
+        """創建代理白名單表"""
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS allowed_agents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_name TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL
+            )
+        ''')
+        self.conn.commit()
+
+    def add_allowed_agent(self, agent_name):
+        """添加代理到白名單"""
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute('''
+                INSERT INTO allowed_agents (agent_name, created_at)
+                VALUES (?, datetime('now'))
+            ''', (agent_name,))
+            self.conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            # Agent already exists in the whitelist
+            return False
+
+    def remove_allowed_agent(self, agent_name):
+        """从白名單删除代理"""
+        cursor = self.conn.cursor()
+        cursor.execute('DELETE FROM allowed_agents WHERE agent_name = ?', (agent_name,))
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def get_allowed_agents(self):
+        """獲取所有白名單代理"""
+        cursor = self.conn.cursor()
+        cursor.execute('SELECT agent_name FROM allowed_agents ORDER BY agent_name')
+        return [row[0] for row in cursor.fetchall()]
+
+    def is_agent_allowed(self, agent_name):
+        """检查代理是否在白名單中"""
+        cursor = self.conn.cursor()
+        cursor.execute('SELECT 1 FROM allowed_agents WHERE agent_name = ?', (agent_name,))
+        return cursor.fetchone() is not None
         
     def close(self):
         """關閉數據庫連接"""

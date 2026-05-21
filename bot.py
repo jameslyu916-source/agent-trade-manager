@@ -45,6 +45,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/today - 查詢今日總成交額\n"
         "/week - 查詢本周總成交額\n"
         "/agent - 查詢代理統計（用法：/agent 或 /agent 代理名稱）\n"
+        "/addagent - 添加代理到白名單（用法：/addagent 代理名稱）\n"
+        "/delagent - 從白名單刪除代理（用法：/delagent 代理名稱）\n"
+        "/agents - 查看所有白名單代理\n"
         "\n私聊發送文字我會覆述，群裡發文字我會記錄！"
     )
     
@@ -134,6 +137,14 @@ async def today_total(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text=f"💰 今日總成交額：{total}元"
     )
 
+# Weekly total command handler
+async def week_total(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    total = db.get_period_total(days=7)
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=f"📅 本周總成交額：{total}元"
+    )
+
 # Agent stats command handler
 async def agent_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -155,14 +166,71 @@ async def agent_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"📊 {agent_name} 今日成交額：{amount}元"
         )
+        
+# Admin command handlers for managing the whitelist of agents
+async def add_agent(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("使用方法：/addagent 代理名稱")
+        return
+    
+    agent_name = " ".join(context.args)
+    if db.add_allowed_agent(agent_name):
+        await update.message.reply_text(f"✅ 已添加代理：{agent_name}")
+    else:
+        await update.message.reply_text(f"❌ 代理 {agent_name} 已存在")
 
-# Weekly total command handler
-async def week_total(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    total = db.get_period_total(days=7)
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=f"📅 本周總成交額：{total}元"
-    )
+async def remove_agent(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("使用方法：/delagent 代理名稱")
+        return
+    
+    agent_name = " ".join(context.args)
+    if db.remove_allowed_agent(agent_name):
+        await update.message.reply_text(f"✅ 已删除代理：{agent_name}")
+    else:
+        await update.message.reply_text(f"❌ 代理 {agent_name} 不存在")
+
+async def list_agents(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    agents = db.get_allowed_agents()
+    if not agents:
+        await update.message.reply_text("暫無白名單代理")
+        return
+    
+    text = "📋 當前白名單代理：\n"
+    for i, agent in enumerate(agents, 1):
+        text += f"{i}. {agent}\n"
+    await update.message.reply_text(text)
+
+# Handler for messages in group chats with whitelist check
+async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = update.effective_message
+    user_name = message.from_user.username or message.from_user.first_name
+    print(f"收到群消息 [{message.chat.title}] {user_name}: {message.text}")
+    
+    transaction = parse_transaction(message.text)
+    if transaction:
+        # 检查代理是否在白名单中
+        if db.is_agent_allowed(transaction['agent_name']):
+            print(f"✅ 檢測到有效交易: {transaction['agent_name']} - {transaction['amount']}元")
+            db.add_transaction(
+                agent_name=transaction['agent_name'],
+                amount=transaction['amount'],
+                timestamp=transaction['timestamp'],
+                raw_message=transaction['raw_message']
+            )
+            print("💾 交易紀錄已保存")
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=f"已紀錄交易：{transaction['agent_name']} 成交 {transaction['amount']}元"
+            )
+        else:
+            print(f"⚠️ 代理 {transaction['agent_name']} 不在白名單中，忽略交易")
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=f"⚠️ 代理 {transaction['agent_name']} 不在白名單中，交易未记录"
+            )
+    else:
+        print("ℹ️ 普通消息，無需處理")        
                   
 # Main function to run the bot    
 def main():
@@ -188,6 +256,9 @@ def main():
     application.add_handler(CommandHandler("today", today_total))
     application.add_handler(CommandHandler("agent", agent_stats))
     application.add_handler(CommandHandler("week", week_total))
+    application.add_handler(CommandHandler("addagent", add_agent))
+    application.add_handler(CommandHandler("delagent", remove_agent))
+    application.add_handler(CommandHandler("agents", list_agents))
     
     # Set up a daily job to send the report at 8 PM every day
     job_queue = application.job_queue

@@ -149,11 +149,11 @@ def main():
     GROUP_CHAT_ID = -5201982600
     job_queue.run_daily(
         auto_daily_report,
-        time=time(hour=20, minute=00),
+        time=time(hour=12, minute=00),
         data=GROUP_CHAT_ID
     )
     # Test job to run 10 seconds after startup
-    job_queue.run_once(auto_daily_report, when=10, data=GROUP_CHAT_ID)
+    #job_queue.run_once(auto_daily_report, when=10, data=GROUP_CHAT_ID)
     
     # Start the bot
     print("Bot 已啓動，按 Ctrl+C 停止...")

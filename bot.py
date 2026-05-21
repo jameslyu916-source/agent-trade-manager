@@ -230,7 +230,53 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                 text=f"⚠️ 代理 {transaction['agent_name']} 不在白名單中，交易未记录"
             )
     else:
-        print("ℹ️ 普通消息，無需處理")        
+        print("ℹ️ 普通消息，無需處理")
+        
+# Handler for checking abnormal transactions and sending alerts
+async def check_abnormal_transactions(context: ContextTypes.DEFAULT_TYPE):
+    """定時檢查異常交易並發送警報"""
+    chat_id = context.job.data
+    
+    # 異常1：單筆交易金額超過10000元
+    cursor = db.conn.cursor()
+    cursor.execute('''
+        SELECT agent_name, amount, timestamp FROM transactions
+        WHERE amount > 10000 AND timestamp >= datetime('now', '-1 hour')
+    ''')
+    large_transactions = cursor.fetchall()
+    
+    for agent, amount, timestamp in large_transactions:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"⚠️ 大額交易提醒\n代理：{agent}\n金額：{amount}元\n時間：{timestamp}"
+        )
+    
+    # 異常2：代理單日交易額超過50000元
+    agents = db.get_allowed_agents()
+    for agent in agents:
+        daily_total = db.get_agent_daily_total(agent)
+        if daily_total > 50000:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"🚨 代理單日交易額異常\n代理：{agent}\n今日成交額：{daily_total}元\n已超過預警值50000元"
+            )
+    
+    # 異常3：超過12小時無交易
+    cursor = db.conn.cursor()
+    cursor.execute('SELECT MAX(timestamp) FROM transactions')
+    last_transaction_time = cursor.fetchone()[0]
+    
+    if last_transaction_time:
+        from datetime import datetime
+        last_time = datetime.fromisoformat(last_transaction_time)
+        now = datetime.now()
+        hours_since_last = (now - last_time).total_seconds() / 3600
+        
+        if hours_since_last > 12:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"⏰ 長時間無交易提醒\n最後一筆交易時間：{last_transaction_time}\n已過去{int(hours_since_last)}小時"
+            )        
                   
 # Main function to run the bot    
 def main():
@@ -265,11 +311,19 @@ def main():
     GROUP_CHAT_ID = -5201982600
     job_queue.run_daily(
         auto_daily_report,
-        time=time(hour=12, minute=00),
+        time=time(hour=12, minute=00), # UTC時間12:00 = 北京時間20:00
         data=GROUP_CHAT_ID
     )
     # Test job to run 10 seconds after startup
     #job_queue.run_once(auto_daily_report, when=10, data=GROUP_CHAT_ID)
+    
+    # Set up a repeating job to check for abnormal transactions every hour
+    job_queue.run_repeating(
+        check_abnormal_transactions,
+        interval=3600,  # Check every hour
+        first=10,  # Start 10 seconds after the bot starts
+        data=GROUP_CHAT_ID
+    )
     
     # Start the bot
     print("Bot 已啓動，按 Ctrl+C 停止...")

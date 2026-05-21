@@ -211,7 +211,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     
     transaction = parse_transaction(message.text)
     if transaction:
-        # 检查代理是否在白名单中
+        # Check if the agent is in the whitelist before saving the transaction
         if db.is_agent_allowed(transaction['agent_name']):
             print(f"✅ 檢測到有效交易: {transaction['agent_name']} - {transaction['amount']}元")
             db.add_transaction(
@@ -234,33 +234,60 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
         return
         
     # Then check if the message looks like a natural language query about transactions (e.g. contains keywords like "多少", "统计", "总额", "成交" or ends with a question mark)
-    if message.text.endswith("？") or any(keyword in message.text for keyword in ["多少", "統計", "總額", "成交"]):
+    query_keywords = [
+        "多少", "統計", "總額", "成交", "统计", "总额",  # 中（繁+简）
+        "total", "amount", "today", "week", "agent", "how much", "sum", "transaction"  # 英文   
+    ]
+    if message.text.strip().endswith(("？", "?")) or any(keyword.lower() in message.text.lower() for keyword in query_keywords):
         print(f"🔍 檢測到自然語言查詢: {message.text}")
         query_result = parse_natural_language_query(message.text)
-        
+    
         if query_result["type"] == "today_total":
             total = db.get_daily_total()
-            await update.message.reply_text(f"今日總成交額是{total}元")
+            # Respond in the same language as the query
+            if any(en_key in message.text.lower() for en_key in ["today", "total", "how much"]):
+                await update.message.reply_text(f"Today's total transaction amount is {total} CNY")
+            else:
+                await update.message.reply_text(f"今日總成交額是{total}元")
         elif query_result["type"] == "week_total":
             total = db.get_period_total(days=7)
-            await update.message.reply_text(f"本周總成交額是{total}元")
+            if any(en_key in message.text.lower() for en_key in ["week", "total"]):
+                await update.message.reply_text(f"This week's total transaction amount is {total} CNY")
+            else:
+                await update.message.reply_text(f"本周總成交額是{total}元")
         elif query_result["type"] == "agent_daily":
             agent = query_result["agent"]
             amount = db.get_agent_daily_total(agent)
-            await update.message.reply_text(f"{agent}今日成交額是{amount}元")
+            if any(en_key in message.text.lower() for en_key in ["agent", "today", "amount"]):
+                await update.message.reply_text(f"{agent}'s transaction amount today is {amount} CNY")
+            else:
+                await update.message.reply_text(f"{agent}今日成交額是{amount}元")
         elif query_result["type"] == "agent_week":
             agent = query_result["agent"]
             amount = db.get_agent_total(agent, days=7)
-            await update.message.reply_text(f"{agent}本周成交額是{amount}元")
+            if any(en_key in message.text.lower() for en_key in ["agent", "week", "amount"]):
+                await update.message.reply_text(f"{agent}'s transaction amount this week is {amount} CNY")
+            else:
+                await update.message.reply_text(f"{agent}本周成交額是{amount}元")
         elif query_result["type"] == "all_agents_daily":
             agents = db.get_all_agents()
-            text = "今日各代理成交額：\n"
-            for agent in agents:
-                amount = db.get_agent_daily_total(agent)
-                text += f"- {agent}：{amount}元\n"
+            if any(en_key in message.text.lower() for en_key in ["all", "agent", "today"]):
+                text = "Today's transaction amount for all agents:\n"
+                for agent in agents:
+                    amount = db.get_agent_daily_total(agent)
+                    text += f"- {agent}: {amount} CNY\n"
+            else:
+                text = "今日各代理成交額：\n"
+                for agent in agents:
+                    amount = db.get_agent_daily_total(agent)
+                    text += f"- {agent}：{amount}元\n"
             await update.message.reply_text(text)
         else:
-            await update.message.reply_text("抱歉，我沒理解你的查詢，請換一種說法試試")
+            # Multilingual fallback response
+            if any(en_key in message.text.lower() for en_key in ["how", "what", "total", "amount"]):
+                await update.message.reply_text("Sorry, I didn't understand your query. Please try another way to ask.")
+            else:
+                await update.message.reply_text("抱歉，我沒理解你的查詢，請換一種說法試試")
         return
    
     print("ℹ️ 普通消息，無需處理")

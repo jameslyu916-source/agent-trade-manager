@@ -19,6 +19,7 @@ db = TransactionDB()
 # Import the report generator
 from reporter import generate_daily_report
 from datetime import datetime, time
+from config import GROUP_CHAT_ID
 
 # Load environment variables from .env file
 load_dotenv()
@@ -39,9 +40,12 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text="我現在支持這些功能：\n"
         "/start - 開始使用\n"
         "/help - 顯示幫助信息\n"
-        "/hello - 打招呼\n"
-        "/daily - 生成今日交易報表\n\n"
-        "私聊發送文字我會覆述，群裡發文字我會記錄！"
+        "/hello - 打招呼\n\n"
+        "/daily - 生成今日交易報表\n"
+        "/today - 查詢今日總成交額\n"
+        "/week - 查詢本周總成交額\n"
+        "/agent - 查詢代理統計（用法：/agent 或 /agent 代理名稱）\n"
+        "\n私聊發送文字我會覆述，群裡發文字我會記錄！"
     )
     
 # Echo handler for any text message
@@ -121,6 +125,44 @@ async def auto_daily_report(context: ContextTypes.DEFAULT_TYPE):
             chat_id=chat_id,
             document=open(filename, "rb")
         )
+        
+# Daily total command handler
+async def today_total(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    total = db.get_daily_total()
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=f"💰 今日總成交額：{total}元"
+    )
+
+# Agent stats command handler
+async def agent_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        # No agent name specified, show stats for all agents
+        agents = db.get_all_agents()
+        if not agents:
+            await update.message.reply_text("暫無代理數據")
+            return
+        
+        text = "📋 今日各代理成交額：\n"
+        for agent in agents:
+            amount = db.get_agent_daily_total(agent)
+            text += f"- {agent}：{amount}元\n"
+        await update.message.reply_text(text)
+    else:
+        # Agent name specified, show stats for that agent
+        agent_name = " ".join(context.args)
+        amount = db.get_agent_daily_total(agent_name)
+        await update.message.reply_text(
+            f"📊 {agent_name} 今日成交額：{amount}元"
+        )
+
+# Weekly total command handler
+async def week_total(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    total = db.get_period_total(days=7)
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=f"📅 本周總成交額：{total}元"
+    )
                   
 # Main function to run the bot    
 def main():
@@ -143,6 +185,9 @@ def main():
     ))
     # Register the daily report command handler
     application.add_handler(CommandHandler("daily", daily_report))
+    application.add_handler(CommandHandler("today", today_total))
+    application.add_handler(CommandHandler("agent", agent_stats))
+    application.add_handler(CommandHandler("week", week_total))
     
     # Set up a daily job to send the report at 8 PM every day
     job_queue = application.job_queue

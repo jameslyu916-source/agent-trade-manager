@@ -72,7 +72,33 @@ class TransactionDB:
         ''', (f"{date}%",))
         
         return cursor.fetchall()
-    
+        
+    def get_all_agents(self):
+        """獲取所有出現過的代理名稱"""
+        cursor = self.conn.cursor()
+        cursor.execute('SELECT DISTINCT agent_name FROM transactions ORDER BY agent_name')
+        return [row[0] for row in cursor.fetchall()]
+
+    def get_agent_total(self, agent_name, days=1):
+        """獲取指定代理最近N天的總成交額"""
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            SELECT SUM(amount) FROM transactions
+            WHERE agent_name = ? AND timestamp >= datetime('now', '-' || ? || ' days')
+        ''', (agent_name, days))
+        result = cursor.fetchone()
+        return result[0] if result[0] else 0
+
+    def get_period_total(self, days=1):
+        """獲取最近N天的總成交額"""
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            SELECT SUM(amount) FROM transactions
+            WHERE timestamp >= datetime('now', '-' || ? || ' days')
+        ''', (days,))
+        result = cursor.fetchone()
+        return result[0] if result[0] else 0
+        
     def close(self):
         """關閉數據庫連接"""
         self.conn.close()

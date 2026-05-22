@@ -16,6 +16,6 @@ REPORT_TIME = (12, 0)  # Report time (hour, minute)
 CHECK_INTERVAL = 3600  # Check interval in seconds (1 hour)
 
 # Abnormal thresholds
-ABNORMAL_SINGLE_TRANSACTION = 10000  # Abnormal single transaction amount threshold
-ABNORMAL_DAILY_TOTAL = 50000        # Abnormal daily total transaction amount threshold
+ABNORMAL_SINGLE_TRANSACTION = 10000000  # Abnormal single transaction amount threshold
+ABNORMAL_DAILY_TOTAL = 50000000        # Abnormal daily total transaction amount threshold
 ABNORMAL_NO_TRANSACTION_HOURS = 12  # Abnormal no transaction hours threshold

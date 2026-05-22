@@ -118,7 +118,7 @@ async def today_total(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total = db.get_daily_total()
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text=f"💰 今日總成交額：{total}元"
+        text=f"💰 今日總成交額：{total:,}元"
     )
 
 # Weekly total command handler
@@ -126,7 +126,7 @@ async def week_total(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total = db.get_period_total(days=7)
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text=f"📅 本周總成交額：{total}元"
+        text=f"📅 本周總成交額：{total:,}元"
     )
 
 # Agent stats command handler
@@ -141,14 +141,14 @@ async def agent_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = "📋 今日各代理成交額：\n"
         for agent in agents:
             amount = db.get_agent_daily_total(agent)
-            text += f"- {agent}：{amount}元\n"
+            text += f"- {agent}：{amount:,}元\n"
         await update.message.reply_text(text)
     else:
         # Agent name specified, show stats for that agent
         agent_name = " ".join(context.args)
         amount = db.get_agent_daily_total(agent_name)
         await update.message.reply_text(
-            f"📊 {agent_name} 今日成交額：{amount}元"
+            f"📊 {agent_name} 今日成交額：{amount:,}元"
         )
         
 # Admin command handlers for managing the whitelist of agents
@@ -241,28 +241,28 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
             agent = query_result["agent"]
             amount = db.get_agent_daily_total(agent)
             if any(en_key in message.text.lower() for en_key in ["agent", "today", "amount"]):
-                await update.message.reply_text(f"{agent}'s transaction amount today is {amount} HKD")
+                await update.message.reply_text(f"{agent}'s transaction amount today is {amount:,} HKD")
             else:
-                await update.message.reply_text(f"{agent}今日成交額是{amount}元")
+                await update.message.reply_text(f"{agent}今日成交額是{amount:,}元")
         elif query_result["type"] == "agent_week":
             agent = query_result["agent"]
             amount = db.get_agent_total(agent, days=7)
             if any(en_key in message.text.lower() for en_key in ["agent", "week", "amount"]):
-                await update.message.reply_text(f"{agent}'s transaction amount this week is {amount} HKD")
+                await update.message.reply_text(f"{agent}'s transaction amount this week is {amount:,} HKD")
             else:
-                await update.message.reply_text(f"{agent}本周成交額是{amount}元")
+                await update.message.reply_text(f"{agent}本周成交額是{amount:,}元")
         elif query_result["type"] == "all_agents_daily":
             agents = db.get_all_agents()
             if any(en_key in message.text.lower() for en_key in ["all", "agent", "today"]):
                 text = "Today's transaction amount for all agents:\n"
                 for agent in agents:
                     amount = db.get_agent_daily_total(agent)
-                    text += f"- {agent}: {amount} HKD\n"
+                    text += f"- {agent}: {amount:,} HKD\n"
             else:
                 text = "今日各代理成交額：\n"
                 for agent in agents:
                     amount = db.get_agent_daily_total(agent)
-                    text += f"- {agent}：{amount}元\n"
+                    text += f"- {agent}：{amount:,}元\n"
             await update.message.reply_text(text)
         else:
             # Multilingual fallback response
@@ -293,7 +293,7 @@ async def check_abnormal_transactions(context: ContextTypes.DEFAULT_TYPE):
         hk_time = utc_time.astimezone(HK_TZ).strftime("%Y-%m-%d %H:%M:%S")
         await context.bot.send_message(
             chat_id=chat_id,
-            text=f"⚠️ 大額交易提醒\n代理：{agent}\n金額：{amount}元\n時間：{hk_time} (香港時間)"
+            text=f"⚠️ 大額交易提醒\n代理：{agent}\n金額：{amount:,}元\n時間：{hk_time} (香港時間)"
         )
     
     # 異常2：代理單日交易額超過50000元
@@ -303,7 +303,7 @@ async def check_abnormal_transactions(context: ContextTypes.DEFAULT_TYPE):
         if daily_total > ABNORMAL_DAILY_TOTAL:
             await context.bot.send_message(
                 chat_id=chat_id,
-                text=f"🚨 代理單日交易額異常\n代理：{agent}\n今日成交額：{daily_total}元\n已超過預警值{ABNORMAL_DAILY_TOTAL}元"
+                text=f"🚨 代理單日交易額異常\n代理：{agent}\n今日成交額：{daily_total:,}元\n已超過預警值{ABNORMAL_DAILY_TOTAL:,}元"
             )
     
     # 異常3：超過12小時無交易

@@ -41,10 +41,10 @@ def generate_daily_report(date=None):
     
     # Generate the report text
     report_text = f"📊 {date} 交易日報表\n\n"
-    report_text += f"💰 今日總成交額：{total_amount}元\n\n"
+    report_text += f"💰 今日總成交額：{total_amount:,}元\n\n"
     report_text += "📋 各代理總成交額排名：\n"
     
     for i, (_, row) in enumerate(agent_stats.iterrows(), start=1):
-        report_text += f"{i}. {row['代理名稱']}：{row['今日總成交額']}元\n"
+        report_text += f"{i}. {row['代理名稱']}：{row['今日總成交額']:,}元\n"
     
     return filename, report_text

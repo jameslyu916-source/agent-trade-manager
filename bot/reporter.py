@@ -1,7 +1,7 @@
 import pandas as pd
 from datetime import datetime, timezone, timedelta
 HK_TZ = timezone(timedelta(hours=8))
-from database import TransactionDB
+from .database import TransactionDB
 
 def generate_daily_report(date=None):
     """生成每日交易報表，返回Excel文件名和報表文本"""

@@ -11,22 +11,22 @@ from telegram.ext import (
     JobQueue
 )
 # Import the transaction parser
-from parser import parse_transaction
+from .parser import parse_transaction
 # Import the database handler
-from database import TransactionDB
+from .database import TransactionDB
 # Initialize the database connection
 db = TransactionDB()
 # Import the report generator
-from reporter import generate_daily_report
+from .reporter import generate_daily_report
 from datetime import datetime, time, timezone, timedelta
 # 香港時區 = UTC+8
 HK_TZ = timezone(timedelta(hours=8))
-from config import (
+from .config import (
     GROUP_CHAT_ID, REPORT_TIME, CHECK_INTERVAL,
     ABNORMAL_SINGLE_TRANSACTION, ABNORMAL_DAILY_TOTAL,
     ABNORMAL_NO_TRANSACTION_HOURS
 )
-from ai_parser import parse_natural_language_query
+from .ai_parser import parse_natural_language_query
 
 # Load environment variables from .env file
 load_dotenv()

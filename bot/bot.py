@@ -10,6 +10,7 @@ from telegram.ext import (
     filters,
     JobQueue
 )
+from telegram.request import HTTPXRequest
 # Import the transaction parser
 from .parser import parse_transaction
 # Import the database handler
@@ -327,9 +328,20 @@ async def check_abnormal_transactions(context: ContextTypes.DEFAULT_TYPE):
                   
 # Main function to run the bot    
 def main():
+    # Create a custom request object with increased timeouts for better performance
+    request = HTTPXRequest(
+        connection_pool_size=20,
+        pool_timeout=10,
+        read_timeout=15,
+        write_timeout=15,
+        connect_timeout=15
+    )
     # Create the bot application
-    application = ApplicationBuilder().token(BOT_TOKEN).build()
-    
+    application = ApplicationBuilder()\
+        .token(BOT_TOKEN)\
+        .request(request)\
+        .get_updates_request(request)\
+        .build()
     # Register command handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
@@ -373,7 +385,21 @@ def main():
     
     # Start the bot
     print("Bot 已啓動，按 Ctrl+C 停止...")
-    application.run_polling()
+    
+    # Use run_polling with close_loop=True to ensure the event loop is properly closed on shutdown
+    try:
+        application.run_polling(
+            close_loop=True,
+            stop_signals=[2, 15]  # SIGINT, SIGTERM
+        )
+    except KeyboardInterrupt:
+        print("\n正在關閉Bot...")
+    finally:
+        # Manually close the bot's HTTP session
+        if application.bot.request:
+            import asyncio
+            asyncio.run(application.bot.shutdown())
+        print("\nBot 已安全關閉")
     
 if __name__ == "__main__":
     main()

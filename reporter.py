@@ -1,11 +1,14 @@
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+HK_TZ = timezone(timedelta(hours=8))
 from database import TransactionDB
 
 def generate_daily_report(date=None):
     """生成每日交易報表，返回Excel文件名和報表文本"""
     if not date:
-        date = datetime.now().strftime("%Y-%m-%d")
+        # Get current date in Hong Kong timezone
+        hk_now = datetime.now(timezone.utc).astimezone(HK_TZ)
+        date = hk_now.strftime("%Y-%m-%d")
     
     db = TransactionDB()
     transactions = db.get_all_daily_transactions(date)
@@ -16,6 +19,11 @@ def generate_daily_report(date=None):
     
     # Create a DataFrame from the transactions
     df = pd.DataFrame(transactions, columns=["代理名稱", "交易金額", "交易時間"])
+    
+    # Convert UTC time to Hong Kong time for display
+    df["交易時間"] = df["交易時間"].apply(
+        lambda x: datetime.fromisoformat(x).replace(tzinfo=timezone.utc).astimezone(HK_TZ).strftime("%Y-%m-%d %H:%M:%S")
+    )
     
     # Calculate total amount per agent
     agent_stats = df.groupby("代理名稱")["交易金額"].sum().reset_index()

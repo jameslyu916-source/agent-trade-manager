@@ -18,8 +18,14 @@ from database import TransactionDB
 db = TransactionDB()
 # Import the report generator
 from reporter import generate_daily_report
-from datetime import datetime, time
-from config import GROUP_CHAT_ID
+from datetime import datetime, time, timezone, timedelta
+# 香港時區 = UTC+8
+HK_TZ = timezone(timedelta(hours=8))
+from config import (
+    GROUP_CHAT_ID, REPORT_TIME, CHECK_INTERVAL,
+    ABNORMAL_SINGLE_TRANSACTION, ABNORMAL_DAILY_TOTAL,
+    ABNORMAL_NO_TRANSACTION_HOURS
+)
 from ai_parser import parse_natural_language_query
 
 # Load environment variables from .env file
@@ -70,32 +76,6 @@ async def say_hello(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text=f"你好 {update.effective_user.first_name}！很高興認識你"
     )
 
-# Handler for messages in group chats
-async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message = update.effective_message
-    user_name = message.from_user.username or message.from_user.first_name
-    print(f"当前群ID: {update.effective_chat.id}")
-    print(f"收到群消息 [{message.chat.title}] {user_name}: {message.text}")
-    # Parse the message to check if it contains a transaction
-    transaction = parse_transaction(message.text)
-    if transaction:
-        print(f"✅ 檢測到有效交易: {transaction['agent_name']} - {transaction['amount']}元")
-        # Save the transaction to the database
-        db.add_transaction(
-            agent_name=transaction['agent_name'],
-            amount=transaction['amount'],
-            timestamp=transaction['timestamp'],
-            raw_message=transaction['raw_message']
-        )
-        print("💾 交易紀錄已保存")
-        # Respond in the group chat to confirm the transaction was recorded
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=f"已紀錄交易：{transaction['agent_name']} 成交 {transaction['amount']}元"
-        )
-    else:
-        print("ℹ️ 普通消息，無需處理")
-
 # Handler for the /daily command to generate and send the daily report
 async def daily_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """生成並發送每日報表"""
@@ -109,10 +89,11 @@ async def daily_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Send the Excel file if it was generated
     if filename:
-        await context.bot.send_document(
-            chat_id=update.effective_chat.id,
-            document=open(filename, "rb")
-        )
+        with open(filename, "rb") as f:
+            await context.bot.send_document(
+                chat_id=update.effective_chat.id,
+                document=f
+            )
         
 # Job handler for automatic daily report        
 async def auto_daily_report(context: ContextTypes.DEFAULT_TYPE):
@@ -126,10 +107,11 @@ async def auto_daily_report(context: ContextTypes.DEFAULT_TYPE):
     )
     
     if filename:
-        await context.bot.send_document(
-            chat_id=chat_id,
-            document=open(filename, "rb")
-        )
+        with open(filename, "rb") as f:
+            await context.bot.send_document(
+                chat_id=chat_id,
+                document=f
+            )
         
 # Daily total command handler
 async def today_total(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -246,27 +228,27 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
             total = db.get_daily_total()
             # Respond in the same language as the query
             if any(en_key in message.text.lower() for en_key in ["today", "total", "how much"]):
-                await update.message.reply_text(f"Today's total transaction amount is {total} CNY")
+                await update.message.reply_text(f"Today's total transaction amount is {total} HKD")
             else:
                 await update.message.reply_text(f"今日總成交額是{total}元")
         elif query_result["type"] == "week_total":
             total = db.get_period_total(days=7)
             if any(en_key in message.text.lower() for en_key in ["week", "total"]):
-                await update.message.reply_text(f"This week's total transaction amount is {total} CNY")
+                await update.message.reply_text(f"This week's total transaction amount is {total} HKD")
             else:
                 await update.message.reply_text(f"本周總成交額是{total}元")
         elif query_result["type"] == "agent_daily":
             agent = query_result["agent"]
             amount = db.get_agent_daily_total(agent)
             if any(en_key in message.text.lower() for en_key in ["agent", "today", "amount"]):
-                await update.message.reply_text(f"{agent}'s transaction amount today is {amount} CNY")
+                await update.message.reply_text(f"{agent}'s transaction amount today is {amount} HKD")
             else:
                 await update.message.reply_text(f"{agent}今日成交額是{amount}元")
         elif query_result["type"] == "agent_week":
             agent = query_result["agent"]
             amount = db.get_agent_total(agent, days=7)
             if any(en_key in message.text.lower() for en_key in ["agent", "week", "amount"]):
-                await update.message.reply_text(f"{agent}'s transaction amount this week is {amount} CNY")
+                await update.message.reply_text(f"{agent}'s transaction amount this week is {amount} HKD")
             else:
                 await update.message.reply_text(f"{agent}本周成交額是{amount}元")
         elif query_result["type"] == "all_agents_daily":
@@ -275,7 +257,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                 text = "Today's transaction amount for all agents:\n"
                 for agent in agents:
                     amount = db.get_agent_daily_total(agent)
-                    text += f"- {agent}: {amount} CNY\n"
+                    text += f"- {agent}: {amount} HKD\n"
             else:
                 text = "今日各代理成交額：\n"
                 for agent in agents:
@@ -301,24 +283,27 @@ async def check_abnormal_transactions(context: ContextTypes.DEFAULT_TYPE):
     cursor = db.conn.cursor()
     cursor.execute('''
         SELECT agent_name, amount, timestamp FROM transactions
-        WHERE amount > 10000 AND timestamp >= datetime('now', '-1 hour')
-    ''')
+        WHERE amount > ? AND timestamp >= datetime('now', '-1 hour')
+    ''', (ABNORMAL_SINGLE_TRANSACTION,))
     large_transactions = cursor.fetchall()
     
     for agent, amount, timestamp in large_transactions:
+        # 將UTC時間轉換為香港時間顯示
+        utc_time = datetime.fromisoformat(timestamp).replace(tzinfo=timezone.utc)
+        hk_time = utc_time.astimezone(HK_TZ).strftime("%Y-%m-%d %H:%M:%S")
         await context.bot.send_message(
             chat_id=chat_id,
-            text=f"⚠️ 大額交易提醒\n代理：{agent}\n金額：{amount}元\n時間：{timestamp}"
+            text=f"⚠️ 大額交易提醒\n代理：{agent}\n金額：{amount}元\n時間：{hk_time} (香港時間)"
         )
     
     # 異常2：代理單日交易額超過50000元
     agents = db.get_allowed_agents()
     for agent in agents:
         daily_total = db.get_agent_daily_total(agent)
-        if daily_total > 50000:
+        if daily_total > ABNORMAL_DAILY_TOTAL:
             await context.bot.send_message(
                 chat_id=chat_id,
-                text=f"🚨 代理單日交易額異常\n代理：{agent}\n今日成交額：{daily_total}元\n已超過預警值50000元"
+                text=f"🚨 代理單日交易額異常\n代理：{agent}\n今日成交額：{daily_total}元\n已超過預警值{ABNORMAL_DAILY_TOTAL}元"
             )
     
     # 異常3：超過12小時無交易
@@ -327,15 +312,17 @@ async def check_abnormal_transactions(context: ContextTypes.DEFAULT_TYPE):
     last_transaction_time = cursor.fetchone()[0]
     
     if last_transaction_time:
-        from datetime import datetime
-        last_time = datetime.fromisoformat(last_transaction_time)
-        now = datetime.now()
+        last_time_utc = datetime.fromisoformat(last_transaction_time).replace(tzinfo=timezone.utc)
+        last_time = last_time_utc.astimezone(HK_TZ)
+        now = datetime.now(HK_TZ)
         hours_since_last = (now - last_time).total_seconds() / 3600
         
-        if hours_since_last > 12:
+        if hours_since_last > ABNORMAL_NO_TRANSACTION_HOURS:
+            utc_time = datetime.fromisoformat(last_transaction_time).replace(tzinfo=timezone.utc)
+            hk_time = utc_time.astimezone(HK_TZ).strftime("%Y-%m-%d %H:%M:%S")
             await context.bot.send_message(
                 chat_id=chat_id,
-                text=f"⏰ 長時間無交易提醒\n最後一筆交易時間：{last_transaction_time}\n已過去{int(hours_since_last)}小時"
+                text=f"⏰ 長時間無交易提醒\n最後一筆交易時間：{hk_time} (香港時間)\n已過去{int(hours_since_last)}小時"
             )        
                   
 # Main function to run the bot    
@@ -366,12 +353,11 @@ def main():
     application.add_handler(CommandHandler("delagent", remove_agent))
     application.add_handler(CommandHandler("agents", list_agents))
     
-    # Set up a daily job to send the report at 8 PM every day
+    # Set up a daily job to send the report at the specified time
     job_queue = application.job_queue
-    GROUP_CHAT_ID = -5201982600
     job_queue.run_daily(
         auto_daily_report,
-        time=time(hour=12, minute=00), # UTC時間12:00 = 北京時間20:00
+        time=time(hour=REPORT_TIME[0], minute=REPORT_TIME[1]),
         data=GROUP_CHAT_ID
     )
     # Test job to run 10 seconds after startup
@@ -380,7 +366,7 @@ def main():
     # Set up a repeating job to check for abnormal transactions every hour
     job_queue.run_repeating(
         check_abnormal_transactions,
-        interval=3600,  # Check every hour
+        interval=CHECK_INTERVAL,
         first=10,  # Start 10 seconds after the bot starts
         data=GROUP_CHAT_ID
     )

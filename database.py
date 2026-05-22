@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 
 class TransactionDB:
     def __init__(self, db_name="transactions.db"):
@@ -22,8 +22,12 @@ class TransactionDB:
         ''')
         self.conn.commit()
     
-    def add_transaction(self, agent_name, amount, timestamp, raw_message):
+    def add_transaction(self, agent_name, amount, timestamp=None, raw_message=None):
         """添加一條交易紀錄"""
+        if not timestamp:
+            # Get current time in ISO format with timezone info
+            timestamp = datetime.now(timezone.utc).isoformat()
+            
         cursor = self.conn.cursor()
         cursor.execute('''
             INSERT INTO transactions (agent_name, amount, timestamp, raw_message)

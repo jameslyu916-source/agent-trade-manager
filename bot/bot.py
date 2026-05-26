@@ -13,10 +13,10 @@ from telegram.ext import (
 from telegram.request import HTTPXRequest
 # Import the transaction parser
 from .parser import parse_transaction
-# Import the database handler
-from .database import TransactionDB
-# Initialize the database connection
-db = TransactionDB()
+
+# Import the API client
+from .api_client import api_client
+
 # Import the report generator
 from .reporter import generate_daily_report
 from datetime import datetime, time, timezone, timedelta
@@ -116,40 +116,40 @@ async def auto_daily_report(context: ContextTypes.DEFAULT_TYPE):
         
 # Daily total command handler
 async def today_total(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    total = db.get_daily_total()
+    total = api_client.get_daily_total()
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text=f"💰 今日總成交額：{total:,}元"
+        text=f"💰 今日總成交額：{total:,}HKD"
     )
 
 # Weekly total command handler
 async def week_total(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    total = db.get_period_total(days=7)
+    total = api_client.get_period_total(days=7)
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text=f"📅 本周總成交額：{total:,}元"
+        text=f"📅 本周總成交額：{total:,}HKD"
     )
 
 # Agent stats command handler
 async def agent_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         # No agent name specified, show stats for all agents
-        agents = db.get_all_agents()
+        agents = api_client.get_all_agents()
         if not agents:
             await update.message.reply_text("暫無代理數據")
             return
         
         text = "📋 今日各代理成交額：\n"
         for agent in agents:
-            amount = db.get_agent_daily_total(agent)
-            text += f"- {agent}：{amount:,}元\n"
+            amount = api_client.get_agent_daily_total(agent)
+            text += f"- {agent}：{amount:,}HKD\n"
         await update.message.reply_text(text)
     else:
         # Agent name specified, show stats for that agent
         agent_name = " ".join(context.args)
-        amount = db.get_agent_daily_total(agent_name)
+        amount = api_client.get_agent_daily_total(agent_name)
         await update.message.reply_text(
-            f"📊 {agent_name} 今日成交額：{amount:,}元"
+            f"📊 {agent_name} 今日成交額：{amount:,}HKD"
         )
         
 # Admin command handlers for managing the whitelist of agents
@@ -159,7 +159,7 @@ async def add_agent(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     agent_name = " ".join(context.args)
-    if db.add_allowed_agent(agent_name):
+    if api_client.add_allowed_agent(agent_name):
         await update.message.reply_text(f"✅ 已添加代理：{agent_name}")
     else:
         await update.message.reply_text(f"❌ 代理 {agent_name} 已存在")
@@ -170,13 +170,13 @@ async def remove_agent(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     agent_name = " ".join(context.args)
-    if db.remove_allowed_agent(agent_name):
+    if api_client.remove_allowed_agent(agent_name):
         await update.message.reply_text(f"✅ 已删除代理：{agent_name}")
     else:
         await update.message.reply_text(f"❌ 代理 {agent_name} 不存在")
 
 async def list_agents(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    agents = db.get_allowed_agents()
+    agents = api_client.get_allowed_agents()
     if not agents:
         await update.message.reply_text("暫無白名單代理")
         return
@@ -195,9 +195,9 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     transaction = parse_transaction(message.text)
     if transaction:
         # Check if the agent is in the whitelist before saving the transaction
-        if db.is_agent_allowed(transaction['agent_name']):
-            print(f"✅ 檢測到有效交易: {transaction['agent_name']} - {transaction['amount']}元")
-            db.add_transaction(
+        if api_client.is_agent_allowed(transaction['agent_name']):
+            print(f"✅ 檢測到有效交易: {transaction['agent_name']} - {transaction['amount']}HKD")
+            api_client.create_transaction(
                 agent_name=transaction['agent_name'],
                 amount=transaction['amount'],
                 timestamp=transaction['timestamp'],
@@ -206,7 +206,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
             print("💾 交易紀錄已保存")
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text=f"已紀錄交易：{transaction['agent_name']} 成交 {transaction['amount']}元"
+                text=f"已紀錄交易：{transaction['agent_name']} 成交 {transaction['amount']}HKD"
             )
         else:
             print(f"⚠️ 代理 {transaction['agent_name']} 不在白名單中，忽略交易")
@@ -226,44 +226,44 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
         query_result = parse_natural_language_query(message.text)
     
         if query_result["type"] == "today_total":
-            total = db.get_daily_total()
+            total = api_client.get_daily_total()
             # Respond in the same language as the query
             if any(en_key in message.text.lower() for en_key in ["today", "total", "how much"]):
                 await update.message.reply_text(f"Today's total transaction amount is {total} HKD")
             else:
-                await update.message.reply_text(f"今日總成交額是{total}元")
+                await update.message.reply_text(f"今日總成交額是{total}HKD")
         elif query_result["type"] == "week_total":
-            total = db.get_period_total(days=7)
+            total = api_client.get_period_total(days=7)
             if any(en_key in message.text.lower() for en_key in ["week", "total"]):
                 await update.message.reply_text(f"This week's total transaction amount is {total} HKD")
             else:
-                await update.message.reply_text(f"本周總成交額是{total}元")
+                await update.message.reply_text(f"本周總成交額是{total}HKD")
         elif query_result["type"] == "agent_daily":
             agent = query_result["agent"]
-            amount = db.get_agent_daily_total(agent)
+            amount = api_client.get_agent_daily_total(agent)
             if any(en_key in message.text.lower() for en_key in ["agent", "today", "amount"]):
                 await update.message.reply_text(f"{agent}'s transaction amount today is {amount:,} HKD")
             else:
-                await update.message.reply_text(f"{agent}今日成交額是{amount:,}元")
+                await update.message.reply_text(f"{agent}今日成交額是{amount:,}HKD")
         elif query_result["type"] == "agent_week":
             agent = query_result["agent"]
-            amount = db.get_agent_total(agent, days=7)
+            amount = api_client.get_agent_total(agent, days=7)
             if any(en_key in message.text.lower() for en_key in ["agent", "week", "amount"]):
                 await update.message.reply_text(f"{agent}'s transaction amount this week is {amount:,} HKD")
             else:
-                await update.message.reply_text(f"{agent}本周成交額是{amount:,}元")
+                await update.message.reply_text(f"{agent}本周成交額是{amount:,}HKD")
         elif query_result["type"] == "all_agents_daily":
-            agents = db.get_all_agents()
+            agents = api_client.get_all_agents()
             if any(en_key in message.text.lower() for en_key in ["all", "agent", "today"]):
                 text = "Today's transaction amount for all agents:\n"
                 for agent in agents:
-                    amount = db.get_agent_daily_total(agent)
+                    amount = api_client.get_agent_daily_total(agent)
                     text += f"- {agent}: {amount:,} HKD\n"
             else:
                 text = "今日各代理成交額：\n"
                 for agent in agents:
-                    amount = db.get_agent_daily_total(agent)
-                    text += f"- {agent}：{amount:,}元\n"
+                    amount = api_client.get_agent_daily_total(agent)
+                    text += f"- {agent}：{amount:,}HKD\n"
             await update.message.reply_text(text)
         else:
             # Multilingual fallback response
@@ -280,38 +280,30 @@ async def check_abnormal_transactions(context: ContextTypes.DEFAULT_TYPE):
     """定時檢查異常交易並發送警報"""
     chat_id = context.job.data
     
-    # 異常1：單筆交易金額超過10000元
-    cursor = db.conn.cursor()
-    cursor.execute('''
-        SELECT agent_name, amount, timestamp FROM transactions
-        WHERE amount > ? AND timestamp >= datetime('now', '-1 hour')
-    ''', (ABNORMAL_SINGLE_TRANSACTION,))
-    large_transactions = cursor.fetchall()
+    # 異常1：單筆交易金額超過閾值
+    recent_transactions = api_client.get_recent_transactions(hours=1)
+    for tx in recent_transactions:
+        if tx["amount"] > ABNORMAL_SINGLE_TRANSACTION:
+            # 將UTC時間轉換為香港時間顯示
+            utc_time = datetime.fromisoformat(tx["timestamp"]).replace(tzinfo=timezone.utc)
+            hk_time = utc_time.astimezone(HK_TZ).strftime("%Y-%m-%d %H:%M:%S")
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"⚠️ 大額交易提醒\n代理：{tx['agent_name']}\n金額：{tx['amount']:,} HKD\n時間：{hk_time} (香港時間)"
+            )
     
-    for agent, amount, timestamp in large_transactions:
-        # 將UTC時間轉換為香港時間顯示
-        utc_time = datetime.fromisoformat(timestamp).replace(tzinfo=timezone.utc)
-        hk_time = utc_time.astimezone(HK_TZ).strftime("%Y-%m-%d %H:%M:%S")
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=f"⚠️ 大額交易提醒\n代理：{agent}\n金額：{amount:,}元\n時間：{hk_time} (香港時間)"
-        )
-    
-    # 異常2：代理單日交易額超過50000元
-    agents = db.get_allowed_agents()
+    # 異常2：代理單日交易額超過閾值
+    agents = api_client.get_allowed_agents()
     for agent in agents:
-        daily_total = db.get_agent_daily_total(agent)
+        daily_total = api_client.get_agent_daily_total(agent)
         if daily_total > ABNORMAL_DAILY_TOTAL:
             await context.bot.send_message(
                 chat_id=chat_id,
-                text=f"🚨 代理單日交易額異常\n代理：{agent}\n今日成交額：{daily_total:,}元\n已超過預警值{ABNORMAL_DAILY_TOTAL:,}元"
+                text=f"🚨 代理單日交易額異常\n代理：{agent}\n今日成交額：{daily_total:,} HKD\n已超過預警值 {ABNORMAL_DAILY_TOTAL:,} HKD"
             )
     
     # 異常3：超過12小時無交易
-    cursor = db.conn.cursor()
-    cursor.execute('SELECT MAX(timestamp) FROM transactions')
-    last_transaction_time = cursor.fetchone()[0]
-    
+    last_transaction_time = api_client.get_last_transaction_time()
     if last_transaction_time:
         last_time_utc = datetime.fromisoformat(last_transaction_time).replace(tzinfo=timezone.utc)
         last_time = last_time_utc.astimezone(HK_TZ)
@@ -319,12 +311,11 @@ async def check_abnormal_transactions(context: ContextTypes.DEFAULT_TYPE):
         hours_since_last = (now - last_time).total_seconds() / 3600
         
         if hours_since_last > ABNORMAL_NO_TRANSACTION_HOURS:
-            utc_time = datetime.fromisoformat(last_transaction_time).replace(tzinfo=timezone.utc)
-            hk_time = utc_time.astimezone(HK_TZ).strftime("%Y-%m-%d %H:%M:%S")
+            hk_time = last_time.strftime("%Y-%m-%d %H:%M:%S")
             await context.bot.send_message(
                 chat_id=chat_id,
                 text=f"⏰ 長時間無交易提醒\n最後一筆交易時間：{hk_time} (香港時間)\n已過去{int(hours_since_last)}小時"
-            )        
+            )      
                   
 # Main function to run the bot    
 def main():

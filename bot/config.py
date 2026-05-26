@@ -1,4 +1,4 @@
-# config.py
+# bot/config.py
 import os
 from dotenv import load_dotenv
 
@@ -19,3 +19,8 @@ CHECK_INTERVAL = 3600  # Check interval in seconds (1 hour)
 ABNORMAL_SINGLE_TRANSACTION = 10000000  # Abnormal single transaction amount threshold
 ABNORMAL_DAILY_TOTAL = 50000000        # Abnormal daily total transaction amount threshold
 ABNORMAL_NO_TRANSACTION_HOURS = 12  # Abnormal no transaction hours threshold
+
+# API Client Settings
+API_BASE_URL = "http://localhost:8000"
+API_USERNAME = "admin"
+API_PASSWORD = "admin123"  # 生產環境請修改為環境變量

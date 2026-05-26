@@ -5,7 +5,7 @@ from fastapi.staticfiles import StaticFiles
 import os
 
 from backend import schemas
-from .routers import auth, transactions, agents
+from .routers import auth, transactions, agents, reports
 from .database import Base, engine, SessionLocal
 from .crud import create_agent, get_agent_by_name, get_user_by_username, create_user
 from .utils import get_password_hash
@@ -34,7 +34,7 @@ app.mount("/frontend", StaticFiles(directory=frontend_dir), name="frontend")
 app.include_router(auth.router)
 app.include_router(transactions.router)
 app.include_router(agents.router)
-# app.include_router(reports.router)  # 後續實現報表路由（先註釋）
+app.include_router(reports.router)
 
 # Root endpoint
 @app.get("/")

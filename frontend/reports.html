@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>報表下載 - 代理交易管理系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="utils.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <!-- 頂部導航欄 -->
+    <nav class="bg-white shadow-md">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+            <h1 class="text-xl font-bold text-gray-800">代理交易管理系統</h1>
+            <div class="flex items-center space-x-4">
+                <span class="text-gray-600">管理員</span>
+                <button 
+                    onclick="logout()" 
+                    class="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 transition-colors"
+                >
+                    登出
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 側邊欄和主內容 -->
+    <div class="max-w-7xl mx-auto px-4 py-6 flex">
+        <!-- 側邊欄 -->
+        <div class="w-48 bg-white rounded-lg shadow-md p-4 mr-6">
+            <ul class="space-y-2">
+                <li>
+                    <a href="dashboard.html" class="block px-3 py-2 rounded hover:bg-gray-100 transition-colors">
+                        📊 儀表盤
+                    </a>
+                </li>
+                <li>
+                    <a href="transactions.html" class="block px-3 py-2 rounded hover:bg-gray-100 transition-colors">
+                        📝 交易記錄
+                    </a>
+                </li>
+                <li>
+                    <a href="agents.html" class="block px-3 py-2 rounded hover:bg-gray-100 transition-colors">
+                        👥 代理管理
+                    </a>
+                </li>
+                <li>
+                    <a href="reports.html" class="block px-3 py-2 rounded bg-blue-100 text-blue-700 font-medium">
+                        📑 報表下載
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <!-- 主內容區 -->
+        <div class="flex-1">
+            <h2 class="text-2xl font-bold mb-6 text-gray-800">報表下載</h2>
+
+            <div class="bg-white rounded-lg shadow-md p-6 max-w-md">
+                <form id="reportForm" class="space-y-4">
+                    <div>
+                        <label class="block text-gray-700 mb-2 font-medium">選擇日期</label>
+                        <input 
+                            type="date" 
+                            id="reportDate" 
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            value=""
+                            required
+                        >
+                    </div>
+                    <button 
+                        type="submit" 
+                        class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                    >
+                        生成並下載報表
+                    </button>
+                </form>
+                
+                <p class="text-gray-500 text-sm mt-4">
+                    提示：生成的報表包含交易明細和代理統計兩個工作表，格式為Excel。
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 頁面加載時檢查權限
+        document.addEventListener("DOMContentLoaded", () => {
+            checkAuth();
+            // 設置默認日期為今日
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById("reportDate").value = today;
+        });
+
+        // 處理報表生成和下載（使用fetch API攜帶認證頭）
+        document.getElementById("reportForm").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            
+            const date = document.getElementById("reportDate").value;
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            const originalText = submitBtn.textContent;
+            
+            try {
+                // 顯示加載狀態
+                submitBtn.textContent = "生成中...";
+                submitBtn.disabled = true;
+                
+                // 使用fetch API獲取文件，攜帶Authorization頭
+                const response = await fetch(`${API_BASE_URL}/reports/daily/${date}`, {
+                    method: "GET",
+                    headers: {
+                        "Authorization": `Bearer ${getToken()}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    const error = await response.text();
+                    throw new Error(error || "生成報表失敗");
+                }
+                
+                // 獲取文件Blob
+                const blob = await response.blob();
+                
+                // 創建臨時下載鏈接
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `交易報表_${date}_HKD.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                
+                // 清理臨時資源
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                alert("報表生成成功，已開始下載");
+                
+            } catch (error) {
+                alert("生成報表失敗：" + error.message);
+                console.error("報表生成錯誤：", error);
+            } finally {
+                // 恢復按鈕狀態
+                submitBtn.textContent = originalText;
+                submitBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>

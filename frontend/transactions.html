@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>交易記錄 - 代理交易管理系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="utils.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <!-- 頂部導航欄 -->
+    <nav class="bg-white shadow-md">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+            <h1 class="text-xl font-bold text-gray-800">代理交易管理系統</h1>
+            <div class="flex items-center space-x-4">
+                <span class="text-gray-600">管理員</span>
+                <button 
+                    onclick="logout()" 
+                    class="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 transition-colors"
+                >
+                    登出
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 側邊欄和主內容 -->
+    <div class="max-w-7xl mx-auto px-4 py-6 flex">
+        <!-- 側邊欄 -->
+        <div class="w-48 bg-white rounded-lg shadow-md p-4 mr-6">
+            <ul class="space-y-2">
+                <li>
+                    <a href="dashboard.html" class="block px-3 py-2 rounded hover:bg-gray-100 transition-colors">
+                        📊 儀表盤
+                    </a>
+                </li>
+                <li>
+                    <a href="transactions.html" class="block px-3 py-2 rounded bg-blue-100 text-blue-700 font-medium">
+                        📝 交易記錄
+                    </a>
+                </li>
+                <li>
+                    <a href="agents.html" class="block px-3 py-2 rounded hover:bg-gray-100 transition-colors">
+                        👥 代理管理
+                    </a>
+                </li>
+                <li>
+                    <a href="reports.html" class="block px-3 py-2 rounded hover:bg-gray-100 transition-colors">
+                        📑 報表下載
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <!-- 主內容區 -->
+        <div class="flex-1">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-gray-800">交易記錄</h2>
+                <div class="flex items-center space-x-2">
+                    <label class="text-gray-600">日期：</label>
+                    <input 
+                        type="date" 
+                        id="dateFilter" 
+                        class="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        value=""
+                    >
+                    <button 
+                        onclick="loadTransactions()" 
+                        class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                        查詢
+                    </button>
+                </div>
+            </div>
+
+            <!-- 交易記錄表格 -->
+            <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">時間</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">代理名稱</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">交易金額</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">手續費</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">數據來源</th>
+                        </tr>
+                    </thead>
+                    <tbody id="transactionTable" class="bg-white divide-y divide-gray-200">
+                        <tr>
+                            <td colspan="5" class="px-6 py-4 text-center text-gray-500">載入中...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 頁面加載時檢查權限並加載數據
+        document.addEventListener("DOMContentLoaded", async () => {
+            checkAuth();
+            // 設置默認日期為今日
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById("dateFilter").value = today;
+            await loadTransactions();
+        });
+
+        // 加載交易記錄
+        async function loadTransactions() {
+            const date = document.getElementById("dateFilter").value;
+            const tableBody = document.getElementById("transactionTable");
+            
+            try {
+                tableBody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">載入中...</td></tr>';
+                
+                // 構建請求URL
+                let url = "/transactions/list";
+                if (date) {
+                    url += `?date=${date}`;
+                }
+                
+                const transactions = await apiRequest(url);
+                
+                if (transactions.length === 0) {
+                    tableBody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">暫無交易記錄</td></tr>';
+                    return;
+                }
+                
+                // 渲染表格
+                tableBody.innerHTML = "";
+                transactions.forEach(tx => {
+                    const row = document.createElement("tr");
+                    row.innerHTML = `
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${utcToHKTime(tx.timestamp)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${tx.agent_name}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-blue-600 font-medium">${formatHKD(tx.amount)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-green-600">${formatHKD(tx.commission)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${tx.source}</td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+                
+            } catch (error) {
+                tableBody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-red-500">載入失敗，請稍後重試</td></tr>';
+                console.error("加載交易記錄失敗：", error);
+            }
+        }
+    </script>
+</body>
+</html>

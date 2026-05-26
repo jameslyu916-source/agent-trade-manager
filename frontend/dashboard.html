@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>儀表盤 - 代理交易管理系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="utils.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <!-- 頂部導航欄 -->
+    <nav class="bg-white shadow-md">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+            <h1 class="text-xl font-bold text-gray-800">代理交易管理系統</h1>
+            <div class="flex items-center space-x-4">
+                <span class="text-gray-600">管理員</span>
+                <button 
+                    onclick="logout()" 
+                    class="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 transition-colors"
+                >
+                    登出
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 側邊欄和主內容 -->
+    <div class="max-w-7xl mx-auto px-4 py-6 flex">
+        <!-- 側邊欄 -->
+        <div class="w-48 bg-white rounded-lg shadow-md p-4 mr-6">
+            <ul class="space-y-2">
+                <li>
+                    <a href="dashboard.html" class="block px-3 py-2 rounded bg-blue-100 text-blue-700 font-medium">
+                        📊 儀表盤
+                    </a>
+                </li>
+                <li>
+                    <a href="transactions.html" class="block px-3 py-2 rounded hover:bg-gray-100 transition-colors">
+                        📝 交易記錄
+                    </a>
+                </li>
+                <li>
+                    <a href="agents.html" class="block px-3 py-2 rounded hover:bg-gray-100 transition-colors">
+                        👥 代理管理
+                    </a>
+                </li>
+                <li>
+                    <a href="reports.html" class="block px-3 py-2 rounded hover:bg-gray-100 transition-colors">
+                        📑 報表下載
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <!-- 主內容區 -->
+        <div class="flex-1">
+            <h2 class="text-2xl font-bold mb-6 text-gray-800">今日概覽</h2>
+
+            <!-- 統計卡片 -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h3 class="text-gray-500 text-sm font-medium mb-2">今日總成交額</h3>
+                    <p id="totalAmount" class="text-3xl font-bold text-blue-600">0 HKD</p>
+                </div>
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h3 class="text-gray-500 text-sm font-medium mb-2">今日總手續費</h3>
+                    <p id="totalCommission" class="text-3xl font-bold text-green-600">0 HKD</p>
+                </div>
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h3 class="text-gray-500 text-sm font-medium mb-2">今日交易筆數</h3>
+                    <p id="transactionCount" class="text-3xl font-bold text-orange-600">0</p>
+                </div>
+            </div>
+
+            <!-- 代理排名和最近交易 -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- 代理排名 -->
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h3 class="text-lg font-bold mb-4 text-gray-800">今日代理成交排名</h3>
+                    <div id="agentRanking" class="space-y-3">
+                        <p class="text-gray-500">暫無數據</p>
+                    </div>
+                </div>
+
+                <!-- 最近交易 -->
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h3 class="text-lg font-bold mb-4 text-gray-800">最近5筆交易</h3>
+                    <div id="recentTransactions" class="space-y-3">
+                        <p class="text-gray-500">暫無數據</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 頁面加載時檢查權限並加載數據
+        document.addEventListener("DOMContentLoaded", async () => {
+            checkAuth();
+            await loadDashboardData();
+        });
+
+        // 加載儀表盤數據
+        async function loadDashboardData() {
+            try {
+                // 加載今日統計
+                const dailyStats = await apiRequest("/transactions/daily");
+                document.getElementById("totalAmount").textContent = formatHKD(dailyStats.total_amount);
+                document.getElementById("totalCommission").textContent = formatHKD(dailyStats.total_commission);
+                document.getElementById("transactionCount").textContent = dailyStats.transaction_count;
+
+                // 加載代理排名
+                const agents = await apiRequest("/agents/");
+                const agentStats = [];
+                for (const agent of agents) {
+                    const stats = await apiRequest(`/transactions/daily/${agent.agent_name}`);
+                    agentStats.push({
+                        name: agent.agent_name,
+                        amount: stats.total_amount
+                    });
+                }
+                // 按成交額排序
+                agentStats.sort((a, b) => b.amount - a.amount);
+                
+                // 渲染代理排名
+                const agentRankingDiv = document.getElementById("agentRanking");
+                if (agentStats.length > 0) {
+                    agentRankingDiv.innerHTML = "";
+                    agentStats.forEach((agent, index) => {
+                        const div = document.createElement("div");
+                        div.className = "flex justify-between items-center py-2 border-b border-gray-100 last:border-0";
+                        div.innerHTML = `
+                            <span class="font-medium">${index + 1}. ${agent.name}</span>
+                            <span class="text-gray-700">${formatHKD(agent.amount)}</span>
+                        `;
+                        agentRankingDiv.appendChild(div);
+                    });
+                }
+
+                // 加載最近交易
+                const transactions = await apiRequest("/transactions/list");
+                const recentTransactions = transactions.slice(0, 5); // 只取前5筆
+                
+                // 渲染最近交易
+                const recentTransactionsDiv = document.getElementById("recentTransactions");
+                if (recentTransactions.length > 0) {
+                    recentTransactionsDiv.innerHTML = "";
+                    recentTransactions.forEach(tx => {
+                        const div = document.createElement("div");
+                        div.className = "py-2 border-b border-gray-100 last:border-0";
+                        div.innerHTML = `
+                            <div class="flex justify-between items-center">
+                                <span class="font-medium">${tx.agent_name}</span>
+                                <span class="text-blue-600 font-medium">${formatHKD(tx.amount)}</span>
+                            </div>
+                            <div class="text-xs text-gray-500 mt-1">${utcToHKTime(tx.timestamp)}</div>
+                        `;
+                        recentTransactionsDiv.appendChild(div);
+                    });
+                }
+
+            } catch (error) {
+                console.error("加載儀表盤數據失敗：", error);
+            }
+        }
+    </script>
+</body>
+</html>

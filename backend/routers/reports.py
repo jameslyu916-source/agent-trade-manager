@@ -8,13 +8,15 @@ from .. import crud
 import pandas as pd
 import os
 import tempfile  # Use tempfile for secure temporary file handling
+from ..routers.auth import get_current_user
 
 router = APIRouter(prefix="/reports", tags=["報表管理"])
 
 @router.get("/daily/{date}")
 async def generate_daily_report(
     date: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
 ):
     """生成指定日期的Excel報表並返回下載鏈接"""
     try:

@@ -252,4 +252,21 @@ class APIClient:
         except Exception as e:
             print(f"❌ 獲取最後交易時間失敗：{e}")
             return None
+        
+    def get_agent_period_total(self, agent_name: str, days: int = 7):
+        """獲取指定代理最近N天總成交額"""
+        try:
+            response = requests.get(
+                f"{self.base_url}/transactions/agent-period/{days}/{agent_name}",
+                headers=self._get_headers()
+            )
+            if response.status_code == 200:
+                return response.json()["total_amount"]
+            elif response.status_code == 401:
+                if self.login():
+                    return self.get_agent_period_total(agent_name, days)
+            return 0
+        except Exception as e:
+            print(f"❌ 獲取代理周期總額失敗：{e}")
+            return 0
 api_client = APIClient(API_BASE_URL)

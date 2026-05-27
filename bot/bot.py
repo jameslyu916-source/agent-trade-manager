@@ -247,7 +247,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                 await update.message.reply_text(f"{agent}今日成交額是{amount:,}HKD")
         elif query_result["type"] == "agent_week":
             agent = query_result["agent"]
-            amount = api_client.get_agent_total(agent, days=7)
+            amount = api_client.get_agent_period_total(agent, days=7)
             if any(en_key in message.text.lower() for en_key in ["agent", "week", "amount"]):
                 await update.message.reply_text(f"{agent}'s transaction amount this week is {amount:,} HKD")
             else:

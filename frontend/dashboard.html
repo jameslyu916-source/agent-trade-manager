@@ -111,14 +111,8 @@
 
                 // 加載代理排名
                 const agents = await apiRequest("/agents/");
-                const agentStats = [];
-                for (const agent of agents) {
-                    const stats = await apiRequest(`/transactions/daily/${agent.agent_name}`);
-                    agentStats.push({
-                        name: agent.agent_name,
-                        amount: stats.total_amount
-                    });
-                }
+                const agentStats = (await apiRequest("/transactions/daily-summary"))
+                    .map(s => ({ name: s.agent_name, amount: s.total_amount }));
                 // 按成交額排序
                 agentStats.sort((a, b) => b.amount - a.amount);
                 

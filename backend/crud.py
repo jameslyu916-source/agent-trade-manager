@@ -6,6 +6,18 @@ from . import schemas
 from datetime import datetime, timezone, timedelta
 from .database import HK_TZ
 
+def _get_utc_range_for_hk_date(date_str: str):
+    """
+    將香港日期字符串轉換為對應的UTC時間範圍
+    例如：'2026-05-27'（香港時間）
+    → start: '2026-05-26T16:00:00+00:00'（UTC前一天16點）
+    → end:   '2026-05-27T16:00:00+00:00'（UTC當天16點）
+    """
+    hk_date = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=HK_TZ)
+    start_utc = hk_date.astimezone(timezone.utc).isoformat()
+    end_utc = (hk_date + timedelta(days=1)).astimezone(timezone.utc).isoformat()
+    return start_utc, end_utc
+
 # ==================== User ====================
 def get_user_by_username(db: Session, username: str):
     """根據用戶名獲取用戶"""
@@ -100,8 +112,11 @@ def get_daily_total(db: Session, date: str = None):
     if not date:
         date = datetime.now(HK_TZ).strftime("%Y-%m-%d")
     
+    start_utc, end_utc = _get_utc_range_for_hk_date(date)
+    
     result = db.query(Transaction).filter(
-        Transaction.timestamp.like(f"{date}%")
+        Transaction.timestamp >= start_utc,
+        Transaction.timestamp < end_utc
     ).with_entities(
         func.sum(Transaction.amount).label("total_amount"),
         func.sum(Transaction.commission).label("total_commission"),
@@ -130,9 +145,12 @@ def get_agent_daily_total(db: Session, agent_name: str, date: str = None):
     if not date:
         date = datetime.now(HK_TZ).strftime("%Y-%m-%d")
     
+    start_utc, end_utc = _get_utc_range_for_hk_date(date)
+    
     result = db.query(Transaction).filter(
         Transaction.agent_name == agent_name,
-        Transaction.timestamp.like(f"{date}%")
+        Transaction.timestamp >= start_utc,
+        Transaction.timestamp < end_utc
     ).with_entities(
         func.sum(Transaction.amount).label("total_amount"),
         func.sum(Transaction.commission).label("total_commission"),
@@ -154,14 +172,39 @@ def get_agent_daily_total(db: Session, agent_name: str, date: str = None):
             "total_commission": 0,
             "transaction_count": 0
         }
+        
+def get_agent_period_total(db: Session, agent_name: str, days: int = 7):
+    """獲取指定代理最近N天總成交額"""
+    start_date = datetime.now(HK_TZ) - timedelta(days=days)
+    
+    result = db.query(Transaction).filter(
+        Transaction.agent_name == agent_name,
+        Transaction.timestamp >= start_date.astimezone(timezone.utc).isoformat()
+    ).with_entities(
+        func.sum(Transaction.amount).label("total_amount"),
+        func.sum(Transaction.commission).label("total_commission"),
+        func.count(Transaction.id).label("transaction_count")
+    ).first()
+    
+    if result and result[0] is not None:
+        return {
+            "agent_name": agent_name,
+            "total_amount": result[0],
+            "total_commission": result[1] or 0,
+            "transaction_count": result[2]
+        }
+    return {"agent_name": agent_name, "total_amount": 0, "total_commission": 0, "transaction_count": 0}
 
 def get_all_daily_transactions(db: Session, date: str = None):
     """獲取指定日期所有交易記錄"""
     if not date:
         date = datetime.now(HK_TZ).strftime("%Y-%m-%d")
     
+    start_utc, end_utc = _get_utc_range_for_hk_date(date)
+    
     return db.query(Transaction).filter(
-        Transaction.timestamp.like(f"{date}%")
+        Transaction.timestamp >= start_utc,
+        Transaction.timestamp < end_utc
     ).order_by(Transaction.timestamp.desc()).all()
 
 def get_period_total(db: Session, days: int = 7):

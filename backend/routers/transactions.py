@@ -60,3 +60,23 @@ async def get_period_stats(
 ):
     """獲取最近N天統計數據"""
     return crud.get_period_total(db=db, days=days)
+
+@router.get("/agent-period/{days}/{agent_name}", response_model=schemas.AgentDailyStats)
+async def get_agent_period_stats(
+    days: int,
+    agent_name: str,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """獲取指定代理最近N天統計"""
+    return crud.get_agent_period_total(db=db, agent_name=agent_name, days=days)
+
+@router.get("/daily-summary", response_model=List[schemas.AgentDailyStats])
+async def get_all_agents_daily_summary(
+    date: str = None,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """一次獲取所有代理今日統計（供儀表盤使用）"""
+    agents = crud.get_all_agents(db=db)
+    return [crud.get_agent_daily_total(db=db, agent_name=a.agent_name, date=date) for a in agents]

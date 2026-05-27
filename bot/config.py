@@ -24,3 +24,6 @@ ABNORMAL_NO_TRANSACTION_HOURS = 12  # Abnormal no transaction hours threshold
 API_BASE_URL = "http://localhost:8000"
 API_USERNAME = "admin"
 API_PASSWORD = "admin123"  # 生產環境請修改為環境變量
+
+# WhatsApp Bot 設置（供統一管理，wa_bot.js 讀取自己的 .env）
+WA_WATCH_GROUP_NAMES = ["測試群聊"]  # 與 wa_bot/.env 保持一致

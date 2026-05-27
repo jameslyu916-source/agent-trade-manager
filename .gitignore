@@ -40,3 +40,10 @@ logs/
 # Temporary files
 *.tmp
 *.temp
+
+# Node.js
+node_modules/
+
+# WhatsApp Web cache and auth files
+.wwebjs_auth/
+.wwebjs_cache/

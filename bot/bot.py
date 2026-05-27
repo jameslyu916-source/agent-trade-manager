@@ -216,61 +216,106 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
             )
         return
         
-    # Then check if the message looks like a natural language query about transactions (e.g. contains keywords like "多少", "统计", "总额", "成交" or ends with a question mark)
+    # 自然語言查詢檢測：關鍵詞擴展覆蓋更多問法
     query_keywords = [
-        "多少", "統計", "總額", "成交", "统计", "总额",  # 中（繁+简）
-        "total", "amount", "today", "week", "agent", "how much", "sum", "transaction"  # 英文   
+        "多少", "統計", "總額", "成交", "统计", "总额", "排名", "最近",  # 繁+簡
+        "本月", "這個月", "这个月", "昨天", "昨日", "查詢", "查询",
+        "total", "amount", "today", "week", "month", "yesterday",
+        "agent", "how much", "sum", "transaction", "ranking", "recent",
+        "top", "latest",
     ]
-    if message.text.strip().endswith(("？", "?")) or any(keyword.lower() in message.text.lower() for keyword in query_keywords):
+    if message.text.strip().endswith(("？", "?")) or any(kw.lower() in message.text.lower() for kw in query_keywords):
         print(f"🔍 檢測到自然語言查詢: {message.text}")
         query_result = parse_natural_language_query(message.text)
-    
-        if query_result["type"] == "today_total":
+
+        qtype = query_result.get("type", "unknown")
+        is_en = any(en_kw in message.text.lower() for en_kw in ["today", "total", "how much", "week", "month", "yesterday", "agent", "amount", "ranking", "recent"])
+
+        if qtype == "today_total":
             total = api_client.get_daily_total()
-            # Respond in the same language as the query
-            if any(en_key in message.text.lower() for en_key in ["today", "total", "how much"]):
-                await update.message.reply_text(f"Today's total transaction amount is {total} HKD")
-            else:
-                await update.message.reply_text(f"今日總成交額是{total}HKD")
-        elif query_result["type"] == "week_total":
+            await update.message.reply_text(
+                f"Today's total transaction amount is {total:,} HKD" if is_en else f"💰 今日總成交額：{total:,} HKD"
+            )
+        elif qtype == "week_total":
             total = api_client.get_period_total(days=7)
-            if any(en_key in message.text.lower() for en_key in ["week", "total"]):
-                await update.message.reply_text(f"This week's total transaction amount is {total} HKD")
-            else:
-                await update.message.reply_text(f"本周總成交額是{total}HKD")
-        elif query_result["type"] == "agent_daily":
+            await update.message.reply_text(
+                f"This week's total transaction amount is {total:,} HKD" if is_en else f"📅 本周總成交額：{total:,} HKD"
+            )
+        elif qtype == "month_total":
+            total = api_client.get_period_total(days=30)
+            await update.message.reply_text(
+                f"This month's total transaction amount is {total:,} HKD" if is_en else f"📆 本月總成交額：{total:,} HKD"
+            )
+        elif qtype == "yesterday_total":
+            from datetime import timedelta
+            yesterday = (datetime.now(HK_TZ) - timedelta(days=1)).strftime("%Y-%m-%d")
+            total = api_client.get_daily_total(date=yesterday)
+            await update.message.reply_text(
+                f"Yesterday's total transaction amount is {total:,} HKD" if is_en else f"📋 昨日總成交額（{yesterday}）：{total:,} HKD"
+            )
+
+        elif qtype == "agent_daily":
             agent = query_result["agent"]
             amount = api_client.get_agent_daily_total(agent)
-            if any(en_key in message.text.lower() for en_key in ["agent", "today", "amount"]):
-                await update.message.reply_text(f"{agent}'s transaction amount today is {amount:,} HKD")
-            else:
-                await update.message.reply_text(f"{agent}今日成交額是{amount:,}HKD")
-        elif query_result["type"] == "agent_week":
+            await update.message.reply_text(
+                f"{agent}'s transaction amount today is {amount:,} HKD" if is_en else f"📊 {agent} 今日成交額：{amount:,} HKD"
+            )
+        elif qtype == "agent_week":
             agent = query_result["agent"]
             amount = api_client.get_agent_period_total(agent, days=7)
-            if any(en_key in message.text.lower() for en_key in ["agent", "week", "amount"]):
-                await update.message.reply_text(f"{agent}'s transaction amount this week is {amount:,} HKD")
-            else:
-                await update.message.reply_text(f"{agent}本周成交額是{amount:,}HKD")
-        elif query_result["type"] == "all_agents_daily":
+            await update.message.reply_text(
+                f"{agent}'s transaction amount this week is {amount:,} HKD" if is_en else f"📊 {agent} 本周成交額：{amount:,} HKD"
+            )
+        elif qtype == "agent_month":
+            agent = query_result["agent"]
+            amount = api_client.get_agent_period_total(agent, days=30)
+            await update.message.reply_text(
+                f"{agent}'s transaction amount this month is {amount:,} HKD" if is_en else f"📊 {agent} 本月成交額：{amount:,} HKD"
+            )
+
+        elif qtype == "all_agents_daily":
             agents = api_client.get_all_agents()
-            if any(en_key in message.text.lower() for en_key in ["all", "agent", "today"]):
-                text = "Today's transaction amount for all agents:\n"
-                for agent in agents:
-                    amount = api_client.get_agent_daily_total(agent)
-                    text += f"- {agent}: {amount:,} HKD\n"
+            if not agents:
+                await update.message.reply_text("No agents found." if is_en else "暫無代理數據")
             else:
-                text = "今日各代理成交額：\n"
-                for agent in agents:
-                    amount = api_client.get_agent_daily_total(agent)
-                    text += f"- {agent}：{amount:,}HKD\n"
-            await update.message.reply_text(text)
+                lines = ["Today's stats for all agents:" if is_en else "📋 今日各代理成交額：", ""]
+                for a in agents:
+                    amt = api_client.get_agent_daily_total(a)
+                    lines.append(f"• {a}：{amt:,} HKD")
+                await update.message.reply_text("\n".join(lines))
+
+        elif qtype in ("agent_ranking", "top_agents"):
+            agents = api_client.get_all_agents()
+            if not agents:
+                await update.message.reply_text("No agents found." if is_en else "暫無代理數據")
+            else:
+                # 按今日成交額排序
+                ranking = [(a, api_client.get_agent_daily_total(a)) for a in agents]
+                ranking.sort(key=lambda x: x[1], reverse=True)
+                medals = ["🥇", "🥈", "🥉"]
+                lines = ["🏆 Agent Ranking Today:" if is_en else "🏆 今日代理成交排名：", ""]
+                for i, (name, amt) in enumerate(ranking):
+                    prefix = medals[i] if i < 3 else f"  {i+1}."
+                    lines.append(f"{prefix} {name} — {amt:,} HKD")
+                await update.message.reply_text("\n".join(lines))
+
+        elif qtype == "recent_transactions":
+            txs = api_client.get_recent_transactions(hours=24)
+            if not txs:
+                await update.message.reply_text("No recent transactions." if is_en else "暫無最近交易記錄")
+            else:
+                recent = txs[:5]
+                lines = ["Recent transactions:" if is_en else "📝 最近交易記錄：", ""]
+                for tx in recent:
+                    hk_time = datetime.fromisoformat(tx["timestamp"]).replace(tzinfo=timezone.utc).astimezone(HK_TZ).strftime("%m/%d %H:%M")
+                    lines.append(f"• {hk_time} | {tx['agent_name']} | {tx['amount']:,} HKD")
+                await update.message.reply_text("\n".join(lines))
+
         else:
-            # Multilingual fallback response
-            if any(en_key in message.text.lower() for en_key in ["how", "what", "total", "amount"]):
-                await update.message.reply_text("Sorry, I didn't understand your query. Please try another way to ask.")
-            else:
-                await update.message.reply_text("抱歉，我沒理解你的查詢，請換一種說法試試")
+            await update.message.reply_text(
+                "Sorry, I didn't understand your query. Please try another way to ask." if is_en
+                else "抱歉，我沒理解你的查詢，請換一種說法試試\n\n💡 提示：你可以問「今天總額多少？」「代理排名」「最近交易」等"
+            )
         return
    
     print("ℹ️ 普通消息，無需處理")

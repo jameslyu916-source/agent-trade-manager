@@ -68,37 +68,120 @@ async function isAgentAllowed(agentName) {
 }
 
 // ==================== 消息解析（與 parser.py 邏輯一致）====================
-function parseTransaction(messageText) {
-  // 標準化文本：移除常見標點與關鍵詞
-  let text = messageText
-    .trim()
-    .replace(/，/g, "")
-    .replace(/元/g, "")
-    .replace(/HKD/g, "")
-    .replace(/成交/g, "交易")
-    .replace(/完成交易/g, "交易");
 
-  const patterns = [
-    /【交易】(.+?)\s+交易\s+(\d[\d,]*)/,
-    /交易[:：]\s*(.+?)\s+(\d[\d,]*)/,
-    /(.+?)\s+今日交易\s+(\d[\d,]*)/,
-    /Transaction[:：]\s*(.+?)\s+(\d[\d,]*)/i,
-    /(.+?)\s+transaction\s+(\d[\d,]*)/i,
+// 常見干擾詞
+const NOISE_WORDS = [
+  "剛剛", "刚刚", "刚", "剛", "客戶", "客户", "通過", "通过", "一單", "一单",
+  "已完成", "已完成交易", "完成一筆", "已完成一筆", "交易完成",
+  "恭喜", "祝賀",
+];
+
+function tryParseAmount(str) {
+  const s = str.replace(/,/g, "").trim();
+  const n = parseFloat(s);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+function normalizeText(text) {
+  let t = text.trim();
+  t = t.replace(/，/g, " ").replace(/,/g, "");
+  t = t.replace(/：/g, ":").replace(/＝/g, "=");
+  t = t.replace(/（/g, "(").replace(/）/g, ")");
+  t = t.replace(/【/g, "[").replace(/】/g, "]");
+  t = t.replace(/HKD/gi, "").replace(/元/g, "").replace(/塊/g, "");
+  t = t.replace(/\s+/g, " ");
+  // 移除干擾詞
+  for (const w of NOISE_WORDS) {
+    t = t.replace(w, "");
+  }
+  // 移除 emoji
+  t = t.replace(/[\u{1F600}-\u{1FAFF}\u{2600}-\u{27BF}\u{2300}-\u{23FF}\u{FE00}-\u{FEFF}]/gu, "");
+  return t.replace(/\s+/g, " ").trim();
+}
+
+function parseTransaction(messageText) {
+  if (!messageText || !messageText.trim()) return null;
+
+  const raw = messageText.trim();
+  const text = normalizeText(raw);
+
+  // ── 階段 1：代理名在前、金額在後的明確模式 ──
+  const agentFirstPatterns = [
+    // 【成交】代理A 交易 1000
+    /[\[【]交易[\]】]\s*(.+?)\s+交易\s+([\d,]+(?:\.\d+)?)/,
+    // 成交：代理A 1000
+    /交易[:：]\s*(.+?)\s+([\d,]+(?:\.\d+)?)/,
+    // 代理A 今日交易 1000
+    /(.+?)\s+今日交易\s+([\d,]+(?:\.\d+)?)/,
+    // 代理A 成交/交易 1000
+    /(.+?)\s+(?:成交|交易)\s+([\d,]+(?:\.\d+)?)/,
+    // 代理A成交1000（無空格）
+    /(.+?)(?:成交|交易)([\d,]+(?:\.\d+)?)/,
+    // 代理A 入金/出金/盈利/收益 1000
+    /(.+?)\s+(?:入金|出金|盈利|盈餘|收益)\s*([\d,]+(?:\.\d+)?)/,
+    // 代理A 完成/做了/處理 1000
+    /(.+?)\s+(?:完成|做了|處理)\s+([\d,]+(?:\.\d+)?)/,
+
+    // --- 英文 ---
+    // AgentA closed/finished/made/done/completed 1000
+    /(.+?)\s+(?:closed|finished|made|done|completed)\s+(?:a\s+)?(?:deal\s+)?(?:of\s+)?(?:for\s+)?([\d,]+(?:\.\d+)?)/i,
+    // Transaction: AgentA 1000
+    /[Tt]ransaction[:：]\s*(.+?)\s+([\d,]+(?:\.\d+)?)/,
+    // AgentA transaction 1000
+    /(.+?)\s+transaction\s+([\d,]+(?:\.\d+)?)/i,
+
+    // --- 分隔符 ---
+    // 代理A：1000 / 代理A=1000
+    /(.+?)\s*[:：=]\s*([\d,]+(?:\.\d+)?)/,
+    // 代理A +1000
+    /(.+?)\s*[＋+]\s*([\d,]+(?:\.\d+)?)/,
+    // 代理A → 1000
+    /(.+?)\s*[→>]\s*([\d,]+(?:\.\d+)?)/,
   ];
 
-  for (const pattern of patterns) {
+  for (const pattern of agentFirstPatterns) {
     const match = text.match(pattern);
     if (match) {
-      const agentName = match[1].trim();
-      const amount = parseInt(match[2].replace(/,/g, ""), 10);
-      if (!isNaN(amount) && amount > 0) {
-        return {
-          agent_name: agentName,
-          amount: amount,
-          raw_message: messageText,
-          source: "whatsapp",
-        };
+      const agent = match[1].trim();
+      const amount = tryParseAmount(match[2]);
+      if (agent && amount && agent.length >= 1 && agent.length <= 50) {
+        return { agent_name: agent, amount, raw_message: raw, source: "whatsapp" };
       }
+    }
+  }
+
+  // ── 階段 2：金額在前的句式 ──
+  const amountFirstPatterns = [
+    // 1000 代理A
+    /([\d,]+(?:\.\d+)?)\s*(?:元|塊)?\s+(.+?)$/,
+    // 1000 from/by/via AgentA
+    /([\d,]+(?:\.\d+)?)\s+(?:from|by|via)\s+(.+?)$/i,
+    // 金額/成交金额 1000 代理A
+    /(?:金額|成交金額)\s*([\d,]+(?:\.\d+)?)\s+(.+?)$/,
+    // Amount 1000 AgentA
+    /[Aa]mount\s*([\d,]+(?:\.\d+)?)\s+(.+?)$/,
+  ];
+
+  for (const pattern of amountFirstPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      const amount = tryParseAmount(match[1]);
+      const agent = match[2].trim();
+      // 避免代理名位置抓到純數字
+      if (agent && amount && !/^[\d,.]+$/.test(agent) && agent.length >= 1 && agent.length <= 50) {
+        return { agent_name: agent, amount, raw_message: raw, source: "whatsapp" };
+      }
+    }
+  }
+
+  // ── 階段 3：寬鬆匹配（最後防線）──
+  const looseMatch = text.match(/(.{2,30}?)\s+([\d,]{2,}(?:\.\d+)?)\s*$/);
+  if (looseMatch) {
+    let agent = looseMatch[1].trim().replace(/[:：=+\->]+$/, "");
+    const amount = tryParseAmount(looseMatch[2]);
+    const noise = ["今日", "昨天", "本週", "本月", "月", "日", "號", "today", "daily", "total"];
+    if (agent && amount && !noise.includes(agent.toLowerCase()) && agent.length >= 1 && agent.length <= 50) {
+      return { agent_name: agent, amount, raw_message: raw, source: "whatsapp" };
     }
   }
 

@@ -5,144 +5,321 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>交易記錄 - 代理交易管理系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="utils.js"></script>
+    <script src="utils.js?v=2"></script>
+    <style>
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(16px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes shimmer {
+            0%   { background-position: -400px 0; }
+            100% { background-position: 400px 0; }
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to   { opacity: 1; }
+        }
+        .animate-fade-in-up { animation: fadeInUp 0.5s ease-out both; }
+        .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+        .skeleton {
+            background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
+            background-size: 800px 100%;
+            animation: shimmer 1.8s infinite;
+            border-radius: 6px;
+        }
+        .sidebar-link {
+            transition: all 0.15s ease;
+        }
+        .sidebar-link:hover {
+            background-color: #eff6ff;
+            padding-left: 16px;
+        }
+        .table-row {
+            transition: background-color 0.12s ease;
+        }
+        .table-row:hover {
+            background-color: #f8fafc;
+        }
+    </style>
 </head>
-<body class="bg-gray-100 min-h-screen">
+<body class="bg-gradient-to-br from-gray-50 via-blue-50/30 to-gray-100 min-h-screen">
+
     <!-- 頂部導航欄 -->
-    <nav class="bg-white shadow-md">
-        <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
-            <h1 class="text-xl font-bold text-gray-800">代理交易管理系統</h1>
-            <div class="flex items-center space-x-4">
-                <span class="text-gray-600">管理員</span>
-                <button 
-                    onclick="logout()" 
-                    class="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 transition-colors"
-                >
-                    登出
-                </button>
+    <nav class="bg-white/80 backdrop-blur-md border-b border-gray-200/60 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-6 py-3 flex justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <div class="w-9 h-9 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center shadow-md shadow-blue-500/25">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
+                    </svg>
+                </div>
+                <h1 class="text-lg font-bold text-gray-800 tracking-tight">代理交易管理系統</h1>
+            </div>
+            <div class="flex items-center space-x-3">
+                <div class="w-8 h-8 bg-gradient-to-br from-emerald-400 to-emerald-500 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-sm">A</div>
+                <span class="text-sm text-gray-600 font-medium">管理員</span>
+                <button onclick="logout()" class="text-sm bg-white border border-gray-200 text-gray-600 px-3.5 py-1.5 rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all duration-150 font-medium">登出</button>
             </div>
         </div>
     </nav>
 
     <!-- 側邊欄和主內容 -->
-    <div class="max-w-7xl mx-auto px-4 py-6 flex">
+    <div class="max-w-7xl mx-auto px-6 py-6 flex gap-6">
         <!-- 側邊欄 -->
-        <div class="w-48 bg-white rounded-lg shadow-md p-4 mr-6">
-            <ul class="space-y-2">
-                <li>
-                    <a href="dashboard.html" class="block px-3 py-2 rounded hover:bg-gray-100 transition-colors">
-                        📊 儀表盤
-                    </a>
-                </li>
-                <li>
-                    <a href="transactions.html" class="block px-3 py-2 rounded bg-blue-100 text-blue-700 font-medium">
-                        📝 交易記錄
-                    </a>
-                </li>
-                <li>
-                    <a href="agents.html" class="block px-3 py-2 rounded hover:bg-gray-100 transition-colors">
-                        👥 代理管理
-                    </a>
-                </li>
-                <li>
-                    <a href="reports.html" class="block px-3 py-2 rounded hover:bg-gray-100 transition-colors">
-                        📑 報表下載
-                    </a>
-                </li>
-            </ul>
-        </div>
+        <aside class="w-52 shrink-0">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-3 sticky top-24">
+                <ul class="space-y-1">
+                    <li>
+                        <a href="dashboard.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-gray-600 hover:text-gray-900 text-sm font-medium">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+                            <span>儀表盤</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="transactions.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg bg-blue-50 text-blue-700 font-semibold text-sm">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+                            <span>交易記錄</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="agents.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-gray-600 hover:text-gray-900 text-sm font-medium">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                            <span>代理管理</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="reports.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-gray-600 hover:text-gray-900 text-sm font-medium">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                            <span>報表下載</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </aside>
 
         <!-- 主內容區 -->
-        <div class="flex-1">
-            <div class="flex justify-between items-center mb-6">
-                <h2 class="text-2xl font-bold text-gray-800">交易記錄</h2>
-                <div class="flex items-center space-x-2">
-                    <label class="text-gray-600">日期：</label>
-                    <input 
-                        type="date" 
-                        id="dateFilter" 
-                        class="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        value=""
+        <main class="flex-1 min-w-0">
+
+            <!-- 頁面標題區 -->
+            <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6 animate-fade-in-up">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-800">交易記錄</h2>
+                    <p id="txCount" class="text-sm text-gray-500 mt-1">查詢代理交易明細</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                            <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                        </div>
+                        <input
+                            type="date"
+                            id="dateFilter"
+                            class="pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400 transition-all bg-white shadow-sm"
+                        >
+                    </div>
+                    <button
+                        onclick="loadTransactions()"
+                        class="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-5 py-2.5 rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all text-sm font-semibold shadow-md shadow-blue-500/25 hover:shadow-lg hover:shadow-blue-500/30 active:scale-[0.98] flex items-center gap-1.5"
                     >
-                    <button 
-                        onclick="loadTransactions()" 
-                        class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-                    >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                         查詢
                     </button>
                 </div>
             </div>
 
-            <!-- 交易記錄表格 -->
-            <div class="bg-white rounded-lg shadow-md overflow-hidden">
-                <table class="w-full">
-                    <thead class="bg-gray-50">
-                        <tr>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">時間</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">代理名稱</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">交易金額</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">手續費</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">數據來源</th>
-                        </tr>
-                    </thead>
-                    <tbody id="transactionTable" class="bg-white divide-y divide-gray-200">
-                        <tr>
-                            <td colspan="5" class="px-6 py-4 text-center text-gray-500">載入中...</td>
-                        </tr>
-                    </tbody>
-                </table>
+            <!-- 摘要統計卡片 -->
+            <div id="summaryCards" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 animate-fade-in-up" style="animation-delay: 0.05s;">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex items-center gap-4">
+                    <div class="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center shrink-0">
+                        <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2z"/></svg>
+                    </div>
+                    <div>
+                        <p class="text-xs font-medium text-gray-500">交易筆數</p>
+                        <p id="summaryCount" class="text-xl font-bold text-gray-900">-</p>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex items-center gap-4">
+                    <div class="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center shrink-0">
+                        <svg class="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    </div>
+                    <div>
+                        <p class="text-xs font-medium text-gray-500">總交易金額</p>
+                        <p id="summaryAmount" class="text-xl font-bold text-gray-900">-</p>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex items-center gap-4">
+                    <div class="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center shrink-0">
+                        <svg class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+                    </div>
+                    <div>
+                        <p class="text-xs font-medium text-gray-500">總手續費</p>
+                        <p id="summaryCommission" class="text-xl font-bold text-gray-900">-</p>
+                    </div>
+                </div>
             </div>
-        </div>
+
+            <!-- 交易記錄表格 -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-fade-in-up" style="animation-delay: 0.1s;">
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead>
+                            <tr class="bg-gray-50/80">
+                                <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">時間</th>
+                                <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">代理名稱</th>
+                                <th class="px-6 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">交易金額</th>
+                                <th class="px-6 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">手續費</th>
+                                <th class="px-6 py-3.5 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">數據來源</th>
+                            </tr>
+                        </thead>
+                        <tbody id="transactionTable" class="divide-y divide-gray-100">
+                            <!-- 初始骨架屏 - 靜態 HTML -->
+                            <tr class="skeleton-row">
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-36"></div></td>
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-20"></div></td>
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-24 ml-auto"></div></td>
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-20 ml-auto"></div></td>
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-16 mx-auto"></div></td>
+                            </tr>
+                            <tr class="skeleton-row">
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-32"></div></td>
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-16"></div></td>
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-28 ml-auto"></div></td>
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-16 ml-auto"></div></td>
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-14 mx-auto"></div></td>
+                            </tr>
+                            <tr class="skeleton-row">
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-40"></div></td>
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-24"></div></td>
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-20 ml-auto"></div></td>
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-24 ml-auto"></div></td>
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-20 mx-auto"></div></td>
+                            </tr>
+                            <tr class="skeleton-row">
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-34"></div></td>
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-18"></div></td>
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-22 ml-auto"></div></td>
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-18 ml-auto"></div></td>
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-16 mx-auto"></div></td>
+                            </tr>
+                            <tr class="skeleton-row">
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-36"></div></td>
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-20"></div></td>
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-26 ml-auto"></div></td>
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-20 ml-auto"></div></td>
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-14 mx-auto"></div></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 分頁控制 -->
+            <div id="pagination" class="flex items-center justify-between mt-5 animate-fade-in-up hidden" style="animation-delay: 0.15s;">
+                <p id="pageInfo" class="text-sm text-gray-500"></p>
+                <div class="flex gap-2">
+                    <button id="prevPage" class="px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">上一頁</button>
+                    <button id="nextPage" class="px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">下一頁</button>
+                </div>
+            </div>
+        </main>
     </div>
 
     <script>
-        // 頁面加載時檢查權限並加載數據
+        const PAGE_SIZE = 20;
+        let allTransactions = [];
+
         document.addEventListener("DOMContentLoaded", async () => {
             checkAuth();
-            // 設置默認日期為今日
             const today = new Date().toISOString().split('T')[0];
             document.getElementById("dateFilter").value = today;
             await loadTransactions();
         });
 
-        // 加載交易記錄
         async function loadTransactions() {
             const date = document.getElementById("dateFilter").value;
             const tableBody = document.getElementById("transactionTable");
-            
+
+            // 顯示骨架屏
+            document.querySelectorAll(".skeleton-row").forEach(r => r.style.display = "");
+            document.getElementById("pagination").classList.add("hidden");
+            document.getElementById("summaryCount").textContent = "-";
+            document.getElementById("summaryAmount").textContent = "-";
+            document.getElementById("summaryCommission").textContent = "-";
+
             try {
-                tableBody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">載入中...</td></tr>';
-                
-                // 構建請求URL
                 let url = "/transactions/list";
-                if (date) {
-                    url += `?date=${date}`;
-                }
-                
-                const transactions = await apiRequest(url);
-                
-                if (transactions.length === 0) {
-                    tableBody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">暫無交易記錄</td></tr>';
+                if (date) url += `?date=${date}`;
+
+                allTransactions = await apiRequest(url);
+                document.getElementById("txCount").textContent = `共 ${allTransactions.length} 筆交易`;
+
+                // 更新摘要卡片
+                document.getElementById("summaryCount").textContent = allTransactions.length;
+                const totalAmount = allTransactions.reduce((sum, tx) => sum + tx.amount, 0);
+                const totalCommission = allTransactions.reduce((sum, tx) => sum + (tx.commission || 0), 0);
+                document.getElementById("summaryAmount").textContent = formatHKD(totalAmount);
+                document.getElementById("summaryCommission").textContent = formatHKD(totalCommission);
+
+                if (allTransactions.length === 0) {
+                    tableBody.innerHTML = `<tr><td colspan="5" class="px-6 py-14">${renderEmptyState("暫無交易記錄", date ? `於 ${date} 沒有找到交易數據` : "今日尚無交易")}</td></tr>`;
                     return;
                 }
-                
-                // 渲染表格
-                tableBody.innerHTML = "";
-                transactions.forEach(tx => {
-                    const row = document.createElement("tr");
-                    row.innerHTML = `
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${utcToHKTime(tx.timestamp)}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${tx.agent_name}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-blue-600 font-medium">${formatHKD(tx.amount)}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-green-600">${formatHKD(tx.commission)}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${tx.source}</td>
-                    `;
-                    tableBody.appendChild(row);
-                });
-                
+
+                renderPage(0);
+
             } catch (error) {
-                tableBody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-red-500">載入失敗，請稍後重試</td></tr>';
+                tableBody.innerHTML = '<tr><td colspan="5" class="px-6 py-14 text-center text-red-500 text-sm">載入失敗，請稍後重試</td></tr>';
                 console.error("加載交易記錄失敗：", error);
+            }
+        }
+
+        function renderPage(page) {
+            const tableBody = document.getElementById("transactionTable");
+            const start = page * PAGE_SIZE;
+            const end = Math.min(start + PAGE_SIZE, allTransactions.length);
+            const pageTx = allTransactions.slice(start, end);
+
+            tableBody.innerHTML = "";
+            pageTx.forEach((tx, i) => {
+                const row = document.createElement("tr");
+                row.className = "table-row animate-fade-in";
+                row.style.animationDelay = `${i * 0.03}s`;
+                row.innerHTML = `
+                    <td class="px-6 py-3.5 whitespace-nowrap text-sm text-gray-600">
+                        <div class="flex items-center gap-2">
+                            <div class="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0"></div>
+                            ${utcToHKTime(tx.timestamp)}
+                        </div>
+                    </td>
+                    <td class="px-6 py-3.5 whitespace-nowrap text-sm font-semibold text-gray-900">${tx.agent_name}</td>
+                    <td class="px-6 py-3.5 whitespace-nowrap text-sm font-bold text-blue-600 text-right">${formatHKD(tx.amount)}</td>
+                    <td class="px-6 py-3.5 whitespace-nowrap text-sm font-semibold text-emerald-600 text-right">${formatHKD(tx.commission)}</td>
+                    <td class="px-6 py-3.5 whitespace-nowrap text-sm text-center">
+                        <span class="inline-flex items-center gap-1 bg-gray-100 text-gray-600 px-2.5 py-1 rounded-lg text-xs font-medium">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                            ${tx.source}
+                        </span>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+
+            // 更新分頁
+            const totalPages = Math.ceil(allTransactions.length / PAGE_SIZE);
+            const pagination = document.getElementById("pagination");
+            const pageInfo = document.getElementById("pageInfo");
+            const prevBtn = document.getElementById("prevPage");
+            const nextBtn = document.getElementById("nextPage");
+
+            if (totalPages > 1) {
+                pagination.classList.remove("hidden");
+                pageInfo.textContent = `第 ${page + 1} 頁，共 ${totalPages} 頁（${allTransactions.length} 筆）`;
+                prevBtn.disabled = page === 0;
+                nextBtn.disabled = page >= totalPages - 1;
+                prevBtn.onclick = () => { if (page > 0) renderPage(page - 1); };
+                nextBtn.onclick = () => { if (page < totalPages - 1) renderPage(page + 1); };
+            } else {
+                pagination.classList.add("hidden");
             }
         }
     </script>

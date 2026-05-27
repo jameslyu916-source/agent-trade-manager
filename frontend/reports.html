@@ -6,142 +6,178 @@
     <title>報表下載 - 代理交易管理系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="utils.js"></script>
+    <style>
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(16px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in-up { animation: fadeInUp 0.5s ease-out both; }
+        .sidebar-link {
+            transition: all 0.15s ease;
+        }
+        .sidebar-link:hover {
+            background-color: #eff6ff;
+            padding-left: 16px;
+        }
+    </style>
 </head>
-<body class="bg-gray-100 min-h-screen">
+<body class="bg-gradient-to-br from-gray-50 via-blue-50/30 to-gray-100 min-h-screen">
+
     <!-- 頂部導航欄 -->
-    <nav class="bg-white shadow-md">
-        <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
-            <h1 class="text-xl font-bold text-gray-800">代理交易管理系統</h1>
-            <div class="flex items-center space-x-4">
-                <span class="text-gray-600">管理員</span>
-                <button 
-                    onclick="logout()" 
-                    class="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 transition-colors"
-                >
-                    登出
-                </button>
+    <nav class="bg-white/80 backdrop-blur-md border-b border-gray-200/60 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-6 py-3 flex justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <div class="w-9 h-9 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center shadow-md shadow-blue-500/25">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
+                    </svg>
+                </div>
+                <h1 class="text-lg font-bold text-gray-800 tracking-tight">代理交易管理系統</h1>
+            </div>
+            <div class="flex items-center space-x-3">
+                <div class="w-8 h-8 bg-gradient-to-br from-emerald-400 to-emerald-500 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-sm">A</div>
+                <span class="text-sm text-gray-600 font-medium">管理員</span>
+                <button onclick="logout()" class="text-sm bg-white border border-gray-200 text-gray-600 px-3.5 py-1.5 rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all duration-150 font-medium">登出</button>
             </div>
         </div>
     </nav>
 
     <!-- 側邊欄和主內容 -->
-    <div class="max-w-7xl mx-auto px-4 py-6 flex">
+    <div class="max-w-7xl mx-auto px-6 py-6 flex gap-6">
         <!-- 側邊欄 -->
-        <div class="w-48 bg-white rounded-lg shadow-md p-4 mr-6">
-            <ul class="space-y-2">
-                <li>
-                    <a href="dashboard.html" class="block px-3 py-2 rounded hover:bg-gray-100 transition-colors">
-                        📊 儀表盤
-                    </a>
-                </li>
-                <li>
-                    <a href="transactions.html" class="block px-3 py-2 rounded hover:bg-gray-100 transition-colors">
-                        📝 交易記錄
-                    </a>
-                </li>
-                <li>
-                    <a href="agents.html" class="block px-3 py-2 rounded hover:bg-gray-100 transition-colors">
-                        👥 代理管理
-                    </a>
-                </li>
-                <li>
-                    <a href="reports.html" class="block px-3 py-2 rounded bg-blue-100 text-blue-700 font-medium">
-                        📑 報表下載
-                    </a>
-                </li>
-            </ul>
-        </div>
+        <aside class="w-52 shrink-0">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-3 sticky top-24">
+                <ul class="space-y-1">
+                    <li>
+                        <a href="dashboard.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-gray-600 hover:text-gray-900 text-sm font-medium">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+                            <span>儀表盤</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="transactions.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-gray-600 hover:text-gray-900 text-sm font-medium">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+                            <span>交易記錄</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="agents.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-gray-600 hover:text-gray-900 text-sm font-medium">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                            <span>代理管理</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="reports.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg bg-blue-50 text-blue-700 font-semibold text-sm">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                            <span>報表下載</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </aside>
 
         <!-- 主內容區 -->
-        <div class="flex-1">
-            <h2 class="text-2xl font-bold mb-6 text-gray-800">報表下載</h2>
+        <main class="flex-1 min-w-0">
+            <div class="mb-6 animate-fade-in-up" style="animation-delay: 0s;">
+                <h2 class="text-2xl font-bold text-gray-800">報表下載</h2>
+                <p class="text-sm text-gray-500 mt-1">生成並下載每日交易報表</p>
+            </div>
 
-            <div class="bg-white rounded-lg shadow-md p-6 max-w-md">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 max-w-lg animate-fade-in-up" style="animation-delay: 0.1s;">
+                <!-- 圖標 -->
+                <div class="flex items-center space-x-3 mb-6">
+                    <div class="w-11 h-11 bg-indigo-50 rounded-xl flex items-center justify-center">
+                        <svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-gray-800">每日報表生成</h3>
+                        <p class="text-xs text-gray-500">Excel 格式，含交易明細與代理統計</p>
+                    </div>
+                </div>
+
                 <form id="reportForm" class="space-y-4">
                     <div>
-                        <label class="block text-gray-700 mb-2 font-medium">選擇日期</label>
-                        <input 
-                            type="date" 
-                            id="reportDate" 
-                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            value=""
-                            required
-                        >
+                        <label class="block text-sm font-semibold text-gray-700 mb-1.5">選擇日期</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                                <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                            </div>
+                            <input
+                                type="date"
+                                id="reportDate"
+                                class="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400 transition-all bg-white"
+                                required
+                            >
+                        </div>
                     </div>
-                    <button 
-                        type="submit" 
-                        class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                    <button
+                        type="submit"
+                        class="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-2.5 rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all font-semibold text-sm shadow-md shadow-blue-500/25 hover:shadow-lg hover:shadow-blue-500/30 active:scale-[0.98] flex items-center justify-center space-x-2"
                     >
-                        生成並下載報表
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                        <span id="submitLabel">生成並下載報表</span>
                     </button>
                 </form>
-                
-                <p class="text-gray-500 text-sm mt-4">
-                    提示：生成的報表包含交易明細和代理統計兩個工作表，格式為Excel。
-                </p>
+
+                <!-- 功能說明 -->
+                <div class="mt-6 pt-5 border-t border-gray-100">
+                    <p class="text-xs text-gray-400 leading-relaxed">
+                        <span class="font-semibold text-gray-500">提示：</span>
+                        生成的 Excel 報表包含「交易明細」和「代理統計」兩個工作表，可直接用於財務對帳與業績分析。
+                    </p>
+                </div>
             </div>
-        </div>
+        </main>
     </div>
 
     <script>
-        // 頁面加載時檢查權限
         document.addEventListener("DOMContentLoaded", () => {
             checkAuth();
-            // 設置默認日期為今日
             const today = new Date().toISOString().split('T')[0];
             document.getElementById("reportDate").value = today;
         });
 
-        // 處理報表生成和下載（使用fetch API攜帶認證頭）
         document.getElementById("reportForm").addEventListener("submit", async (e) => {
             e.preventDefault();
-            
+
             const date = document.getElementById("reportDate").value;
             const submitBtn = e.target.querySelector('button[type="submit"]');
-            const originalText = submitBtn.textContent;
-            
+            const submitLabel = document.getElementById("submitLabel");
+
             try {
-                // 顯示加載狀態
-                submitBtn.textContent = "生成中...";
                 submitBtn.disabled = true;
-                
-                // 使用fetch API獲取文件，攜帶Authorization頭
+                submitLabel.textContent = "生成中...";
+
                 const response = await fetch(`${API_BASE_URL}/reports/daily/${date}`, {
                     method: "GET",
-                    headers: {
-                        "Authorization": `Bearer ${getToken()}`
-                    }
+                    headers: { "Authorization": `Bearer ${getToken()}` }
                 });
-                
+
                 if (!response.ok) {
                     const error = await response.text();
                     throw new Error(error || "生成報表失敗");
                 }
-                
-                // 獲取文件Blob
+
                 const blob = await response.blob();
-                
-                // 創建臨時下載鏈接
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
                 a.download = `交易報表_${date}_HKD.xlsx`;
                 document.body.appendChild(a);
                 a.click();
-                
-                // 清理臨時資源
                 window.URL.revokeObjectURL(url);
                 document.body.removeChild(a);
-                
-                alert("報表生成成功，已開始下載");
-                
+
+                showToast("報表生成成功，已開始下載", "success");
+
             } catch (error) {
-                alert("生成報表失敗：" + error.message);
+                showToast("生成報表失敗：" + error.message, "error");
                 console.error("報表生成錯誤：", error);
             } finally {
-                // 恢復按鈕狀態
-                submitBtn.textContent = originalText;
                 submitBtn.disabled = false;
+                submitLabel.textContent = "生成並下載報表";
             }
         });
     </script>

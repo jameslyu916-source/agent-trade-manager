@@ -59,3 +59,19 @@ class AgentDailyStats(BaseModel):
     total_amount: int
     total_commission: int
     transaction_count: int
+    
+# ==================== Anomaly Detection ====================
+class AnomalyTransaction(BaseModel):
+    id: int
+    agent_name: str
+    amount: int
+    timestamp: str
+    is_anomaly: bool
+    anomaly_score: float
+
+class AgentRiskReport(BaseModel):
+    agent_name: str
+    score: int
+    risk_level: str
+    risk_color: str
+    details: dict

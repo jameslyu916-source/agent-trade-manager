@@ -236,3 +236,24 @@ def get_period_total(db: Session, days: int = 7):
             "total_commission": 0,
             "transaction_count": 0
         }
+        
+def get_all_transactions_for_period(db: Session, days: int = 30):
+    """獲取最近N天所有交易（供AI分析使用），返回字典列表"""
+    start_date = datetime.now(HK_TZ) - timedelta(days=days)
+    start_utc = start_date.astimezone(timezone.utc).isoformat()
+
+    transactions = db.query(Transaction).filter(
+        Transaction.timestamp >= start_utc
+    ).order_by(Transaction.timestamp.desc()).all()
+
+    return [
+        {
+            "id": tx.id,
+            "agent_name": tx.agent_name,
+            "amount": tx.amount,
+            "commission": tx.commission,
+            "timestamp": tx.timestamp,
+            "source": tx.source
+        }
+        for tx in transactions
+    ]

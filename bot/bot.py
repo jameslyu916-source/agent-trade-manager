@@ -1,5 +1,6 @@
 import os
 os.environ["PYTHONUTF8"] = "1"
+import requests as req
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import (
@@ -55,7 +56,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/agent - 查詢代理統計（用法：/agent 或 /agent 代理名稱）\n"
         "/addagent - 添加代理到白名單（用法：/addagent 代理名稱）\n"
         "/delagent - 從白名單刪除代理（用法：/delagent 代理名稱）\n"
-        "/agents - 查看所有白名單代理\n\n"
+        "/agents - 查看所有白名單代理 \n"
+        "/risk - 查看代理風控評分報告 \n\n"
         "私聊發送文字我會覆述，群裡發文字我會記錄！\n"
         "也可以直接用自然語言提問，例如：「今天總成交額是多少？」"
     )
@@ -361,6 +363,36 @@ async def check_abnormal_transactions(context: ContextTypes.DEFAULT_TYPE):
                 chat_id=chat_id,
                 text=f"⏰ 長時間無交易提醒\n最後一筆交易時間：{hk_time} (香港時間)\n已過去{int(hours_since_last)}小時"
             )      
+
+# Handler for manual risk report command
+async def risk_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """手動觸發風控報告"""
+    try:
+        # 直接調後端分析接口
+        token = api_client.token
+        response = req.get(
+            f"{api_client.base_url}/analysis/risk-report?days=7",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        data = response.json()
+        reports = data.get("reports", [])
+
+        if not reports:
+            await update.message.reply_text("暫無風控數據")
+            return
+
+        text = "🛡️ 近7日代理風控報告\n\n"
+        emoji_map = {"低風險": "🟢", "中風險": "🟡", "高風險": "🔴", "無數據": "⚪"}
+        for r in reports:
+            emoji = emoji_map.get(r["risk_level"], "⚪")
+            text += f"{emoji} {r['agent_name']}（{r['risk_level']}，{r['score']}分）\n"
+            d = r["details"]
+            if d:
+                text += f"   交易{d['transaction_count']}筆，異常{d['anomaly_count']}筆（{d['anomaly_rate']}%）\n"
+
+        await update.message.reply_text(text)
+    except Exception as e:
+        await update.message.reply_text(f"❌ 獲取風控數據失敗：{e}")
                   
 # Main function to run the bot    
 def main():
@@ -400,6 +432,9 @@ def main():
     application.add_handler(CommandHandler("addagent", add_agent))
     application.add_handler(CommandHandler("delagent", remove_agent))
     application.add_handler(CommandHandler("agents", list_agents))
+    
+    # Register the risk report command handler
+    application.add_handler(CommandHandler("risk", risk_report))
     
     # Set up a daily job to send the report at the specified time
     job_queue = application.job_queue

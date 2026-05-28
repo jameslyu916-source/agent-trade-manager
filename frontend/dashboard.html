@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>儀表盤 - 代理交易管理系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="utils.js"></script>
+    <script src="utils.js?v=3"></script>
     <style>
         @keyframes fadeInUp {
             from { opacity: 0; transform: translateY(16px); }
@@ -344,7 +344,7 @@
                                     <p class="text-xs text-gray-400">${utcToHKTime(tx.timestamp)}</p>
                                 </div>
                             </div>
-                            <span class="text-sm font-bold text-blue-600 shrink-0 ml-3">${formatHKD(tx.amount)}</span>
+                            <span class="text-sm font-bold text-blue-600 shrink-0 ml-3">${formatCurrency(tx.amount, tx.currency || 'USD')}</span>
                         </div>
                     `).join("");
                 }

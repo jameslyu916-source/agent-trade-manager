@@ -109,6 +109,32 @@ function formatHKD(amount) {
     return amount.toLocaleString("zh-HK") + " HKD";
 }
 
+function formatCurrency(amount, currency) {
+    const c = (currency || "USD").toUpperCase();
+    return amount.toLocaleString("zh-HK") + " " + c;
+}
+
+function escapeHtml(str) {
+    if (!str) return "";
+    return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function renderPaymentDetails(paymentDetailsJson) {
+    if (!paymentDetailsJson) return "";
+    try {
+        const pd = typeof paymentDetailsJson === "string" ? JSON.parse(paymentDetailsJson) : paymentDetailsJson;
+        const items = [];
+        if (pd.swift) items.push(`<span class="text-gray-400">SWIFT:</span> ${escapeHtml(pd.swift)}`);
+        if (pd.bank_name) items.push(`<span class="text-gray-400">銀行:</span> ${escapeHtml(pd.bank_name)}`);
+        if (pd.bank_code) items.push(`<span class="text-gray-400">代碼:</span> ${escapeHtml(pd.bank_code)}`);
+        if (pd.account_number) items.push(`<span class="text-gray-400">戶口:</span> ${escapeHtml(pd.account_number)}`);
+        if (!items.length) return "";
+        return `<div class="text-xs text-gray-500 mt-1 space-x-2">${items.join(" <span class='text-gray-300'>|</span> ")}</div>`;
+    } catch (e) {
+        return "";
+    }
+}
+
 function utcToHKTime(utcTimestamp) {
     const date = new Date(utcTimestamp);
     return date.toLocaleString("zh-HK", {

@@ -33,8 +33,10 @@ class AgentResponse(AgentBase):
 class TransactionBase(BaseModel):
     agent_name: str
     amount: int = Field(gt=0)  # 金額必須大於0
+    currency: str = "USD"  # 貨幣單位
     raw_message: Optional[str] = None
     source: str = "telegram"
+    payment_details: Optional[str] = None  # JSON格式的銀行付款詳情
 
 class TransactionCreate(TransactionBase):
     timestamp: Optional[str] = None  # 可選，默認當前UTC時間
@@ -43,7 +45,7 @@ class TransactionResponse(TransactionBase):
     id: int
     commission: int
     timestamp: str
-    
+
     class Config:
         from_attributes = True
 

@@ -92,10 +92,12 @@ def create_transaction(db: Session, transaction: schemas.TransactionCreate):
     db_transaction = Transaction(
         agent_name=transaction.agent_name,
         amount=transaction.amount,
+        currency=transaction.currency if hasattr(transaction, 'currency') and transaction.currency else "USD",
         commission=commission,
         timestamp=timestamp,
         raw_message=transaction.raw_message,
-        source=transaction.source
+        source=transaction.source,
+        payment_details=transaction.payment_details if hasattr(transaction, 'payment_details') and transaction.payment_details else None
     )
     
     # 更新代理累計收益
@@ -251,9 +253,11 @@ def get_all_transactions_for_period(db: Session, days: int = 30):
             "id": tx.id,
             "agent_name": tx.agent_name,
             "amount": tx.amount,
+            "currency": getattr(tx, 'currency', 'USD') or 'USD',
             "commission": tx.commission,
             "timestamp": tx.timestamp,
-            "source": tx.source
+            "source": tx.source,
+            "payment_details": getattr(tx, 'payment_details', None)
         }
         for tx in transactions
     ]

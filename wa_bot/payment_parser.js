@@ -1,0 +1,329 @@
+// wa_bot/payment_parser.js
+// 付款/收款信息解析器 — 與 Python 版 payment_parser.py 邏輯一致
+
+// ═══════════════════════════════════════════
+//  香港主要銀行及其 SWIFT/BIC 代碼
+// ═══════════════════════════════════════════
+const HK_BANKS = [
+  { name: "Standard Chartered Bank (Hong Kong) Limited", code: "003",
+    swift: ["SCBLHKHHXXX", "SCBLHKHH"], aliases: ["渣打銀行", "渣打银行", "渣打", "Standard Chartered"] },
+  { name: "The Hongkong and Shanghai Banking Corporation Limited", code: "004",
+    swift: ["HSBCHKHHXXX", "HSBCHKHHHKH", "HSBCHKHH"], aliases: ["匯豐銀行", "汇丰银行", "匯豐", "汇丰", "HSBC", "Hongkong Bank"] },
+  { name: "Bank of China (Hong Kong) Limited", code: "012",
+    swift: ["BKCHHKHHXXX", "BKCHHKHH"], aliases: ["中國銀行(香港)", "中国银行(香港)", "中銀香港", "中银香港", "中銀", "中银", "BOCHK", "BOC"] },
+  { name: "Hang Seng Bank Limited", code: "024",
+    swift: ["HASEHKHHXXX", "HASEHKHH"], aliases: ["恒生銀行", "恒生银行", "恆生銀行", "恒生", "Hang Seng"] },
+  { name: "Citibank (Hong Kong) Limited", code: "006",
+    swift: ["CITIHKAXXXX", "CITIHKAX", "CITIHKA"], aliases: ["花旗銀行", "花旗银行", "花旗", "Citibank", "Citi"] },
+  { name: "The Bank of East Asia, Limited", code: "015",
+    swift: ["BEASHKHHXXX", "BEASHKHH"], aliases: ["東亞銀行", "东亚银行", "東亞", "东亚", "BEA"] },
+  { name: "DBS Bank (Hong Kong) Limited", code: "016",
+    swift: ["DHBKHKHHXXX", "DHBKHKHH"], aliases: ["星展銀行", "星展银行", "星展", "DBS"] },
+  { name: "Industrial and Commercial Bank of China (Asia) Limited", code: "029",
+    swift: ["ICBKHKHHXXX", "ICBKHKHH"], aliases: ["中國工商銀行(亞洲)", "中国工商银行(亚洲)", "工銀亞洲", "工银亚洲", "工行", "ICBC"] },
+  { name: "China Construction Bank (Asia) Corporation Limited", code: "009",
+    swift: ["CCBQHKHHXXX", "CCBQHKHH"], aliases: ["中國建設銀行(亞洲)", "中国建设银行(亚洲)", "建銀亞洲", "建银亚洲", "CCB"] },
+  { name: "Bank of Communications (Hong Kong) Limited", code: "027",
+    swift: ["COMMHKHHXXX", "COMMHKHH"], aliases: ["交通銀行", "交通银行", "交行", "BOCOM"] },
+  { name: "OCBC Wing Hang Bank Limited", code: "035",
+    swift: ["WIHBHKHHXXX", "WIHBHKHH"], aliases: ["華僑永亨銀行", "华侨永亨银行", "永亨", "OCBC"] },
+  { name: "Dah Sing Bank Limited", code: "040",
+    swift: ["DSBAHKHHXXX", "DSBAHKHH"], aliases: ["大新銀行", "大新银行", "大新", "Dah Sing"] },
+  { name: "Chong Hing Bank Limited", code: "041",
+    swift: ["CHBKHKHHXXX", "LCHBHKHH"], aliases: ["創興銀行", "创兴银行", "創興", "创兴", "Chong Hing"] },
+  { name: "Nanyang Commercial Bank Limited", code: "043",
+    swift: ["NYCBHKHHXXX", "NYCBHKHH"], aliases: ["南洋商業銀行", "南洋商业银行", "南洋", "NCB"] },
+  { name: "Shanghai Commercial Bank Limited", code: "025",
+    swift: ["SCBKHKHHXXX", "SCBKHKHH"], aliases: ["上海商業銀行", "上海商业银行", "上商", "Shanghai Commercial"] },
+  { name: "China Merchants Bank (Hong Kong Branch)", code: "238",
+    swift: ["CMBCHKHHXXX", "CMBCHKHH"], aliases: ["招商銀行", "招商银行", "招行", "CMB"] },
+  { name: "Fubon Bank (Hong Kong) Limited", code: "128",
+    swift: ["FUBOHKHHXXX", "FUBOHKHH"], aliases: ["富邦銀行", "富邦银行", "富邦", "Fubon"] },
+  { name: "Public Bank (Hong Kong) Limited", code: "028",
+    swift: ["PBHKHKHHXXX", "PBHKHKHH"], aliases: ["大眾銀行", "大众银行", "大众", "Public Bank"] },
+  { name: "Agricultural Bank of China Limited, Hong Kong Branch", code: "031",
+    swift: ["ABOCHKHHXXX", "ABOCHKHH"], aliases: ["中國農業銀行", "中国农业银行", "農行", "农行", "ABC"] },
+  { name: "Chiyu Banking Corporation Limited", code: "039",
+    swift: ["CIYUHKHHXXX", "CIYUHKHH"], aliases: ["集友銀行", "集友银行", "集友", "Chiyu"] },
+];
+
+// 構建 SWIFT 查找表
+function buildSwiftLookup() {
+  const lookup = {};
+  for (const bank of HK_BANKS) {
+    for (const s of bank.swift) {
+      lookup[s.toUpperCase()] = bank;
+    }
+  }
+  return lookup;
+}
+const SWIFT_LOOKUP = buildSwiftLookup();
+
+// ═══════════════════════════════════════════
+//  欄位名稱變體匹配規則
+// ═══════════════════════════════════════════
+const FIELD_PATTERNS = {
+  swift: [
+    /(?:收款銀行\s*)?SWIFT\s*(?:代[號号碼码]|代碼|コード|Code|CODE|code|編號|编号)/i,
+    /(?:收款銀行\s*)?BIC\s*(?:代[號号碼码]|Code|CODE|code|編號|编号)?/i,
+    /SWIFT\s*/i,
+    /BIC\s*/i,
+  ],
+  bank_name: [
+    /收款銀行\s*(?:名稱|名称|名)\s*/i,
+    /銀行\s*(?:名稱|名称|名)\s*/i,
+    /(?:Bank|BANK)\s*(?:Name|NAME|name)\s*/i,
+    /收款銀行\s*/i,
+    /(?:Bank|BANK)\s*/i,
+  ],
+  bank_address: [
+    /收款銀行\s*(?:地址|位址)\s*/i,
+    /銀行\s*(?:地址|位址)\s*/i,
+    /(?:Bank|BANK)\s*(?:Address|ADDRESS|address|Addr|ADDR)\s*/i,
+  ],
+  bank_code: [
+    /銀行\s*(?:代[碼码號号]|Code|CODE|code)\s*/i,
+    /(?:Bank|BANK)\s*(?:Code|CODE|code)\s*/i,
+  ],
+  account_number: [
+    /(?:綜合|综合)?\s*(?:戶口|户口|帳戶|账户|帳號|账号|賬戶|账户)\s*(?:號碼|号码|號|号|編號|编号|Number|No|NO|num)/i,
+    /(?:Account|ACCOUNT|account)\s*(?:Number|No|NO|num|Nbr)\s*/i,
+    /A\/C\s*(?:No|Number|num)?\s*/i,
+  ],
+  account_name: [
+    /(?:戶口|户口|帳戶|账户|賬戶)\s*(?:全名|名稱|名称|姓名|戶名|户名)/i,
+    /(?:Account|ACCOUNT|account)\s*(?:Name|NAME|name|Holder|HOLDER)/i,
+    /(?:Beneficiary|BENEFICIARY)\s*(?:Name|NAME|name)/i,
+    /收款人\s*(?:名稱|名称|姓名|全名)/i,
+  ],
+  amount: [
+    /Mso[- ]?Pobo/i,
+    /(?:Amount|AMOUNT|amount)\s*/i,
+    /(?:金額|金额|交易金額|交易金额)\s*/i,
+    /(?:收款金額|收款金额|入金金額|入金金额)\s*/i,
+  ],
+};
+
+// ═══════════════════════════════════════════
+//  輔助函數
+// ═══════════════════════════════════════════
+
+function matchField(line) {
+  let keyPart, valuePart;
+
+  // 找分隔符
+  const colonIdx = Math.min(
+    ...["：", ":", "="].map(s => line.indexOf(s)).filter(i => i > 0),
+    Infinity
+  );
+
+  if (colonIdx < Infinity) {
+    keyPart = line.substring(0, colonIdx);
+    valuePart = line.substring(colonIdx + 1).trim();
+  } else {
+    const spaceIdx = line.indexOf(" ");
+    if (spaceIdx < 0) return [null, null];
+    keyPart = line.substring(0, spaceIdx);
+    valuePart = line.substring(spaceIdx + 1).trim();
+  }
+
+  const keyPartClean = keyPart.trim().replace(/[:：= ]+$/, "");
+
+  for (const [fieldKey, patterns] of Object.entries(FIELD_PATTERNS)) {
+    for (const pattern of patterns) {
+      const m = keyPartClean.match(pattern);
+      if (m && m[0].length === keyPartClean.length) {
+        return [fieldKey, valuePart];
+      }
+    }
+  }
+
+  return [null, null];
+}
+
+function parseAmountWithCurrency(rawValue) {
+  const v = rawValue.trim().replace(/,/g, "");
+
+  // 帶貨幣後綴: 222456USD
+  const m1 = v.match(/([\d,]+(?:\.\d+)?)\s*([A-Za-z]{2,4})\s*$/);
+  if (m1) {
+    const amount = parseInt(m1[1], 10);
+    let currency = m1[2].toUpperCase();
+    if (currency === "RMB") currency = "CNY";
+    return [isNaN(amount) ? null : amount, currency];
+  }
+
+  // 純數字
+  const m2 = v.match(/([\d,]+(?:\.\d+)?)/);
+  if (m2) {
+    const amount = parseInt(m2[1].replace(/,/g, ""), 10);
+    return [isNaN(amount) ? null : amount, "USD"];
+  }
+
+  return [null, "USD"];
+}
+
+function validateSwift(swift) {
+  // 返回 { valid: bool, looksBroken: bool }
+  // looksBroken = 明顯是解析錯誤（含中文、冒號等非SWIFT字符）
+  const v = swift.trim();
+  if (/^[A-Za-z]{4}[A-Za-z]{2}[A-Za-z0-9]{2}([A-Za-z0-9]{3})?$/.test(v)) {
+    return { valid: true, looksBroken: false };
+  }
+  const looksBroken = /[一-鿿　-〿＀-￯：:，,]/.test(v);
+  return { valid: false, looksBroken };
+}
+
+function validateBankCode(code) {
+  return /^\d{3}$/.test(code.trim());
+}
+
+function lookupBankBySwift(swift) {
+  const swiftUpper = swift.trim().toUpperCase();
+  if (SWIFT_LOOKUP[swiftUpper]) return SWIFT_LOOKUP[swiftUpper];
+  const swift8 = swiftUpper.substring(0, 8);
+  if (SWIFT_LOOKUP[swift8]) return SWIFT_LOOKUP[swift8];
+  for (const bank of HK_BANKS) {
+    for (const s of bank.swift) {
+      if (s.toUpperCase().startsWith(swift8)) return bank;
+    }
+  }
+  return null;
+}
+
+function lookupBankByNameOrAlias(name) {
+  const nameLower = name.trim().toLowerCase();
+  for (const bank of HK_BANKS) {
+    if (nameLower === bank.name.toLowerCase()) return bank;
+    for (const alias of bank.aliases) {
+      if (nameLower === alias.toLowerCase()) return bank;
+    }
+    if (bank.name.toLowerCase().includes(nameLower) || nameLower.includes(bank.name.toLowerCase())) return bank;
+    for (const alias of bank.aliases) {
+      if (alias.toLowerCase().includes(nameLower) || nameLower.includes(alias.toLowerCase())) return bank;
+    }
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════
+//  主要解析函數
+// ═══════════════════════════════════════════
+
+function parsePaymentInfo(messageText) {
+  if (!messageText || !messageText.trim()) return null;
+
+  const raw = messageText.trim();
+  const lines = raw.split("\n");
+
+  const extracted = {};
+  const warnings = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const [fieldKey, value] = matchField(trimmed);
+    if (fieldKey && value) {
+      if (fieldKey in extracted) {
+        if (value.length > extracted[fieldKey].length) {
+          extracted[fieldKey] = value;
+        }
+      } else {
+        extracted[fieldKey] = value;
+      }
+    }
+  }
+
+  // 判斷是否為付款資訊
+  const bankingFields = new Set(["swift", "bank_name", "bank_code", "account_number", "account_name"]);
+  let foundBanking = 0;
+  for (const k of bankingFields) {
+    if (k in extracted) foundBanking++;
+  }
+  const hasAmount = "amount" in extracted;
+
+  if (foundBanking < 2 && !(foundBanking >= 1 && hasAmount)) {
+    return null;
+  }
+
+  // 提取金額和貨幣
+  let amount = null;
+  let currency = "USD";
+
+  if ("amount" in extracted) {
+    [amount, currency] = parseAmountWithCurrency(extracted["amount"]);
+    if (amount === null) {
+      warnings.push(`⚠️ 無法解析金額：${extracted["amount"]}`);
+    }
+    delete extracted["amount"];
+  }
+
+  // 匹配銀行資料
+  let matchedBank = null;
+  if ("swift" in extracted) {
+    const swiftVal = extracted["swift"].trim();
+    const { valid, looksBroken } = validateSwift(swiftVal);
+    if (valid) {
+      matchedBank = lookupBankBySwift(swiftVal);
+      if (matchedBank) {
+        if (!("bank_name" in extracted)) extracted["bank_name"] = matchedBank.name;
+        if (!("bank_code" in extracted)) extracted["bank_code"] = matchedBank.code;
+        if ("bank_name" in extracted) {
+          const bankByName = lookupBankByNameOrAlias(extracted["bank_name"]);
+          if (bankByName && bankByName.name !== matchedBank.name) {
+            warnings.push(`⚠️ SWIFT 代碼與銀行名稱不一致：SWIFT 對應「${matchedBank.name}」，名稱給出「${extracted["bank_name"]}」`);
+          }
+        }
+      } else {
+        warnings.push(`⚠️ 無法識別的 SWIFT 代碼：${swiftVal}`);
+      }
+    } else if (looksBroken) {
+      warnings.push(`❌ SWIFT 欄位格式異常（可能缺少換行）：${swiftVal}`);
+    } else {
+      warnings.push(`⚠️ SWIFT 代碼格式不正確：${swiftVal}`);
+    }
+  } else if ("bank_name" in extracted) {
+    matchedBank = lookupBankByNameOrAlias(extracted["bank_name"]);
+    if (!matchedBank) {
+      warnings.push(`⚠️ 無法識別的銀行名稱：${extracted["bank_name"]}`);
+    }
+  }
+
+  // 驗證必填欄位
+  if (!("account_number" in extracted)) warnings.push("❌ 缺少戶口號碼");
+  if (!("account_name" in extracted)) warnings.push("❌ 缺少戶口全名");
+  if (amount === null) warnings.push("❌ 缺少或無法解析交易金額（Mso-Pobo）");
+
+  // 驗證銀行代碼格式
+  if ("bank_code" in extracted && !validateBankCode(extracted["bank_code"])) {
+    warnings.push(`⚠️ 銀行代碼格式異常（通常為3位數字）：${extracted["bank_code"]}`);
+  }
+
+  const agentName = (extracted["account_name"] || "Unknown").trim();
+
+  const paymentDetails = {
+    swift: extracted["swift"] || "",
+    bank_name: extracted["bank_name"] || "",
+    bank_address: extracted["bank_address"] || "",
+    bank_code: extracted["bank_code"] || "",
+    account_number: extracted["account_number"] || "",
+    account_name: agentName,
+  };
+  if (matchedBank) {
+    paymentDetails.bank_matched = matchedBank.name;
+  }
+
+  return {
+    agent_name: agentName,
+    amount: amount || 0,
+    currency: currency,
+    raw_message: raw,
+    source: "whatsapp",
+    payment_details: JSON.stringify(paymentDetails),
+    payment_details_dict: paymentDetails,
+    warnings: warnings,
+    matched_bank: matchedBank,
+  };
+}
+
+module.exports = { parsePaymentInfo };

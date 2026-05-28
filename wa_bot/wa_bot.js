@@ -2,6 +2,7 @@
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 const axios = require("axios");
+const { parsePaymentInfo } = require("./payment_parser");
 require("dotenv").config();
 
 // ==================== 配置 ====================
@@ -37,12 +38,19 @@ function getHeaders() {
 
 async function createTransaction(data) {
   try {
-    const res = await axios.post(`${API_BASE_URL}/transactions/`, data, {
+    const payload = {
+      agent_name: data.agent_name,
+      amount: data.amount,
+      currency: data.currency || "USD",
+      raw_message: data.raw_message || null,
+      source: data.source || "whatsapp",
+      payment_details: data.payment_details || null
+    };
+    const res = await axios.post(`${API_BASE_URL}/transactions/`, payload, {
       headers: getHeaders(),
     });
     return res.status === 200;
   } catch (err) {
-    // 令牌過期則重新登錄後重試
     if (err.response?.status === 401) {
       await login();
       return createTransaction(data);
@@ -330,7 +338,59 @@ client.on("message", async (msg) => {
 
   const text = msg.body;
 
-  // ── 優先檢查是否為取消指令 ──
+  // ── 優先檢查是否為結構化付款資訊 ──
+  const paymentInfo = parsePaymentInfo(text);
+  if (paymentInfo) {
+    console.log(`🏦 檢測到付款資訊: ${paymentInfo.agent_name} ${paymentInfo.amount} ${paymentInfo.currency}`);
+    const warnings = paymentInfo.warnings || [];
+    const hasErrors = warnings.some(w => w.startsWith("❌"));
+    const hasWarnings = warnings.some(w => w.startsWith("⚠️"));
+
+    // ── 有嚴重錯誤（缺必填欄位）→ 阻擋記錄，只回報錯誤 ──
+    if (hasErrors) {
+      if (WA_SEND_REPLY) {
+        await msg.reply("❌ 付款資訊不完整，請修正後重新發送：\n\n" + warnings.join("\n"));
+      }
+      return;
+    }
+
+    if (paymentInfo.amount > 0 && paymentInfo.agent_name !== "Unknown") {
+      const allowed = await isAgentAllowed(paymentInfo.agent_name);
+      if (!allowed) {
+        console.log(`   ⚠️ 戶口全名「${paymentInfo.agent_name}」不在白名單`);
+        if (WA_SEND_REPLY) {
+          await msg.reply(`⚠️ 戶口全名「${paymentInfo.agent_name}」不在白名單中，付款未記錄`);
+        }
+        return;
+      }
+
+      const success = await createTransaction({
+        agent_name: paymentInfo.agent_name,
+        amount: paymentInfo.amount,
+        currency: paymentInfo.currency,
+        raw_message: paymentInfo.raw_message,
+        source: "whatsapp",
+        payment_details: paymentInfo.payment_details
+      });
+
+      if (success) {
+        console.log(`   ✅ 付款資訊已記錄！`);
+        if (WA_SEND_REPLY) {
+          const pd = paymentInfo.payment_details_dict || {};
+          let replyMsg = `✅ 已紀錄收款：${paymentInfo.agent_name}\n金額：${paymentInfo.amount.toLocaleString()} ${paymentInfo.currency}`;
+          if (pd.bank_name) replyMsg += `\n銀行：${pd.bank_name}`;
+          if (pd.account_number) replyMsg += `\n戶口：${pd.account_number}`;
+          if (hasWarnings) replyMsg += "\n\n⚠️ 請注意以下問題：\n" + warnings.join("\n");
+          await msg.reply(replyMsg);
+        }
+      }
+    } else if (paymentInfo.amount <= 0 && WA_SEND_REPLY) {
+      await msg.reply("❌ 無法解析付款金額，請檢查 Mso-Pobo 格式");
+    }
+    return;
+  }
+
+  // ── 檢查是否為取消指令 ──
   const cancellation = parseCancellation(text);
   if (cancellation) {
     console.log(`   🔙 檢測到取消指令:`, JSON.stringify(cancellation));

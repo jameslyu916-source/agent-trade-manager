@@ -14,6 +14,7 @@ from telegram.ext import (
 from telegram.request import HTTPXRequest
 # Import the transaction parser
 from .parser import parse_transaction, parse_cancellation
+from .payment_parser import parse_payment_info
 
 # Import the API client
 from .api_client import api_client
@@ -194,7 +195,61 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     user_name = message.from_user.username or message.from_user.first_name
     print(f"收到群消息 [{message.chat.title}] {user_name}: {message.text}")
 
-    # ── 優先檢查是否為取消指令 ──
+    # ── 優先檢查是否為結構化付款資訊 ──
+    payment_info = parse_payment_info(message.text)
+    if payment_info:
+        print(f"🏦 檢測到付款資訊: {payment_info['agent_name']} {payment_info['amount']:,} {payment_info['currency']}")
+        warnings = payment_info.get("warnings", [])
+        has_errors = any(w.startswith("❌") for w in warnings)
+        has_warnings = any(w.startswith("⚠️") for w in warnings)
+
+        # ── 有嚴重錯誤（缺必填欄位）→ 阻擋記錄，只回報錯誤 ──
+        if has_errors:
+            error_msg = "❌ 付款資訊不完整，請修正後重新發送：\n\n" + "\n".join(warnings)
+            await update.message.reply_text(error_msg)
+            return
+
+        if payment_info["amount"] > 0 and payment_info["agent_name"] != "Unknown":
+            # 檢查代理（戶口全名）是否在白名單
+            if api_client.is_agent_allowed(payment_info["agent_name"]):
+                api_client.create_transaction(
+                    agent_name=payment_info["agent_name"],
+                    amount=payment_info["amount"],
+                    timestamp=payment_info.get("timestamp"),
+                    raw_message=payment_info["raw_message"],
+                    source=payment_info.get("source", "telegram"),
+                    currency=payment_info["currency"],
+                    payment_details=payment_info["payment_details"]
+                )
+                print(f"💾 付款資訊已記錄")
+
+                # 構建回覆訊息
+                reply_parts = [
+                    f"✅ 已紀錄收款：{payment_info['agent_name']}",
+                    f"金額：{payment_info['amount']:,} {payment_info['currency']}",
+                ]
+                pd = payment_info.get("payment_details_dict", {})
+                if pd.get("bank_name"):
+                    reply_parts.append(f"銀行：{pd['bank_name']}")
+                if pd.get("account_number"):
+                    reply_parts.append(f"戶口：{pd['account_number']}")
+
+                # ⚠️ 警告仍然顯示，但不阻擋記錄
+                if has_warnings:
+                    reply_parts.append("\n⚠️ 請注意以下問題：\n" + "\n".join(warnings))
+
+                await update.message.reply_text("\n".join(reply_parts))
+            else:
+                print(f"⚠️ 戶口全名「{payment_info['agent_name']}」不在白名單中")
+                await update.message.reply_text(
+                    f"⚠️ 戶口全名「{payment_info['agent_name']}」不在白名單中，付款未記錄\n"
+                    f"請先用 /addagent {payment_info['agent_name']} 添加"
+                )
+        elif payment_info["amount"] <= 0:
+            await update.message.reply_text("❌ 無法解析付款金額，請檢查 Mso-Pobo 格式")
+        return
+
+    # ── 檢查是否為取消指令 ──
     cancellation = parse_cancellation(message.text)
     if cancellation:
         print(f"🔙 檢測到取消指令: {cancellation}")

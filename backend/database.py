@@ -47,17 +47,34 @@ class Agent(Base):
 class Transaction(Base):
     """交易記錄表（與原有transactions表完全兼容）"""
     __tablename__ = "transactions"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     agent_name = Column(String, index=True, nullable=False)
-    amount = Column(Integer, nullable=False)  # 交易金額（HKD）
-    commission = Column(Integer, default=0)   # 手續費（HKD）
+    amount = Column(Integer, nullable=False)  # 交易金額
+    currency = Column(String, default="HKD")  # 貨幣單位（USD/HKD/CNY等）
+    commission = Column(Integer, default=0)   # 手續費
     timestamp = Column(String, nullable=False)  # UTC時間ISO格式
     raw_message = Column(String)
     source = Column(String, default="telegram")  # 數據來源：telegram/crawler/manual
+    payment_details = Column(String)  # JSON格式的銀行付款詳情（可選）
 
 # Create all tables in the database (if they don't exist)
 Base.metadata.create_all(bind=engine)
+
+# ── Migration: add new columns if missing (SQLite doesn't auto-migrate) ──
+def _migrate():
+    with engine.connect() as conn:
+        # Check existing columns
+        result = conn.exec_driver_sql("PRAGMA table_info(transactions)")
+        existing_cols = {row[1] for row in result.fetchall()}
+        if "currency" not in existing_cols:
+            conn.exec_driver_sql("ALTER TABLE transactions ADD COLUMN currency VARCHAR DEFAULT 'USD'")
+            # Existing rows used HKD before multi-currency support
+            conn.exec_driver_sql("UPDATE transactions SET currency = 'HKD' WHERE currency IS NULL OR currency = ''")
+        if "payment_details" not in existing_cols:
+            conn.exec_driver_sql("ALTER TABLE transactions ADD COLUMN payment_details TEXT")
+
+_migrate()
 
 # Database session generator (for dependency injection in FastAPI)
 def get_db():

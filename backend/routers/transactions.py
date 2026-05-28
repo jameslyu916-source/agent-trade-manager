@@ -95,10 +95,12 @@ async def get_last_transaction(
         "id": tx.id,
         "agent_name": tx.agent_name,
         "amount": tx.amount,
+        "currency": getattr(tx, 'currency', 'USD') or 'USD',
         "commission": tx.commission,
         "timestamp": tx.timestamp,
         "raw_message": tx.raw_message,
-        "source": tx.source
+        "source": tx.source,
+        "payment_details": getattr(tx, 'payment_details', None)
     }
 
 @router.delete("/{transaction_id}")

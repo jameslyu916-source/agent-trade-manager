@@ -260,8 +260,10 @@ function parseCancellation(messageText) {
 
 async function getLastTransaction(agentName) {
   try {
-    const params = agentName ? `?agent_name=${encodeURIComponent(agentName)}` : "";
-    const res = await axios.get(`${API_BASE_URL}/transactions/last${params}`, { headers: getHeaders() });
+    const params = new URLSearchParams();
+    params.set("source", "whatsapp");
+    if (agentName) params.set("agent_name", agentName);
+    const res = await axios.get(`${API_BASE_URL}/transactions/last?${params.toString()}`, { headers: getHeaders() });
     return res.data;
   } catch (err) {
     if (err.response?.status === 401) { await login(); return getLastTransaction(agentName); }
@@ -399,23 +401,26 @@ client.on("message", async (msg) => {
         const lastTx = await getLastTransaction();
         if (lastTx) {
           await deleteTransactionById(lastTx.id);
-          console.log(`   ✅ 已取消上一筆：${lastTx.agent_name} ${lastTx.amount} HKD`);
+          const cur = lastTx.currency || "USD";
+          const src = lastTx.source === "telegram" ? "TG" : "WA";
+          console.log(`   ✅ 已取消上一筆 [${src}]：${lastTx.agent_name} ${lastTx.amount} ${cur}`);
           if (WA_SEND_REPLY) {
-            await msg.reply(`✅ 已取消上一筆交易：${lastTx.agent_name} ${lastTx.amount.toLocaleString()} HKD`);
+            await msg.reply(`✅ 已取消上一筆 WhatsApp 交易：${lastTx.agent_name} ${lastTx.amount.toLocaleString()} ${cur}`);
           }
         } else {
-          if (WA_SEND_REPLY) await msg.reply("⚠️ 沒有找到可取消的交易記錄");
+          if (WA_SEND_REPLY) await msg.reply("⚠️ 沒有找到可取消的 WhatsApp 交易記錄");
         }
       } else if (cancellation.target === "agent") {
         const lastTx = await getLastTransaction(cancellation.agent_name);
         if (lastTx) {
           await deleteTransactionById(lastTx.id);
+          const cur = lastTx.currency || "USD";
           console.log(`   ✅ 已取消 ${cancellation.agent_name} 的交易`);
           if (WA_SEND_REPLY) {
-            await msg.reply(`✅ 已取消 ${cancellation.agent_name} 的最近一筆交易：${lastTx.amount.toLocaleString()} HKD`);
+            await msg.reply(`✅ 已取消 ${cancellation.agent_name} 的最近一筆 WhatsApp 交易：${lastTx.amount.toLocaleString()} ${cur}`);
           }
         } else {
-          if (WA_SEND_REPLY) await msg.reply(`⚠️ 沒有找到 ${cancellation.agent_name} 的交易記錄`);
+          if (WA_SEND_REPLY) await msg.reply(`⚠️ 沒有找到 ${cancellation.agent_name} 的 WhatsApp 交易記錄`);
         }
       }
     } catch (err) {

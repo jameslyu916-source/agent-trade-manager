@@ -84,11 +84,12 @@ async def get_all_agents_daily_summary(
 @router.get("/last")
 async def get_last_transaction(
     agent_name: str = None,
+    source: str = None,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
-    """獲取最近一筆交易，用於「取消上一筆」功能"""
-    tx = crud.get_last_transaction(db, agent_name)
+    """獲取最近一筆交易，用於「取消上一筆」功能。可選按代理和來源平台過濾"""
+    tx = crud.get_last_transaction(db, agent_name, source)
     if not tx:
         raise HTTPException(status_code=404, detail="沒有找到交易記錄")
     return {

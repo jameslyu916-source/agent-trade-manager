@@ -306,9 +306,9 @@ class APIClient:
             return None
         
     def get_last_transaction(self, agent_name: str = None):
-        """獲取最近一筆交易，可選按代理過濾"""
+        """獲取最近一筆 Telegram 交易，可選按代理過濾"""
         try:
-            params = {}
+            params = {"source": "telegram"}
             if agent_name:
                 params["agent_name"] = agent_name
             response = requests.get(

@@ -263,11 +263,13 @@ def get_transaction_by_id(db: Session, transaction_id: int):
     """按 ID 查詢單筆交易"""
     return db.query(Transaction).filter(Transaction.id == transaction_id).first()
 
-def get_last_transaction(db: Session, agent_name: str = None):
-    """獲取最近一筆交易，可選按代理過濾"""
+def get_last_transaction(db: Session, agent_name: str = None, source: str = None):
+    """獲取最近一筆交易，可選按代理和來源平台過濾"""
     query = db.query(Transaction)
     if agent_name:
         query = query.filter(Transaction.agent_name == agent_name)
+    if source:
+        query = query.filter(Transaction.source == source)
     return query.order_by(Transaction.timestamp.desc()).first()
 
 def delete_transaction(db: Session, transaction_id: int):

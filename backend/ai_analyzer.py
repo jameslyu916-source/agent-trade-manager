@@ -120,8 +120,6 @@ def analyze_all_agents(agents_transactions: dict) -> list:
 
     if all_transactions:
         all_transactions = detect_anomalies(all_transactions)
-        # 把異常標記同步回各代理的交易列表
-        tx_map = {id(tx): tx for tx in all_transactions}
 
     results = []
     for agent_name, txs in agents_transactions.items():

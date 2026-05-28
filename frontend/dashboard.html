@@ -110,6 +110,12 @@
                             <span>報表下載</span>
                         </a>
                     </li>
+                    <li>
+                        <a href="risk.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-gray-600 hover:text-gray-900 text-sm font-medium">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                            <span>風險監控</span>
+                        </a>
+                    </li>
                 </ul>
             </div>
         </aside>
@@ -181,6 +187,37 @@
                     </div>
                     <div class="mt-3 flex items-center text-xs text-gray-400">
                         <span>即時更新</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 風險摘要卡片 -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 animate-fade-in-up" style="animation-delay: 0.35s;">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-3 cursor-pointer hover:shadow-md transition-shadow" onclick="window.location.href='risk.html'">
+                    <div class="w-9 h-9 bg-red-50 rounded-lg flex items-center justify-center shrink-0">
+                        <svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500">本週異常交易</p>
+                        <p id="riskAnomalyCount" class="text-lg font-bold text-gray-900">-</p>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-3 cursor-pointer hover:shadow-md transition-shadow" onclick="window.location.href='risk.html'">
+                    <div class="w-9 h-9 bg-amber-50 rounded-lg flex items-center justify-center shrink-0">
+                        <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500">高風險代理</p>
+                        <p id="riskHighRiskCount" class="text-lg font-bold text-gray-900">-</p>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-3 cursor-pointer hover:shadow-md transition-shadow" onclick="window.location.href='risk.html'">
+                    <div class="w-9 h-9 bg-emerald-50 rounded-lg flex items-center justify-center shrink-0">
+                        <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500">風控評分</p>
+                        <p id="riskLowestScore" class="text-lg font-bold text-gray-900">-</p>
                     </div>
                 </div>
             </div>
@@ -314,6 +351,29 @@
 
             } catch (error) {
                 console.error("加載儀表盤數據失敗：", error);
+            }
+
+            // 異步加載風險摘要（不阻塞主數據）
+            loadRiskSummary();
+        }
+
+        async function loadRiskSummary() {
+            try {
+                const [anomalyData, riskData] = await Promise.all([
+                    apiRequest("/analysis/anomalies?days=7"),
+                    apiRequest("/analysis/risk-report?days=30")
+                ]);
+                document.getElementById("riskAnomalyCount").textContent = anomalyData.anomaly_count || 0;
+                const reports = riskData.reports || [];
+                const highRisk = reports.filter(r => r.risk_level === "高風險").length;
+                document.getElementById("riskHighRiskCount").textContent = highRisk;
+                const lowest = reports.length > 0 ? Math.min(...reports.map(r => r.score)) : "-";
+                document.getElementById("riskLowestScore").textContent = lowest !== "-" ? `${lowest} 分` : "-";
+            } catch (e) {
+                console.error("加載風險摘要失敗：", e);
+                document.getElementById("riskAnomalyCount").textContent = "N/A";
+                document.getElementById("riskHighRiskCount").textContent = "N/A";
+                document.getElementById("riskLowestScore").textContent = "N/A";
             }
         }
 

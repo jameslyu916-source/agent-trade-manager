@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
 
-from backend import schemas
+from . import schemas
 from .routers import auth, transactions, agents, reports, analysis
 from .database import Base, engine, SessionLocal
 from .crud import create_agent, get_agent_by_name, get_user_by_username, create_user

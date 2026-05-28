@@ -119,18 +119,18 @@ async def auto_daily_report(context: ContextTypes.DEFAULT_TYPE):
         
 # Daily total command handler
 async def today_total(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    total = api_client.get_daily_total()
+    stats = api_client.get_daily_total()
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text=f"💰 今日總成交額：{total:,}HKD"
+        text=f"💰 今日總成交額：{api_client._format_breakdown(stats['currency_breakdown'])}"
     )
 
 # Weekly total command handler
 async def week_total(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    total = api_client.get_period_total(days=7)
+    stats = api_client.get_period_total(days=7)
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text=f"📅 本周總成交額：{total:,}HKD"
+        text=f"📅 本周總成交額：{api_client._format_breakdown(stats['currency_breakdown'])}"
     )
 
 # Agent stats command handler
@@ -144,15 +144,15 @@ async def agent_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         text = "📋 今日各代理成交額：\n"
         for agent in agents:
-            amount = api_client.get_agent_daily_total(agent)
-            text += f"- {agent}：{amount:,}HKD\n"
+            stats = api_client.get_agent_daily_total(agent)
+            text += f"- {agent}：{api_client._format_breakdown(stats['currency_breakdown'])}\n"
         await update.message.reply_text(text)
     else:
         # Agent name specified, show stats for that agent
         agent_name = " ".join(context.args)
-        amount = api_client.get_agent_daily_total(agent_name)
+        stats = api_client.get_agent_daily_total(agent_name)
         await update.message.reply_text(
-            f"📊 {agent_name} 今日成交額：{amount:,}HKD"
+            f"📊 {agent_name} 今日成交額：{api_client._format_breakdown(stats['currency_breakdown'])}"
         )
         
 # Admin command handlers for managing the whitelist of agents
@@ -259,8 +259,9 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                 last_tx = api_client.get_last_transaction()
                 if last_tx:
                     api_client.delete_transaction(last_tx["id"])
+                    cur = last_tx.get('currency', 'HKD')
                     await update.message.reply_text(
-                        f"✅ 已取消上一筆交易：{last_tx['agent_name']} {last_tx['amount']:,} HKD"
+                        f"✅ 已取消上一筆交易：{last_tx['agent_name']} {last_tx['amount']:,} {cur}"
                     )
                 else:
                     await update.message.reply_text("⚠️ 沒有找到可取消的交易記錄")
@@ -270,8 +271,9 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                 last_tx = api_client.get_last_transaction(agent)
                 if last_tx:
                     api_client.delete_transaction(last_tx["id"])
+                    cur = last_tx.get('currency', 'HKD')
                     await update.message.reply_text(
-                        f"✅ 已取消 {agent} 的最近一筆交易：{last_tx['amount']:,} HKD"
+                        f"✅ 已取消 {agent} 的最近一筆交易：{last_tx['amount']:,} {cur}"
                     )
                 else:
                     await update.message.reply_text(f"⚠️ 沒有找到 {agent} 的交易記錄")
@@ -300,12 +302,13 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                 agent_name=transaction['agent_name'],
                 amount=transaction['amount'],
                 timestamp=transaction['timestamp'],
-                raw_message=transaction['raw_message']
+                raw_message=transaction['raw_message'],
+                currency="HKD"
             )
             print("💾 交易紀錄已保存")
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text=f"已紀錄交易：{transaction['agent_name']} 成交 {transaction['amount']}HKD"
+                text=f"已紀錄交易：{transaction['agent_name']} 成交 {transaction['amount']:,}HKD"
             )
         else:
             print(f"⚠️ 代理 {transaction['agent_name']} 不在白名單中，忽略交易")
@@ -331,45 +334,52 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
         is_en = any(en_kw in message.text.lower() for en_kw in ["today", "total", "how much", "week", "month", "yesterday", "agent", "amount", "ranking", "recent"])
 
         if qtype == "today_total":
-            total = api_client.get_daily_total()
+            stats = api_client.get_daily_total()
+            bd = api_client._format_breakdown(stats['currency_breakdown'])
             await update.message.reply_text(
-                f"Today's total transaction amount is {total:,} HKD" if is_en else f"💰 今日總成交額：{total:,} HKD"
+                f"Today's total transaction amount is {bd}" if is_en else f"💰 今日總成交額：{bd}"
             )
         elif qtype == "week_total":
-            total = api_client.get_period_total(days=7)
+            stats = api_client.get_period_total(days=7)
+            bd = api_client._format_breakdown(stats['currency_breakdown'])
             await update.message.reply_text(
-                f"This week's total transaction amount is {total:,} HKD" if is_en else f"📅 本周總成交額：{total:,} HKD"
+                f"This week's total transaction amount is {bd}" if is_en else f"📅 本周總成交額：{bd}"
             )
         elif qtype == "month_total":
-            total = api_client.get_period_total(days=30)
+            stats = api_client.get_period_total(days=30)
+            bd = api_client._format_breakdown(stats['currency_breakdown'])
             await update.message.reply_text(
-                f"This month's total transaction amount is {total:,} HKD" if is_en else f"📆 本月總成交額：{total:,} HKD"
+                f"This month's total transaction amount is {bd}" if is_en else f"📆 本月總成交額：{bd}"
             )
         elif qtype == "yesterday_total":
             from datetime import timedelta
             yesterday = (datetime.now(HK_TZ) - timedelta(days=1)).strftime("%Y-%m-%d")
-            total = api_client.get_daily_total(date=yesterday)
+            stats = api_client.get_daily_total(date=yesterday)
+            bd = api_client._format_breakdown(stats['currency_breakdown'])
             await update.message.reply_text(
-                f"Yesterday's total transaction amount is {total:,} HKD" if is_en else f"📋 昨日總成交額（{yesterday}）：{total:,} HKD"
+                f"Yesterday's total transaction amount is {bd}" if is_en else f"📋 昨日總成交額（{yesterday}）：{bd}"
             )
 
         elif qtype == "agent_daily":
             agent = query_result["agent"]
-            amount = api_client.get_agent_daily_total(agent)
+            stats = api_client.get_agent_daily_total(agent)
+            bd = api_client._format_breakdown(stats['currency_breakdown'])
             await update.message.reply_text(
-                f"{agent}'s transaction amount today is {amount:,} HKD" if is_en else f"📊 {agent} 今日成交額：{amount:,} HKD"
+                f"{agent}'s transaction amount today is {bd}" if is_en else f"📊 {agent} 今日成交額：{bd}"
             )
         elif qtype == "agent_week":
             agent = query_result["agent"]
-            amount = api_client.get_agent_period_total(agent, days=7)
+            stats = api_client.get_agent_period_total(agent, days=7)
+            bd = api_client._format_breakdown(stats['currency_breakdown'])
             await update.message.reply_text(
-                f"{agent}'s transaction amount this week is {amount:,} HKD" if is_en else f"📊 {agent} 本周成交額：{amount:,} HKD"
+                f"{agent}'s transaction amount this week is {bd}" if is_en else f"📊 {agent} 本周成交額：{bd}"
             )
         elif qtype == "agent_month":
             agent = query_result["agent"]
-            amount = api_client.get_agent_period_total(agent, days=30)
+            stats = api_client.get_agent_period_total(agent, days=30)
+            bd = api_client._format_breakdown(stats['currency_breakdown'])
             await update.message.reply_text(
-                f"{agent}'s transaction amount this month is {amount:,} HKD" if is_en else f"📊 {agent} 本月成交額：{amount:,} HKD"
+                f"{agent}'s transaction amount this month is {bd}" if is_en else f"📊 {agent} 本月成交額：{bd}"
             )
 
         elif qtype == "all_agents_daily":
@@ -379,8 +389,9 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
             else:
                 lines = ["Today's stats for all agents:" if is_en else "📋 今日各代理成交額：", ""]
                 for a in agents:
-                    amt = api_client.get_agent_daily_total(a)
-                    lines.append(f"• {a}：{amt:,} HKD")
+                    stats = api_client.get_agent_daily_total(a)
+                    bd = api_client._format_breakdown(stats['currency_breakdown'])
+                    lines.append(f"• {a}：{bd}")
                 await update.message.reply_text("\n".join(lines))
 
         elif qtype in ("agent_ranking", "top_agents"):
@@ -390,12 +401,13 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
             else:
                 # 按今日成交額排序
                 ranking = [(a, api_client.get_agent_daily_total(a)) for a in agents]
-                ranking.sort(key=lambda x: x[1], reverse=True)
+                ranking.sort(key=lambda x: x[1]['total_amount'], reverse=True)
                 medals = ["🥇", "🥈", "🥉"]
                 lines = ["🏆 Agent Ranking Today:" if is_en else "🏆 今日代理成交排名：", ""]
-                for i, (name, amt) in enumerate(ranking):
+                for i, (name, stats) in enumerate(ranking):
                     prefix = medals[i] if i < 3 else f"  {i+1}."
-                    lines.append(f"{prefix} {name} — {amt:,} HKD")
+                    bd = api_client._format_breakdown(stats['currency_breakdown'])
+                    lines.append(f"{prefix} {name} — {bd}")
                 await update.message.reply_text("\n".join(lines))
 
         elif qtype == "recent_transactions":
@@ -407,7 +419,8 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                 lines = ["Recent transactions:" if is_en else "📝 最近交易記錄：", ""]
                 for tx in recent:
                     hk_time = datetime.fromisoformat(tx["timestamp"]).replace(tzinfo=timezone.utc).astimezone(HK_TZ).strftime("%m/%d %H:%M")
-                    lines.append(f"• {hk_time} | {tx['agent_name']} | {tx['amount']:,} HKD")
+                    cur = tx.get('currency', 'HKD')
+                    lines.append(f"• {hk_time} | {tx['agent_name']} | {tx['amount']:,} {cur}")
                 await update.message.reply_text("\n".join(lines))
 
         else:
@@ -431,19 +444,22 @@ async def check_abnormal_transactions(context: ContextTypes.DEFAULT_TYPE):
             # 將UTC時間轉換為香港時間顯示
             utc_time = datetime.fromisoformat(tx["timestamp"]).replace(tzinfo=timezone.utc)
             hk_time = utc_time.astimezone(HK_TZ).strftime("%Y-%m-%d %H:%M:%S")
+            cur = tx.get('currency', 'HKD')
             await context.bot.send_message(
                 chat_id=chat_id,
-                text=f"⚠️ 大額交易提醒\n代理：{tx['agent_name']}\n金額：{tx['amount']:,} HKD\n時間：{hk_time} (香港時間)"
+                text=f"⚠️ 大額交易提醒\n代理：{tx['agent_name']}\n金額：{tx['amount']:,} {cur}\n時間：{hk_time} (香港時間)"
             )
-    
+
     # 異常2：代理單日交易額超過閾值
     agents = api_client.get_allowed_agents()
     for agent in agents:
-        daily_total = api_client.get_agent_daily_total(agent)
+        stats = api_client.get_agent_daily_total(agent)
+        daily_total = stats['total_amount']
         if daily_total > ABNORMAL_DAILY_TOTAL:
+            bd = api_client._format_breakdown(stats['currency_breakdown'])
             await context.bot.send_message(
                 chat_id=chat_id,
-                text=f"🚨 代理單日交易額異常\n代理：{agent}\n今日成交額：{daily_total:,} HKD\n已超過預警值 {ABNORMAL_DAILY_TOTAL:,} HKD"
+                text=f"🚨 代理單日交易額異常\n代理：{agent}\n今日成交額：{bd}\n已超過預警值 {ABNORMAL_DAILY_TOTAL:,} HKD"
             )
     
     # 異常3：超過12小時無交易

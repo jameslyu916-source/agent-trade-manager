@@ -64,11 +64,11 @@ class APIClient:
             return False
     
     def get_daily_total(self, date=None):
-        """獲取每日總成交額"""
+        """獲取每日總成交額（返回完整統計 dict，含 currency_breakdown）"""
         params = {}
         if date:
             params["date"] = date
-        
+
         try:
             response = requests.get(
                 f"{self.base_url}/transactions/daily",
@@ -76,21 +76,21 @@ class APIClient:
                 headers=self._get_headers()
             )
             if response.status_code == 200:
-                return response.json()["total_amount"]
+                return response.json()
             elif response.status_code == 401:
                 if self.login():
                     return self.get_daily_total(date)
-            return 0
+            return {"total_amount": 0, "total_commission": 0, "transaction_count": 0, "currency_breakdown": {}}
         except Exception as e:
             print(f"❌ 獲取每日總額失敗：{e}")
-            return 0
-    
+            return {"total_amount": 0, "total_commission": 0, "transaction_count": 0, "currency_breakdown": {}}
+
     def get_agent_daily_total(self, agent_name, date=None):
-        """獲取指定代理每日總成交額"""
+        """獲取指定代理每日總成交額（返回完整統計 dict，含 currency_breakdown）"""
         params = {}
         if date:
             params["date"] = date
-        
+
         try:
             response = requests.get(
                 f"{self.base_url}/transactions/daily/{agent_name}",
@@ -98,31 +98,59 @@ class APIClient:
                 headers=self._get_headers()
             )
             if response.status_code == 200:
-                return response.json()["total_amount"]
+                return response.json()
             elif response.status_code == 401:
                 if self.login():
                     return self.get_agent_daily_total(agent_name, date)
-            return 0
+            return {"total_amount": 0, "total_commission": 0, "transaction_count": 0, "currency_breakdown": {}}
         except Exception as e:
             print(f"❌ 獲取代理每日總額失敗：{e}")
-            return 0
-    
+            return {"total_amount": 0, "total_commission": 0, "transaction_count": 0, "currency_breakdown": {}}
+
     def get_period_total(self, days=7):
-        """獲取最近N天總成交額"""
+        """獲取最近N天總成交額（返回完整統計 dict，含 currency_breakdown）"""
         try:
             response = requests.get(
                 f"{self.base_url}/transactions/period/{days}",
                 headers=self._get_headers()
             )
             if response.status_code == 200:
-                return response.json()["total_amount"]
+                return response.json()
             elif response.status_code == 401:
                 if self.login():
                     return self.get_period_total(days)
-            return 0
+            return {"total_amount": 0, "total_commission": 0, "transaction_count": 0, "currency_breakdown": {}}
         except Exception as e:
             print(f"❌ 獲取周期總額失敗：{e}")
-            return 0
+            return {"total_amount": 0, "total_commission": 0, "transaction_count": 0, "currency_breakdown": {}}
+
+    def get_agent_period_total(self, agent_name: str, days: int = 7):
+        """獲取指定代理最近N天總成交額（返回完整統計 dict，含 currency_breakdown）"""
+        try:
+            response = requests.get(
+                f"{self.base_url}/transactions/agent-period/{days}/{agent_name}",
+                headers=self._get_headers()
+            )
+            if response.status_code == 200:
+                return response.json()
+            elif response.status_code == 401:
+                if self.login():
+                    return self.get_agent_period_total(agent_name, days)
+            return {"total_amount": 0, "total_commission": 0, "transaction_count": 0, "currency_breakdown": {}}
+        except Exception as e:
+            print(f"❌ 獲取代理周期總額失敗：{e}")
+            return {"total_amount": 0, "total_commission": 0, "transaction_count": 0, "currency_breakdown": {}}
+
+    @staticmethod
+    def _format_breakdown(breakdown: dict) -> str:
+        """將 currency_breakdown 轉為可讀字串，例如 '1,000 USD | 500 CNY'"""
+        if not breakdown:
+            return "0"
+        parts = []
+        for cur in sorted(breakdown.keys(), key=lambda c: (c != "USD", c != "HKD", c)):
+            data = breakdown[cur]
+            parts.append(f"{data['amount']:,} {cur}")
+        return " | ".join(parts)
     
     def get_all_agents(self):
         """獲取所有代理列表"""
@@ -256,23 +284,6 @@ class APIClient:
             print(f"❌ 獲取最後交易時間失敗：{e}")
             return None
         
-    def get_agent_period_total(self, agent_name: str, days: int = 7):
-        """獲取指定代理最近N天總成交額"""
-        try:
-            response = requests.get(
-                f"{self.base_url}/transactions/agent-period/{days}/{agent_name}",
-                headers=self._get_headers()
-            )
-            if response.status_code == 200:
-                return response.json()["total_amount"]
-            elif response.status_code == 401:
-                if self.login():
-                    return self.get_agent_period_total(agent_name, days)
-            return 0
-        except Exception as e:
-            print(f"❌ 獲取代理周期總額失敗：{e}")
-            return 0
-
     def get_last_transaction(self, agent_name: str = None):
         """獲取最近一筆交易，可選按代理過濾"""
         try:

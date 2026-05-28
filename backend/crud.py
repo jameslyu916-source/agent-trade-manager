@@ -6,6 +6,21 @@ from . import schemas
 from datetime import datetime, timezone, timedelta
 from .database import HK_TZ
 
+
+def _currency_breakdown(transactions) -> dict:
+    """將交易列表按貨幣分組統計，回傳 {"USD": {"amount": ..., "commission": ..., "count": ...}, ...}"""
+    breakdown = {}
+    for tx in transactions:
+        cur = getattr(tx, 'currency', None) or "HKD"
+        if cur not in breakdown:
+            breakdown[cur] = {"amount": 0, "commission": 0, "count": 0}
+        breakdown[cur]["amount"] += tx.amount
+        breakdown[cur]["commission"] += (tx.commission or 0)
+        breakdown[cur]["count"] += 1
+    # USD 優先顯示
+    return dict(sorted(breakdown.items(), key=lambda x: (x[0] != "USD", x[0] != "HKD", x[0])))
+
+
 def _get_utc_range_for_hk_date(date_str: str):
     """
     將香港日期字符串轉換為對應的UTC時間範圍
@@ -110,92 +125,80 @@ def create_transaction(db: Session, transaction: schemas.TransactionCreate):
     return db_transaction
 
 def get_daily_total(db: Session, date: str = None):
-    """獲取指定日期總成交額（香港時間日期）"""
+    """獲取指定日期總成交額（香港時間日期），含貨幣分類統計"""
     if not date:
         date = datetime.now(HK_TZ).strftime("%Y-%m-%d")
-    
+
     start_utc, end_utc = _get_utc_range_for_hk_date(date)
-    
-    result = db.query(Transaction).filter(
+
+    txs = db.query(Transaction).filter(
         Transaction.timestamp >= start_utc,
         Transaction.timestamp < end_utc
-    ).with_entities(
-        func.sum(Transaction.amount).label("total_amount"),
-        func.sum(Transaction.commission).label("total_commission"),
-        func.count(Transaction.id).label("transaction_count")
-    ).first()
-    
-    # 將元組轉換為與DailyStats模型匹配的字典
-    if result and result[0] is not None:
-        return {
-            "date": date,
-            "total_amount": result[0],
-            "total_commission": result[1] if result[1] else 0,
-            "transaction_count": result[2]
-        }
-    else:
-        # 無數據時返回默認值
-        return {
-            "date": date,
-            "total_amount": 0,
-            "total_commission": 0,
-            "transaction_count": 0
-        }
+    ).all()
+
+    if not txs:
+        return {"date": date, "total_amount": 0, "total_commission": 0, "transaction_count": 0, "currency_breakdown": {}}
+
+    breakdown = _currency_breakdown(txs)
+    total_amount = sum(tx.amount for tx in txs)
+    total_commission = sum(tx.commission or 0 for tx in txs)
+    return {
+        "date": date,
+        "total_amount": total_amount,
+        "total_commission": total_commission,
+        "transaction_count": len(txs),
+        "currency_breakdown": breakdown
+    }
 
 def get_agent_daily_total(db: Session, agent_name: str, date: str = None):
-    """獲取指定代理指定日期總成交額"""
+    """獲取指定代理指定日期總成交額，含貨幣分類統計"""
     if not date:
         date = datetime.now(HK_TZ).strftime("%Y-%m-%d")
-    
+
     start_utc, end_utc = _get_utc_range_for_hk_date(date)
-    
-    result = db.query(Transaction).filter(
+
+    txs = db.query(Transaction).filter(
         Transaction.agent_name == agent_name,
         Transaction.timestamp >= start_utc,
         Transaction.timestamp < end_utc
-    ).with_entities(
-        func.sum(Transaction.amount).label("total_amount"),
-        func.sum(Transaction.commission).label("total_commission"),
-        func.count(Transaction.id).label("transaction_count")
-    ).first()
-    
-    # 轉換為與AgentDailyStats模型匹配的字典
-    if result and result[0] is not None:
-        return {
-            "agent_name": agent_name,
-            "total_amount": result[0],
-            "total_commission": result[1] if result[1] else 0,
-            "transaction_count": result[2]
-        }
-    else:
-        return {
-            "agent_name": agent_name,
-            "total_amount": 0,
-            "total_commission": 0,
-            "transaction_count": 0
-        }
-        
+    ).all()
+
+    if not txs:
+        return {"agent_name": agent_name, "total_amount": 0, "total_commission": 0, "transaction_count": 0, "currency_breakdown": {}}
+
+    breakdown = _currency_breakdown(txs)
+    total_amount = sum(tx.amount for tx in txs)
+    total_commission = sum(tx.commission or 0 for tx in txs)
+    return {
+        "agent_name": agent_name,
+        "total_amount": total_amount,
+        "total_commission": total_commission,
+        "transaction_count": len(txs),
+        "currency_breakdown": breakdown
+    }
+
 def get_agent_period_total(db: Session, agent_name: str, days: int = 7):
-    """獲取指定代理最近N天總成交額"""
+    """獲取指定代理最近N天總成交額，含貨幣分類統計"""
     start_date = datetime.now(HK_TZ) - timedelta(days=days)
-    
-    result = db.query(Transaction).filter(
+
+    txs = db.query(Transaction).filter(
         Transaction.agent_name == agent_name,
         Transaction.timestamp >= start_date.astimezone(timezone.utc).isoformat()
-    ).with_entities(
-        func.sum(Transaction.amount).label("total_amount"),
-        func.sum(Transaction.commission).label("total_commission"),
-        func.count(Transaction.id).label("transaction_count")
-    ).first()
-    
-    if result and result[0] is not None:
-        return {
-            "agent_name": agent_name,
-            "total_amount": result[0],
-            "total_commission": result[1] or 0,
-            "transaction_count": result[2]
-        }
-    return {"agent_name": agent_name, "total_amount": 0, "total_commission": 0, "transaction_count": 0}
+    ).all()
+
+    if not txs:
+        return {"agent_name": agent_name, "total_amount": 0, "total_commission": 0, "transaction_count": 0, "currency_breakdown": {}}
+
+    breakdown = _currency_breakdown(txs)
+    total_amount = sum(tx.amount for tx in txs)
+    total_commission = sum(tx.commission or 0 for tx in txs)
+    return {
+        "agent_name": agent_name,
+        "total_amount": total_amount,
+        "total_commission": total_commission,
+        "transaction_count": len(txs),
+        "currency_breakdown": breakdown
+    }
 
 def get_all_daily_transactions(db: Session, date: str = None):
     """獲取指定日期所有交易記錄"""
@@ -210,34 +213,28 @@ def get_all_daily_transactions(db: Session, date: str = None):
     ).order_by(Transaction.timestamp.desc()).all()
 
 def get_period_total(db: Session, days: int = 7):
-    """獲取最近N天總成交額"""
+    """獲取最近N天總成交額，含貨幣分類統計"""
     end_date = datetime.now(HK_TZ)
     start_date = end_date - timedelta(days=days)
     date_str = f"最近{days}天"
-    
-    result = db.query(Transaction).filter(
+
+    txs = db.query(Transaction).filter(
         Transaction.timestamp >= start_date.astimezone(timezone.utc).isoformat()
-    ).with_entities(
-        func.sum(Transaction.amount).label("total_amount"),
-        func.sum(Transaction.commission).label("total_commission"),
-        func.count(Transaction.id).label("transaction_count")
-    ).first()
-    
-    # 轉換為與DailyStats模型匹配的字典
-    if result and result[0] is not None:
-        return {
-            "date": date_str,
-            "total_amount": result[0],
-            "total_commission": result[1] if result[1] else 0,
-            "transaction_count": result[2]
-        }
-    else:
-        return {
-            "date": date_str,
-            "total_amount": 0,
-            "total_commission": 0,
-            "transaction_count": 0
-        }
+    ).all()
+
+    if not txs:
+        return {"date": date_str, "total_amount": 0, "total_commission": 0, "transaction_count": 0, "currency_breakdown": {}}
+
+    breakdown = _currency_breakdown(txs)
+    total_amount = sum(tx.amount for tx in txs)
+    total_commission = sum(tx.commission or 0 for tx in txs)
+    return {
+        "date": date_str,
+        "total_amount": total_amount,
+        "total_commission": total_commission,
+        "transaction_count": len(txs),
+        "currency_breakdown": breakdown
+    }
         
 def get_all_transactions_for_period(db: Session, days: int = 30):
     """獲取最近N天所有交易（供AI分析使用），返回字典列表"""

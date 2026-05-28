@@ -1,61 +1,120 @@
 # bot/reporter.py
 import pandas as pd
 from datetime import datetime, timezone, timedelta
+from collections import defaultdict
 from .api_client import api_client
 
 # 香港時區 = UTC+8
 HK_TZ = timezone(timedelta(hours=8))
 
+
+def _get_currency_symbol(currency: str) -> str:
+    """貨幣代碼轉換為常見符號顯示"""
+    symbols = {"USD": "USD", "HKD": "HKD", "CNY": "CNY", "EUR": "EUR",
+               "GBP": "GBP", "JPY": "JPY", "AUD": "AUD", "SGD": "SGD",
+               "CAD": "CAD", "CHF": "CHF", "NZD": "NZD"}
+    return symbols.get(currency.upper(), currency.upper())
+
+
 def generate_daily_report(date=None):
-    """生成每日交易報表，返回Excel文件名和報表文本"""
+    """生成每日交易報表，支持多貨幣分開統計"""
     if not date:
-        # 獲取今日香港時間日期
         hk_now = datetime.now(timezone.utc).astimezone(HK_TZ)
         date = hk_now.strftime("%Y-%m-%d")
-    
-    # 通過API獲取今日所有交易記錄
-    transactions = api_client.get_recent_transactions(hours=24)  # 獲取最近24小時交易
-    # 過濾指定日期的交易
+
+    # 獲取最近24小時交易並過濾指定日期
+    transactions = api_client.get_recent_transactions(hours=24)
     daily_transactions = []
     for tx in transactions:
         tx_date = datetime.fromisoformat(tx["timestamp"]).astimezone(HK_TZ).strftime("%Y-%m-%d")
         if tx_date == date:
+            # 補充 currency 預設值（相容舊數據）
+            tx["currency"] = tx.get("currency") or "HKD"
             daily_transactions.append(tx)
-    
+
     if not daily_transactions:
         return None, f"📊 {date} 交易日報表\n\nℹ️ 今日暫無交易數據"
-    
-    # 創建DataFrame
-    df = pd.DataFrame(daily_transactions, columns=["agent_name", "amount", "timestamp", "commission"])
-    df.columns = ["代理名稱", "交易金額", "交易時間", "手續費"]
-    
+
+    # ── 按貨幣分組統計 ──
+    currency_groups = defaultdict(list)
+    for tx in daily_transactions:
+        currency_groups[tx["currency"]].append(tx)
+
+    # 創建 DataFrame（含貨幣欄位）
+    df = pd.DataFrame(daily_transactions)
+    if "currency" in df.columns:
+        df = df[["agent_name", "amount", "currency", "timestamp", "commission"]]
+        df.columns = ["代理名稱", "交易金額", "貨幣", "交易時間", "手續費"]
+    else:
+        df = df[["agent_name", "amount", "timestamp", "commission"]]
+        df.columns = ["代理名稱", "交易金額", "交易時間", "手續費"]
+
     # 轉換時間為香港時間
     df["交易時間"] = df["交易時間"].apply(
         lambda x: datetime.fromisoformat(x).replace(tzinfo=timezone.utc).astimezone(HK_TZ).strftime("%Y-%m-%d %H:%M:%S")
     )
-    
-    # 計算代理統計
-    agent_stats = df.groupby("代理名稱")[["交易金額", "手續費"]].sum().reset_index()
-    agent_stats.columns = ["代理名稱", "今日總成交額", "今日總手續費"]
-    agent_stats = agent_stats.sort_values("今日總成交額", ascending=False)
-    
-    # 計算總額
-    total_amount = df["交易金額"].sum()
-    total_commission = df["手續費"].sum()
-    
-    # 保存Excel文件
-    filename = f"交易報表_{date}_HKD.xlsx"
+
+    # ── 生成報表文本（按貨幣分開）──
+    report_text = f"📊 {date} 交易日報表\n"
+
+    # 先整理貨幣列表，USD 優先顯示
+    currency_order = sorted(currency_groups.keys(),
+                           key=lambda c: (c != "USD", c != "HKD", c))
+
+    grand_total_txs = 0
+
+    for cur in currency_order:
+        txs = currency_groups[cur]
+        total_amount = sum(t["amount"] for t in txs)
+        total_commission = sum(t["commission"] for t in txs)
+        grand_total_txs += len(txs)
+
+        report_text += f"\n{'─' * 30}\n"
+        report_text += f"💱 {cur}\n"
+        report_text += f"   交易筆數：{len(txs)} 筆\n"
+        report_text += f"   總成交額：{total_amount:,} {cur}\n"
+        report_text += f"   總手續費：{total_commission:,} {cur}\n"
+
+        # 按代理排名
+        agent_amounts = defaultdict(lambda: {"amount": 0, "commission": 0})
+        for t in txs:
+            a = t["agent_name"]
+            agent_amounts[a]["amount"] += t["amount"]
+            agent_amounts[a]["commission"] += t["commission"]
+
+        sorted_agents = sorted(agent_amounts.items(),
+                              key=lambda x: x[1]["amount"], reverse=True)
+        for i, (name, stats) in enumerate(sorted_agents, 1):
+            report_text += f"   {i}. {name}：{stats['amount']:,} {cur}"
+            if stats["commission"] > 0:
+                report_text += f"（手續費：{stats['commission']:,} {cur}）"
+            report_text += "\n"
+
+    report_text += f"\n{'─' * 30}\n"
+    report_text += f"📋 今日共 {grand_total_txs} 筆交易，{len(currency_groups)} 種貨幣"
+
+    # ── 保存 Excel（每個貨幣一個 sheet）──
+    filename = f"交易報表_{date}.xlsx"
     with pd.ExcelWriter(filename) as writer:
-        df.to_excel(writer, sheet_name="交易明細", index=False)
-        agent_stats.to_excel(writer, sheet_name="代理統計", index=False)
-    
-    # 生成報表文本
-    report_text = f"📊 {date} 交易日報表\n\n"
-    report_text += f"💰 今日總成交額：{total_amount:,} HKD\n"
-    report_text += f"💸 今日總手續費：{total_commission:,} HKD\n\n"
-    report_text += "📋 各代理總成交額排名：\n"
-    
-    for i, (_, row) in enumerate(agent_stats.iterrows(), start=1):
-        report_text += f"{i}. {row['代理名稱']}：{row['今日總成交額']:,} HKD（手續費：{row['今日總手續費']:,} HKD）\n"
-    
+        df.to_excel(writer, sheet_name="全部交易", index=False)
+
+        # 按貨幣分 sheet
+        for cur in currency_order:
+            cur_df = df[df["貨幣"] == cur] if "貨幣" in df.columns else df
+            # 代理統計
+            cur_txs = currency_groups[cur]
+            agent_stats_data = defaultdict(lambda: {"amount": 0, "commission": 0})
+            for t in cur_txs:
+                agent_stats_data[t["agent_name"]]["amount"] += t["amount"]
+                agent_stats_data[t["agent_name"]]["commission"] += t["commission"]
+
+            agent_rows = [
+                {"代理名稱": name, f"{cur}總成交額": s["amount"], f"{cur}總手續費": s["commission"]}
+                for name, s in sorted(agent_stats_data.items(),
+                                     key=lambda x: x[1]["amount"], reverse=True)
+            ]
+            pd.DataFrame(agent_rows).to_excel(
+                writer, sheet_name=f"{cur}-代理統計", index=False
+            )
+
     return filename, report_text

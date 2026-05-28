@@ -55,12 +55,14 @@ class DailyStats(BaseModel):
     total_amount: int
     total_commission: int
     transaction_count: int
+    currency_breakdown: dict = {}  # {"USD": {"amount": 1000, "commission": 50, "count": 2}, ...}
 
 class AgentDailyStats(BaseModel):
     agent_name: str
     total_amount: int
     total_commission: int
     transaction_count: int
+    currency_breakdown: dict = {}  # {"USD": {"amount": 1000, "commission": 50, "count": 1}, ...}
     
 # ==================== Anomaly Detection ====================
 class AnomalyTransaction(BaseModel):

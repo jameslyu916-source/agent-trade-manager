@@ -292,13 +292,17 @@
                     apiRequest("/transactions/list")
                 ]);
 
-                // 更新統計卡片
-                document.getElementById("totalAmount").textContent = formatHKD(dailyStats.total_amount);
+                // 更新統計卡片 — 總成交額按貨幣分類顯示
+                document.getElementById("totalAmount").innerHTML = formatCurrencyBreakdown(dailyStats.currency_breakdown);
                 document.getElementById("totalCommission").textContent = formatHKD(dailyStats.total_commission);
                 document.getElementById("transactionCount").textContent = dailyStats.transaction_count;
 
-                // 代理排名 - 排序
-                const agentStats = agentStatsRaw.map(s => ({ name: s.agent_name, amount: s.total_amount }));
+                // 代理排名 - 排序（按各貨幣加總，主要用於排序）
+                const agentStats = agentStatsRaw.map(s => ({
+                    name: s.agent_name,
+                    amount: s.total_amount,
+                    breakdown: s.currency_breakdown || {}
+                }));
                 agentStats.sort((a, b) => b.amount - a.amount);
                 const maxAmount = agentStats.length > 0 ? agentStats[0].amount : 1;
 
@@ -308,13 +312,18 @@
                 } else {
                     rankingDiv.innerHTML = agentStats.map((agent, i) => {
                         const pct = maxAmount > 0 ? (agent.amount / maxAmount * 100) : 0;
+                        // 多貨幣時顯示分類，單一貨幣直接顯示
+                        const currencies = Object.keys(agent.breakdown);
+                        const amountDisplay = currencies.length > 1
+                            ? currencies.map(c => `${agent.breakdown[c].amount.toLocaleString('zh-HK')} <span class="text-xs text-gray-400">${c}</span>`).join(' <span class="text-gray-300">|</span> ')
+                            : `<span class="font-bold">${agent.amount.toLocaleString('zh-HK')}</span> <span class="text-xs text-gray-400">${currencies[0] || ''}</span>`;
                         return `
                             <div class="flex items-center space-x-3 py-2.5 px-3 rounded-lg hover:bg-gray-50 transition-colors">
                                 <div class="shrink-0">${medalIcon(i)}</div>
                                 <div class="flex-1 min-w-0">
                                     <div class="flex justify-between items-baseline mb-1">
                                         <span class="text-sm font-semibold text-gray-800 truncate">${agent.name}</span>
-                                        <span class="text-sm font-bold text-gray-700 ml-2 shrink-0">${formatHKD(agent.amount)}</span>
+                                        <span class="text-sm text-gray-700 ml-2 shrink-0">${amountDisplay}</span>
                                     </div>
                                     <div class="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
                                         <div class="h-full ${rankBarColor(i)} rounded-full transition-all duration-700 ease-out" style="width: ${pct}%"></div>

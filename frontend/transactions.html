@@ -265,11 +265,22 @@
                 allTransactions = await apiRequest(url);
                 document.getElementById("txCount").textContent = `共 ${allTransactions.length} 筆交易`;
 
-                // 更新摘要卡片
+                // 更新摘要卡片 — 按貨幣分類
                 document.getElementById("summaryCount").textContent = allTransactions.length;
-                const totalAmount = allTransactions.reduce((sum, tx) => sum + tx.amount, 0);
-                const totalCommission = allTransactions.reduce((sum, tx) => sum + (tx.commission || 0), 0);
-                document.getElementById("summaryAmount").textContent = formatHKD(totalAmount);
+
+                const currencyTotals = {};
+                let totalCommission = 0;
+                for (const tx of allTransactions) {
+                    const cur = tx.currency || "USD";
+                    if (!currencyTotals[cur]) currencyTotals[cur] = 0;
+                    currencyTotals[cur] += tx.amount;
+                    totalCommission += (tx.commission || 0);
+                }
+                const amountHtml = Object.entries(currencyTotals)
+                    .sort(([a], [b]) => (a !== "USD" ? 1 : -1))
+                    .map(([cur, amt]) => `<span class="text-xs font-medium text-gray-400">${cur}</span> <span class="text-lg font-bold text-gray-900">${amt.toLocaleString('zh-HK')}</span>`)
+                    .join('<span class="mx-2 text-gray-300 text-sm">|</span>') || '<span class="text-gray-400">-</span>';
+                document.getElementById("summaryAmount").innerHTML = amountHtml;
                 document.getElementById("summaryCommission").textContent = formatHKD(totalCommission);
 
                 if (allTransactions.length === 0) {

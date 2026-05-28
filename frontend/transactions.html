@@ -175,6 +175,7 @@
                                 <th class="px-6 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">交易金額</th>
                                 <th class="px-6 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">手續費</th>
                                 <th class="px-6 py-3.5 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">數據來源</th>
+                                <th class="px-6 py-3.5 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">操作</th>
                             </tr>
                         </thead>
                         <tbody id="transactionTable" class="divide-y divide-gray-100">
@@ -185,6 +186,7 @@
                                 <td class="px-6 py-3.5"><div class="skeleton h-4 w-24 ml-auto"></div></td>
                                 <td class="px-6 py-3.5"><div class="skeleton h-4 w-20 ml-auto"></div></td>
                                 <td class="px-6 py-3.5"><div class="skeleton h-4 w-16 mx-auto"></div></td>
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-8 mx-auto"></div></td>
                             </tr>
                             <tr class="skeleton-row">
                                 <td class="px-6 py-3.5"><div class="skeleton h-4 w-32"></div></td>
@@ -192,6 +194,7 @@
                                 <td class="px-6 py-3.5"><div class="skeleton h-4 w-28 ml-auto"></div></td>
                                 <td class="px-6 py-3.5"><div class="skeleton h-4 w-16 ml-auto"></div></td>
                                 <td class="px-6 py-3.5"><div class="skeleton h-4 w-14 mx-auto"></div></td>
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-8 mx-auto"></div></td>
                             </tr>
                             <tr class="skeleton-row">
                                 <td class="px-6 py-3.5"><div class="skeleton h-4 w-40"></div></td>
@@ -199,6 +202,7 @@
                                 <td class="px-6 py-3.5"><div class="skeleton h-4 w-20 ml-auto"></div></td>
                                 <td class="px-6 py-3.5"><div class="skeleton h-4 w-24 ml-auto"></div></td>
                                 <td class="px-6 py-3.5"><div class="skeleton h-4 w-20 mx-auto"></div></td>
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-8 mx-auto"></div></td>
                             </tr>
                             <tr class="skeleton-row">
                                 <td class="px-6 py-3.5"><div class="skeleton h-4 w-34"></div></td>
@@ -206,6 +210,7 @@
                                 <td class="px-6 py-3.5"><div class="skeleton h-4 w-22 ml-auto"></div></td>
                                 <td class="px-6 py-3.5"><div class="skeleton h-4 w-18 ml-auto"></div></td>
                                 <td class="px-6 py-3.5"><div class="skeleton h-4 w-16 mx-auto"></div></td>
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-8 mx-auto"></div></td>
                             </tr>
                             <tr class="skeleton-row">
                                 <td class="px-6 py-3.5"><div class="skeleton h-4 w-36"></div></td>
@@ -213,6 +218,7 @@
                                 <td class="px-6 py-3.5"><div class="skeleton h-4 w-26 ml-auto"></div></td>
                                 <td class="px-6 py-3.5"><div class="skeleton h-4 w-20 ml-auto"></div></td>
                                 <td class="px-6 py-3.5"><div class="skeleton h-4 w-14 mx-auto"></div></td>
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-8 mx-auto"></div></td>
                             </tr>
                         </tbody>
                     </table>
@@ -267,14 +273,14 @@
                 document.getElementById("summaryCommission").textContent = formatHKD(totalCommission);
 
                 if (allTransactions.length === 0) {
-                    tableBody.innerHTML = `<tr><td colspan="5" class="px-6 py-14">${renderEmptyState("暫無交易記錄", date ? `於 ${date} 沒有找到交易數據` : "今日尚無交易")}</td></tr>`;
+                    tableBody.innerHTML = `<tr><td colspan="6" class="px-6 py-14">${renderEmptyState("暫無交易記錄", date ? `於 ${date} 沒有找到交易數據` : "今日尚無交易")}</td></tr>`;
                     return;
                 }
 
                 renderPage(0);
 
             } catch (error) {
-                tableBody.innerHTML = '<tr><td colspan="5" class="px-6 py-14 text-center text-red-500 text-sm">載入失敗，請稍後重試</td></tr>';
+                tableBody.innerHTML = '<tr><td colspan="6" class="px-6 py-14 text-center text-red-500 text-sm">載入失敗，請稍後重試</td></tr>';
                 console.error("加載交易記錄失敗：", error);
             }
         }
@@ -306,6 +312,11 @@
                             ${tx.source}
                         </span>
                     </td>
+                    <td class="px-6 py-3.5 whitespace-nowrap text-sm text-center">
+                        <button onclick="deleteTx(${tx.id})" class="text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors text-xs font-semibold" title="刪除此交易">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                        </button>
+                    </td>
                 `;
                 tableBody.appendChild(row);
             });
@@ -326,6 +337,18 @@
                 nextBtn.onclick = () => { if (page < totalPages - 1) renderPage(page + 1); };
             } else {
                 pagination.classList.add("hidden");
+            }
+        }
+        async function deleteTx(id) {
+            if (!confirm("確定要刪除此筆交易記錄嗎？此操作無法復原。")) return;
+
+            try {
+                await apiRequest(`/transactions/${id}`, "DELETE");
+                showToast("success", "交易記錄已刪除");
+                await loadTransactions();
+            } catch (error) {
+                showToast("error", "刪除失敗，請稍後重試");
+                console.error("刪除交易失敗：", error);
             }
         }
     </script>

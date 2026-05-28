@@ -174,3 +174,73 @@ def parse_transaction(message_text: str) -> dict | None:
             }
 
     return None
+
+
+# ═══════════════════════════════════════════
+#  取消 / 撤銷 指令解析
+# ═══════════════════════════════════════════
+
+_CANCEL_KEYWORDS = [
+    "取消", "撤銷", "撤销", "刪除", "删除", "移除",
+    "undo", "cancel", "remove", "delete", "revert",
+]
+
+
+def parse_cancellation(message_text: str) -> dict | None:
+    """
+    檢測是否為取消交易指令。
+    支援格式：
+      取消 / 撤销 / undo / cancel
+      取消上一筆 / undo last
+      取消 代理A           → 刪除該代理最近一筆
+      取消 代理A 1000       → 精確匹配代理+金額
+      删除 代理B 500
+    """
+    if not message_text or not message_text.strip():
+        return None
+
+    text = message_text.strip().lower()
+
+    # 確認是否以取消關鍵詞開頭
+    matched_kw = None
+    for kw in _CANCEL_KEYWORDS:
+        if text.startswith(kw.lower()):
+            matched_kw = kw
+            break
+    if not matched_kw:
+        return None
+
+    # 移除關鍵詞本身
+    remainder = text[len(matched_kw):].strip()
+
+    # "取消" 單獨使用 → 取消上一筆
+    if not remainder or remainder in ("上一筆", "上一笔", "上一单", "last", "上一條", "上一"):
+        return {"action": "cancel", "target": "last"}
+
+    # "取消所有" 或 "取消全部"
+    if remainder in ("所有", "全部", "all"):
+        return {"action": "cancel", "target": "all_today"}
+
+    # 嘗試從剩餘文字提取代理名 + 可選金額
+    t = _normalize(remainder)
+    t = _remove_noise(t)
+
+    agent, amount = _extract_agent_and_amount(t)
+
+    if agent and amount:
+        agent = agent.strip().rstrip(":：=+-*/>\\")
+        if 1 <= len(agent) <= 50:
+            return {"action": "cancel", "target": "specific", "agent_name": agent, "amount": amount}
+
+    # 只有代理名沒有金額
+    if agent:
+        agent = agent.strip().rstrip(":：=+-*/>\\")
+        if 1 <= len(agent) <= 50:
+            return {"action": "cancel", "target": "agent", "agent_name": agent}
+
+    # 如果剩餘文字看起來像一個代理名（不含數字）
+    remainder_clean = remainder.strip().rstrip(":：=+-*/>\\")
+    if 1 <= len(remainder_clean) <= 50 and not re.search(r"\d", remainder_clean):
+        return {"action": "cancel", "target": "agent", "agent_name": remainder_clean}
+
+    return None

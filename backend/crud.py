@@ -257,3 +257,27 @@ def get_all_transactions_for_period(db: Session, days: int = 30):
         }
         for tx in transactions
     ]
+
+def get_transaction_by_id(db: Session, transaction_id: int):
+    """按 ID 查詢單筆交易"""
+    return db.query(Transaction).filter(Transaction.id == transaction_id).first()
+
+def get_last_transaction(db: Session, agent_name: str = None):
+    """獲取最近一筆交易，可選按代理過濾"""
+    query = db.query(Transaction)
+    if agent_name:
+        query = query.filter(Transaction.agent_name == agent_name)
+    return query.order_by(Transaction.timestamp.desc()).first()
+
+def delete_transaction(db: Session, transaction_id: int):
+    """刪除交易並退回代理累計收益"""
+    tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    if not tx:
+        return None
+    agent = get_agent_by_name(db, tx.agent_name)
+    if agent:
+        agent.total_earnings = max(0, agent.total_earnings - tx.commission)
+    agent_name = tx.agent_name
+    db.delete(tx)
+    db.commit()
+    return agent_name

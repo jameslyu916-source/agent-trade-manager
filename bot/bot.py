@@ -13,7 +13,7 @@ from telegram.ext import (
 )
 from telegram.request import HTTPXRequest
 # Import the transaction parser
-from .parser import parse_transaction
+from .parser import parse_transaction, parse_cancellation
 
 # Import the API client
 from .api_client import api_client
@@ -193,7 +193,49 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     message = update.effective_message
     user_name = message.from_user.username or message.from_user.first_name
     print(f"收到群消息 [{message.chat.title}] {user_name}: {message.text}")
-    
+
+    # ── 優先檢查是否為取消指令 ──
+    cancellation = parse_cancellation(message.text)
+    if cancellation:
+        print(f"🔙 檢測到取消指令: {cancellation}")
+        try:
+            if cancellation["target"] == "last":
+                # 取消最近一筆交易
+                last_tx = api_client.get_last_transaction()
+                if last_tx:
+                    api_client.delete_transaction(last_tx["id"])
+                    await update.message.reply_text(
+                        f"✅ 已取消上一筆交易：{last_tx['agent_name']} {last_tx['amount']:,} HKD"
+                    )
+                else:
+                    await update.message.reply_text("⚠️ 沒有找到可取消的交易記錄")
+            elif cancellation["target"] == "agent":
+                # 取消指定代理最近一筆
+                agent = cancellation["agent_name"]
+                last_tx = api_client.get_last_transaction(agent)
+                if last_tx:
+                    api_client.delete_transaction(last_tx["id"])
+                    await update.message.reply_text(
+                        f"✅ 已取消 {agent} 的最近一筆交易：{last_tx['amount']:,} HKD"
+                    )
+                else:
+                    await update.message.reply_text(f"⚠️ 沒有找到 {agent} 的交易記錄")
+            elif cancellation["target"] == "specific":
+                # 精確匹配：取消指定代理+金額的交易
+                agent = cancellation["agent_name"]
+                amount = cancellation["amount"]
+                deleted = api_client.delete_transaction_by_agent_amount(agent, amount)
+                if deleted:
+                    await update.message.reply_text(
+                        f"✅ 已取消 {agent} 的交易：{amount:,} HKD"
+                    )
+                else:
+                    await update.message.reply_text(f"⚠️ 沒有找到 {agent} 金額 {amount:,} HKD 的交易")
+        except Exception as e:
+            print(f"取消交易失敗：{e}")
+            await update.message.reply_text(f"❌ 取消失敗：{e}")
+        return
+
     transaction = parse_transaction(message.text)
     if transaction:
         # Check if the agent is in the whitelist before saving the transaction

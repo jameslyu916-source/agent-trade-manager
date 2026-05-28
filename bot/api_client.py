@@ -269,4 +269,63 @@ class APIClient:
         except Exception as e:
             print(f"❌ 獲取代理周期總額失敗：{e}")
             return 0
+
+    def get_last_transaction(self, agent_name: str = None):
+        """獲取最近一筆交易，可選按代理過濾"""
+        try:
+            params = {}
+            if agent_name:
+                params["agent_name"] = agent_name
+            response = requests.get(
+                f"{self.base_url}/transactions/last",
+                params=params,
+                headers=self._get_headers()
+            )
+            if response.status_code == 200:
+                return response.json()
+            elif response.status_code == 401:
+                if self.login():
+                    return self.get_last_transaction(agent_name)
+            return None
+        except Exception as e:
+            print(f"❌ 獲取最後交易失敗：{e}")
+            return None
+
+    def delete_transaction(self, transaction_id: int):
+        """刪除指定ID的交易"""
+        try:
+            response = requests.delete(
+                f"{self.base_url}/transactions/{transaction_id}",
+                headers=self._get_headers()
+            )
+            if response.status_code == 200:
+                return True
+            elif response.status_code == 401:
+                if self.login():
+                    return self.delete_transaction(transaction_id)
+            return False
+        except Exception as e:
+            print(f"❌ 刪除交易失敗：{e}")
+            return False
+
+    def delete_transaction_by_agent_amount(self, agent_name: str, amount: int):
+        """按代理名+金額精確匹配並刪除最近一筆匹配的交易"""
+        try:
+            # 先獲取今日交易列表
+            response = requests.get(
+                f"{self.base_url}/transactions/list",
+                headers=self._get_headers()
+            )
+            if response.status_code == 200:
+                transactions = response.json()
+                for tx in transactions:
+                    if tx["agent_name"] == agent_name and tx["amount"] == amount:
+                        return self.delete_transaction(tx["id"])
+            elif response.status_code == 401:
+                if self.login():
+                    return self.delete_transaction_by_agent_amount(agent_name, amount)
+            return False
+        except Exception as e:
+            print(f"❌ 按代理金額刪除交易失敗：{e}")
+            return False
 api_client = APIClient(API_BASE_URL)

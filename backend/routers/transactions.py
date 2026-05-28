@@ -80,3 +80,35 @@ async def get_all_agents_daily_summary(
     """一次獲取所有代理今日統計（供儀表盤使用）"""
     agents = crud.get_all_agents(db=db)
     return [crud.get_agent_daily_total(db=db, agent_name=a.agent_name, date=date) for a in agents]
+
+@router.get("/last")
+async def get_last_transaction(
+    agent_name: str = None,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """獲取最近一筆交易，用於「取消上一筆」功能"""
+    tx = crud.get_last_transaction(db, agent_name)
+    if not tx:
+        raise HTTPException(status_code=404, detail="沒有找到交易記錄")
+    return {
+        "id": tx.id,
+        "agent_name": tx.agent_name,
+        "amount": tx.amount,
+        "commission": tx.commission,
+        "timestamp": tx.timestamp,
+        "raw_message": tx.raw_message,
+        "source": tx.source
+    }
+
+@router.delete("/{transaction_id}")
+async def delete_transaction(
+    transaction_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """刪除指定交易記錄"""
+    result = crud.delete_transaction(db, transaction_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="交易不存在")
+    return {"message": f"已刪除 {result} 的交易記錄"}

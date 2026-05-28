@@ -22,18 +22,15 @@ def generate_daily_report(date=None):
         hk_now = datetime.now(timezone.utc).astimezone(HK_TZ)
         date = hk_now.strftime("%Y-%m-%d")
 
-    # 獲取最近24小時交易並過濾指定日期
-    transactions = api_client.get_recent_transactions(hours=24)
-    daily_transactions = []
-    for tx in transactions:
-        tx_date = datetime.fromisoformat(tx["timestamp"]).astimezone(HK_TZ).strftime("%Y-%m-%d")
-        if tx_date == date:
-            # 補充 currency 預設值（相容舊數據）
-            tx["currency"] = tx.get("currency") or "HKD"
-            daily_transactions.append(tx)
+    # 直接透過 API 獲取指定日期的交易（含 currency 欄位）
+    daily_transactions = api_client.get_daily_transactions(date=date)
 
     if not daily_transactions:
         return None, f"📊 {date} 交易日報表\n\nℹ️ 今日暫無交易數據"
+
+    # 補充 currency 預設值（相容舊數據）
+    for tx in daily_transactions:
+        tx["currency"] = tx.get("currency") or "USD"
 
     # ── 按貨幣分組統計 ──
     currency_groups = defaultdict(list)

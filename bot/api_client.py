@@ -238,6 +238,27 @@ class APIClient:
         """獲取所有白名單代理（兼容舊代碼，與get_all_agents功能相同）"""
         return self.get_all_agents()
 
+    def get_daily_transactions(self, date=None):
+        """獲取指定日期的所有交易記錄（含 currency 和 payment_details）"""
+        params = {}
+        if date:
+            params["date"] = date
+        try:
+            response = requests.get(
+                f"{self.base_url}/transactions/list",
+                params=params,
+                headers=self._get_headers()
+            )
+            if response.status_code == 200:
+                return response.json()
+            elif response.status_code == 401:
+                if self.login():
+                    return self.get_daily_transactions(date)
+            return []
+        except Exception as e:
+            print(f"❌ 獲取每日交易列表失敗：{e}")
+            return []
+
     def get_recent_transactions(self, hours=1):
         """獲取最近N小時的所有交易記錄（用於異常檢查）"""
         try:

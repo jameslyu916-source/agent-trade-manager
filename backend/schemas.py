@@ -1,7 +1,7 @@
 # backend/schemas.py --- IGNORE ---
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Union
 
 # ==================== Authentication ====================
 class UserLogin(BaseModel):
@@ -22,10 +22,23 @@ class AgentCreate(AgentBase):
 
 class AgentResponse(AgentBase):
     id: int
-    total_earnings: int
+    total_earnings: dict  # {"USD": 1000, "HKD": 500}
     is_active: bool
     created_at: datetime
-    
+
+    @field_validator('total_earnings', mode='before')
+    @classmethod
+    def parse_earnings(cls, v):
+        if isinstance(v, str):
+            import json
+            try:
+                return json.loads(v)
+            except (json.JSONDecodeError, TypeError):
+                return {}
+        if isinstance(v, int):  # Legacy: old integer format
+            return {"HKD": v} if v > 0 else {}
+        return v or {}
+
     class Config:
         from_attributes = True  # 支持直接從ORM模型轉換為Pydantic模型
 
@@ -75,6 +88,7 @@ class AnomalyTransaction(BaseModel):
     id: int
     agent_name: str
     amount: int
+    currency: str = "USD"
     timestamp: str
     is_anomaly: bool
     anomaly_score: float

@@ -337,19 +337,22 @@
                 document.getElementById("summaryCount").textContent = allTransactions.length;
 
                 const currencyTotals = {};
-                let totalCommission = 0;
+                const currencyCommissions = {};
                 for (const tx of allTransactions) {
                     const cur = tx.currency || "USD";
-                    if (!currencyTotals[cur]) currencyTotals[cur] = 0;
+                    if (!currencyTotals[cur]) { currencyTotals[cur] = 0; currencyCommissions[cur] = 0; }
                     currencyTotals[cur] += tx.amount;
-                    totalCommission += (tx.commission || 0);
+                    currencyCommissions[cur] += (tx.commission || 0);
                 }
-                const amountHtml = Object.entries(currencyTotals)
-                    .sort(([a], [b]) => (a !== "USD" ? 1 : -1))
-                    .map(([cur, amt]) => `<span class="text-xs font-medium text-gray-400">${cur}</span> <span class="text-lg font-bold text-gray-900">${amt.toLocaleString('zh-HK')}</span>`)
+                const sortedCurrencies = Object.keys(currencyTotals).sort((a, b) => (a !== "USD" ? 1 : -1));
+                const amountHtml = sortedCurrencies
+                    .map(cur => `<span class="text-xs font-medium text-gray-400">${cur}</span> <span class="text-lg font-bold text-gray-900">${currencyTotals[cur].toLocaleString('zh-HK')}</span>`)
                     .join('<span class="mx-2 text-gray-300 text-sm">|</span>') || '<span class="text-gray-400">-</span>';
                 document.getElementById("summaryAmount").innerHTML = amountHtml;
-                document.getElementById("summaryCommission").textContent = formatHKD(totalCommission);
+                const commissionHtml = sortedCurrencies
+                    .map(cur => `<span class="text-xs font-medium text-gray-400">${cur}</span> <span class="text-lg font-bold text-gray-900">${currencyCommissions[cur].toLocaleString('zh-HK')}</span>`)
+                    .join('<span class="mx-2 text-gray-300 text-sm">|</span>') || '<span class="text-gray-400">-</span>';
+                document.getElementById("summaryCommission").innerHTML = commissionHtml;
 
                 if (allTransactions.length === 0) {
                     tableBody.innerHTML = `<tr><td colspan="6" class="px-6 py-14">${renderEmptyState("暫無交易記錄", date ? `於 ${date} 沒有找到交易數據` : "今日尚無交易")}</td></tr>`;
@@ -386,7 +389,7 @@
                     <td class="px-6 py-3.5 whitespace-nowrap text-sm font-bold text-blue-600 text-right">
                         ${formatCurrency(tx.amount, tx.currency || 'USD')}
                     </td>
-                    <td class="px-6 py-3.5 whitespace-nowrap text-sm font-semibold text-emerald-600 text-right">${formatHKD(tx.commission)}</td>
+                    <td class="px-6 py-3.5 whitespace-nowrap text-sm font-semibold text-emerald-600 text-right">${formatCurrency(tx.commission, tx.currency || 'USD')}</td>
                     <td class="px-6 py-3.5 whitespace-nowrap text-sm text-center">
                         <span class="inline-flex items-center gap-1 bg-gray-100 text-gray-600 px-2.5 py-1 rounded-lg text-xs font-medium">
                             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>

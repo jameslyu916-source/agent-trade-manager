@@ -5,6 +5,46 @@ from .database import User, Agent, Transaction  # 從database.py導入所有模�
 from . import schemas
 from datetime import datetime, timezone, timedelta
 from .database import HK_TZ
+import json
+
+
+def _parse_earnings(agent) -> dict:
+    """解析代理的 total_earnings JSON 字串為 dict"""
+    val = getattr(agent, 'total_earnings', '{}')
+    if isinstance(val, dict):
+        return val
+    if isinstance(val, int):
+        return {"HKD": val} if val > 0 else {}
+    if isinstance(val, str) and val.strip():
+        try:
+            return json.loads(val)
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return {}
+
+
+def _save_earnings(agent, earnings: dict):
+    """將 earnings dict 序列化並寫回 agent.total_earnings"""
+    agent.total_earnings = json.dumps(
+        {k: v for k, v in earnings.items() if v > 0},
+        ensure_ascii=False
+    ) if earnings else '{}'
+
+
+def _add_earnings(agent, currency: str, amount: int):
+    """增加指定貨幣的累計收益"""
+    earnings = _parse_earnings(agent)
+    cur = (currency or "USD").upper()
+    earnings[cur] = earnings.get(cur, 0) + amount
+    _save_earnings(agent, earnings)
+
+
+def _subtract_earnings(agent, currency: str, amount: int):
+    """減少指定貨幣的累計收益（不低於 0）"""
+    earnings = _parse_earnings(agent)
+    cur = (currency or "USD").upper()
+    earnings[cur] = max(0, earnings.get(cur, 0) - amount)
+    _save_earnings(agent, earnings)
 
 
 def _currency_breakdown(transactions) -> dict:
@@ -115,9 +155,10 @@ def create_transaction(db: Session, transaction: schemas.TransactionCreate):
         payment_details=transaction.payment_details if hasattr(transaction, 'payment_details') and transaction.payment_details else None
     )
     
-    # 更新代理累計收益
+    # 更新代理累計收益（按貨幣）
     if agent:
-        agent.total_earnings += commission
+        cur = transaction.currency if hasattr(transaction, 'currency') and transaction.currency else "USD"
+        _add_earnings(agent, cur, commission)
     
     db.add(db_transaction)
     db.commit()
@@ -279,7 +320,8 @@ def delete_transaction(db: Session, transaction_id: int):
         return None
     agent = get_agent_by_name(db, tx.agent_name)
     if agent:
-        agent.total_earnings = max(0, agent.total_earnings - tx.commission)
+        cur = getattr(tx, 'currency', None) or "USD"
+        _subtract_earnings(agent, cur, tx.commission)
     agent_name = tx.agent_name
     db.delete(tx)
     db.commit()
@@ -313,15 +355,15 @@ def update_transaction(db: Session, transaction_id: int, updates: dict):
     commission_rate = agent.commission_rate if agent else 0.05
     tx.commission = int(round(new_amount * commission_rate))
 
-    # 調整代理收益
-    # 先退回舊代理的收益
+    # 調整代理收益（按貨幣）
+    # 先退回舊代理的舊貨幣收益
     old_agent = get_agent_by_name(db, old_agent_name)
     if old_agent:
-        old_agent.total_earnings = max(0, old_agent.total_earnings - old_commission)
-    # 加上新代理的收益
+        _subtract_earnings(old_agent, old_currency or "USD", old_commission)
+    # 加上新代理的新貨幣收益
     new_agent = get_agent_by_name(db, new_agent_name)
     if new_agent:
-        new_agent.total_earnings += tx.commission
+        _add_earnings(new_agent, tx.currency or "USD", tx.commission)
 
     db.commit()
     db.refresh(tx)

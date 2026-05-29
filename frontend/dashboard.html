@@ -294,7 +294,7 @@
 
                 // 更新統計卡片 — 總成交額按貨幣分類顯示
                 document.getElementById("totalAmount").innerHTML = formatCurrencyBreakdown(dailyStats.currency_breakdown);
-                document.getElementById("totalCommission").textContent = formatHKD(dailyStats.total_commission);
+                document.getElementById("totalCommission").innerHTML = formatCurrencyBreakdown(dailyStats.currency_breakdown, 'commission');
                 document.getElementById("transactionCount").textContent = dailyStats.transaction_count;
 
                 // 代理排名 - 排序（按各貨幣加總，主要用於排序）

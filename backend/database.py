@@ -40,7 +40,7 @@ class Agent(Base):
     id = Column(Integer, primary_key=True, index=True)
     agent_name = Column(String, unique=True, index=True, nullable=False)
     commission_rate = Column(Float, default=0.05)  # 手續費率（預設5%）
-    total_earnings = Column(Integer, default=0)    # 累計收益（HKD）
+    total_earnings = Column(String, default='{}')    # 累計收益（JSON: {"USD": 1000, "HKD": 500}）
     is_active = Column(Boolean, default=True)      # 是否啟用
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -73,6 +73,27 @@ def _migrate():
             conn.exec_driver_sql("UPDATE transactions SET currency = 'HKD' WHERE currency IS NULL OR currency = ''")
         if "payment_details" not in existing_cols:
             conn.exec_driver_sql("ALTER TABLE transactions ADD COLUMN payment_details TEXT")
+
+        # Migrate agent total_earnings from Integer to JSON string
+        result = conn.exec_driver_sql("PRAGMA table_info(agents)")
+        agent_cols = {row[1]: row[2] for row in result.fetchall()}
+        if "total_earnings" in agent_cols and agent_cols["total_earnings"].upper() in ("INTEGER", "INT"):
+            # Read all agent earnings, convert to JSON format
+            rows = conn.exec_driver_sql("SELECT agent_name, total_earnings FROM agents").fetchall()
+            import json as _json
+            for agent_name, earnings in rows:
+                if isinstance(earnings, int) and earnings > 0:
+                    new_val = _json.dumps({"HKD": earnings}, ensure_ascii=False)
+                    conn.exec_driver_sql(
+                        "UPDATE agents SET total_earnings = ? WHERE agent_name = ?",
+                        (new_val, agent_name)
+                    )
+                elif isinstance(earnings, int):
+                    conn.exec_driver_sql(
+                        "UPDATE agents SET total_earnings = '{}' WHERE agent_name = ?",
+                        (agent_name,)
+                    )
+            print("✅ Agent total_earnings 已遷移至多貨幣 JSON 格式")
 
 _migrate()
 

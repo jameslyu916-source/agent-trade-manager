@@ -119,11 +119,19 @@ function escapeHtml(str) {
     return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function formatCurrencyBreakdown(breakdown) {
+function formatCurrencyBreakdown(breakdown, field = 'amount') {
     if (!breakdown || Object.keys(breakdown).length === 0) return '<span class="text-gray-400">-</span>';
     return Object.entries(breakdown).map(([cur, data]) =>
-        `<span class="inline-flex items-center gap-1 text-sm font-bold"><span class="text-xs font-medium text-gray-400">${cur}</span> ${data.amount.toLocaleString('zh-HK')}</span>`
+        `<span class="inline-flex items-center gap-1 text-sm font-bold"><span class="text-xs font-medium text-gray-400">${cur}</span> ${(data[field] || 0).toLocaleString('zh-HK')}</span>`
     ).join('<span class="mx-1.5 text-gray-300">|</span>');
+}
+
+function formatEarnings(earnings) {
+    if (!earnings || Object.keys(earnings).length === 0) return '<span class="text-gray-400">-</span>';
+    return Object.entries(earnings)
+        .sort(([a], [b]) => (a !== "USD" ? 1 : -1))
+        .map(([cur, amt]) => `<span class="text-xs font-medium text-gray-400">${cur}</span> ${amt.toLocaleString('zh-HK')}`)
+        .join('<span class="mx-1.5 text-gray-300">|</span>');
 }
 
 function renderPaymentDetails(paymentDetailsJson) {

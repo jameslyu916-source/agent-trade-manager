@@ -306,7 +306,7 @@
                         <tr class="hover:bg-gray-50/50 transition-colors animate-fade-in-up" style="animation-delay: ${i * 0.04}s">
                             <td class="px-6 py-3.5 whitespace-nowrap text-sm text-gray-600">${utcToHKTime(tx.timestamp)}</td>
                             <td class="px-6 py-3.5 whitespace-nowrap text-sm font-semibold text-gray-900">${tx.agent_name}</td>
-                            <td class="px-6 py-3.5 whitespace-nowrap text-sm font-bold text-red-600 text-right">${formatHKD(tx.amount)}</td>
+                            <td class="px-6 py-3.5 whitespace-nowrap text-sm font-bold text-red-600 text-right">${formatCurrency(tx.amount, tx.currency || 'USD')}</td>
                             <td class="px-6 py-3.5 whitespace-nowrap text-sm text-center">
                                 <div class="inline-flex items-center gap-2">
                                     ${severityBadge(tx.anomaly_score)}

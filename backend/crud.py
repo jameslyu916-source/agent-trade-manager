@@ -284,3 +284,45 @@ def delete_transaction(db: Session, transaction_id: int):
     db.delete(tx)
     db.commit()
     return agent_name
+
+def update_transaction(db: Session, transaction_id: int, updates: dict):
+    """更新交易記錄，自動重新計算手續費並調整代理收益"""
+    tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    if not tx:
+        return None
+
+    old_agent_name = tx.agent_name
+    old_commission = tx.commission
+    old_amount = tx.amount
+    old_currency = tx.currency
+
+    # 更新基本欄位
+    if "agent_name" in updates:
+        tx.agent_name = updates["agent_name"]
+    if "amount" in updates:
+        tx.amount = updates["amount"]
+    if "currency" in updates:
+        tx.currency = updates["currency"]
+    if "payment_details" in updates:
+        tx.payment_details = updates["payment_details"]
+
+    # 重新計算手續費（如果金額或代理變更）
+    new_agent_name = tx.agent_name
+    new_amount = tx.amount
+    agent = get_agent_by_name(db, new_agent_name)
+    commission_rate = agent.commission_rate if agent else 0.05
+    tx.commission = int(round(new_amount * commission_rate))
+
+    # 調整代理收益
+    # 先退回舊代理的收益
+    old_agent = get_agent_by_name(db, old_agent_name)
+    if old_agent:
+        old_agent.total_earnings = max(0, old_agent.total_earnings - old_commission)
+    # 加上新代理的收益
+    new_agent = get_agent_by_name(db, new_agent_name)
+    if new_agent:
+        new_agent.total_earnings += tx.commission
+
+    db.commit()
+    db.refresh(tx)
+    return tx

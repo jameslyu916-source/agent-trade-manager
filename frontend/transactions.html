@@ -225,6 +225,74 @@
                 </div>
             </div>
 
+            <!-- 編輯交易彈窗 -->
+            <div id="editModal" class="fixed inset-0 z-[9999] hidden items-center justify-center" style="background: rgba(0,0,0,0.4); backdrop-filter: blur(2px);">
+                <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto animate-fade-in-up">
+                    <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                        <h3 class="text-lg font-bold text-gray-800">編輯交易記錄</h3>
+                        <button onclick="closeEditModal()" class="text-gray-400 hover:text-gray-600 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+                    <form id="editForm" class="px-6 py-4 space-y-4">
+                        <input type="hidden" id="editTxId">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-600 mb-1">代理名稱</label>
+                                <input type="text" id="editAgentName" required class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-600 mb-1">貨幣</label>
+                                <select id="editCurrency" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400">
+                                    <option value="USD">USD</option><option value="HKD">HKD</option><option value="CNY">CNY</option>
+                                    <option value="EUR">EUR</option><option value="GBP">GBP</option><option value="JPY">JPY</option>
+                                    <option value="AUD">AUD</option><option value="SGD">SGD</option><option value="CAD">CAD</option>
+                                    <option value="CHF">CHF</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-600 mb-1">交易金額</label>
+                            <input type="number" id="editAmount" min="1" required class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400">
+                        </div>
+                        <details class="group" open>
+                            <summary class="text-xs font-semibold text-gray-500 cursor-pointer hover:text-gray-700 select-none">付款詳情（可選）</summary>
+                            <div class="mt-3 space-y-3">
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-500 mb-1">SWIFT 代碼 <span id="swiftStatus" class="text-gray-400"></span></label>
+                                        <input type="text" id="editSwift" placeholder="如 HSBCHKHH" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-500 mb-1">銀行代碼 <span id="bankCodeStatus" class="text-gray-400"></span></label>
+                                        <input type="text" id="editBankCode" placeholder="如 004" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-500 mb-1">銀行名稱</label>
+                                    <input type="text" id="editBankName" placeholder="銀行全名" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400">
+                                </div>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-500 mb-1">戶口號碼</label>
+                                        <input type="text" id="editAccountNumber" placeholder="戶口號碼" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-500 mb-1">戶口全名</label>
+                                        <input type="text" id="editAccountName" placeholder="戶口全名" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400">
+                                    </div>
+                                </div>
+                            </div>
+                        </details>
+                        <div id="editValidationErrors" class="hidden text-xs text-red-500 space-y-1 bg-red-50 rounded-lg p-3"></div>
+                        <div class="flex gap-3 pt-2">
+                            <button type="button" onclick="closeEditModal()" class="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">取消</button>
+                            <button type="submit" id="saveEditBtn" class="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 text-white py-2.5 rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all font-semibold text-sm shadow-md shadow-blue-500/25 disabled:opacity-50 disabled:cursor-not-allowed">保存修改</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
             <!-- 分頁控制 -->
             <div id="pagination" class="flex items-center justify-between mt-5 animate-fade-in-up hidden" style="animation-delay: 0.15s;">
                 <p id="pageInfo" class="text-sm text-gray-500"></p>
@@ -327,9 +395,14 @@
                         ${renderPaymentDetails(tx.payment_details)}
                     </td>
                     <td class="px-6 py-3.5 whitespace-nowrap text-sm text-center">
-                        <button onclick="deleteTx(${tx.id})" class="text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors text-xs font-semibold" title="刪除此交易">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                        </button>
+                        <div class="flex items-center justify-center gap-1">
+                            <button onclick="editTx(${tx.id})" class="text-blue-400 hover:text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors" title="編輯此交易">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                            </button>
+                            <button onclick="deleteTx(${tx.id})" class="text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded-lg transition-colors" title="刪除此交易">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                            </button>
+                        </div>
                     </td>
                 `;
                 tableBody.appendChild(row);
@@ -353,6 +426,162 @@
                 pagination.classList.add("hidden");
             }
         }
+        // ═══════════════════════════════════════
+        //  編輯交易功能
+        // ═══════════════════════════════════════
+
+        function validateSwiftFormat(swift) {
+            const v = swift.trim();
+            if (!v) return { valid: true, error: null };  // 空值不報錯
+            if (/^[A-Za-z]{4}[A-Za-z]{2}[A-Za-z0-9]{2}([A-Za-z0-9]{3})?$/.test(v)) {
+                return { valid: true, error: null };
+            }
+            if (/[一-鿿　-〿＀-￯：:，,、。]/.test(v)) return { valid: false, error: "含非英文字元（可能缺少換行）" };
+            if (v.includes(' ')) return { valid: false, error: "含空格（可能合併了多個欄位）" };
+            if (v.length < 8 || v.length > 11) return { valid: false, error: `長度異常（${v.length} 字元，應為 8 或 11 位）` };
+            if (/[^A-Za-z0-9]/.test(v)) return { valid: false, error: "含非法字元（僅允許英數字）" };
+            return { valid: false, error: "格式不正確（應為 8 或 11 位英數字）" };
+        }
+
+        function validateBankCodeFormat(code) {
+            const v = code.trim();
+            if (!v) return { valid: true, error: null };
+            if (/^\d{3}$/.test(v)) return { valid: true, error: null };
+            return { valid: false, error: "銀行代碼應為 3 位數字" };
+        }
+
+        function editTx(id) {
+            const tx = allTransactions.find(t => t.id === id);
+            if (!tx) return showToast("找不到該筆交易", "error");
+
+            document.getElementById("editTxId").value = tx.id;
+            document.getElementById("editAgentName").value = tx.agent_name;
+            document.getElementById("editAmount").value = tx.amount;
+            document.getElementById("editCurrency").value = (tx.currency || "USD").toUpperCase();
+
+            // 解析 payment_details JSON
+            let pd = {};
+            try {
+                pd = typeof tx.payment_details === "string" ? JSON.parse(tx.payment_details) : (tx.payment_details || {});
+            } catch (e) { pd = {}; }
+
+            document.getElementById("editSwift").value = pd.swift || "";
+            document.getElementById("editBankName").value = pd.bank_name || "";
+            document.getElementById("editBankCode").value = pd.bank_code || "";
+            document.getElementById("editAccountNumber").value = pd.account_number || "";
+            document.getElementById("editAccountName").value = pd.account_name || "";
+
+            // 即時驗證 SWIFT / 銀行代碼
+            updateSwiftStatus();
+            updateBankCodeStatus();
+
+            document.getElementById("editValidationErrors").classList.add("hidden");
+            document.getElementById("editValidationErrors").innerHTML = "";
+            document.getElementById("editModal").classList.add("flex");
+            document.getElementById("editModal").classList.remove("hidden");
+        }
+
+        function closeEditModal() {
+            document.getElementById("editModal").classList.add("hidden");
+            document.getElementById("editModal").classList.remove("flex");
+        }
+
+        function updateSwiftStatus() {
+            const swift = document.getElementById("editSwift").value;
+            const status = document.getElementById("swiftStatus");
+            if (!swift.trim()) { status.textContent = ""; return; }
+            const { valid, error } = validateSwiftFormat(swift);
+            if (valid) {
+                status.innerHTML = '<span class="text-emerald-500">✓</span>';
+            } else {
+                status.innerHTML = `<span class="text-red-500" title="${error}">✗ ${error}</span>`;
+            }
+        }
+
+        function updateBankCodeStatus() {
+            const code = document.getElementById("editBankCode").value;
+            const status = document.getElementById("bankCodeStatus");
+            if (!code.trim()) { status.textContent = ""; return; }
+            const { valid, error } = validateBankCodeFormat(code);
+            if (valid) {
+                status.innerHTML = '<span class="text-emerald-500">✓</span>';
+            } else {
+                status.innerHTML = `<span class="text-red-500" title="${error}">✗ ${error}</span>`;
+            }
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            document.getElementById("editSwift").addEventListener("input", updateSwiftStatus);
+            document.getElementById("editBankCode").addEventListener("input", updateBankCodeStatus);
+        });
+
+        // 點擊背景關閉彈窗
+        document.getElementById("editModal").addEventListener("click", function(e) {
+            if (e.target === this) closeEditModal();
+        });
+
+        document.getElementById("editForm").addEventListener("submit", async function(e) {
+            e.preventDefault();
+            const errors = [];
+            const id = document.getElementById("editTxId").value;
+            const agentName = document.getElementById("editAgentName").value.trim();
+            const amount = parseInt(document.getElementById("editAmount").value);
+            const currency = document.getElementById("editCurrency").value;
+            const swift = document.getElementById("editSwift").value.trim();
+            const bankCode = document.getElementById("editBankCode").value.trim();
+            const bankName = document.getElementById("editBankName").value.trim();
+            const accountNumber = document.getElementById("editAccountNumber").value.trim();
+            const accountName = document.getElementById("editAccountName").value.trim();
+
+            if (!agentName) errors.push("代理名稱不能為空");
+            if (!amount || amount <= 0) errors.push("交易金額必須為正整數");
+            if (!currency) errors.push("請選擇貨幣");
+
+            // 驗證 SWIFT 格式
+            if (swift) {
+                const sv = validateSwiftFormat(swift);
+                if (!sv.valid) errors.push(`SWIFT 代碼：${sv.error}`);
+            }
+            // 驗證銀行代碼格式
+            if (bankCode) {
+                const bc = validateBankCodeFormat(bankCode);
+                if (!bc.valid) errors.push(`銀行代碼：${bc.error}`);
+            }
+
+            const errorDiv = document.getElementById("editValidationErrors");
+            if (errors.length > 0) {
+                errorDiv.classList.remove("hidden");
+                errorDiv.innerHTML = errors.map(e => `<div>• ${escapeHtml(e)}</div>`).join("");
+                return;
+            }
+            errorDiv.classList.add("hidden");
+
+            // 構建 payment_details
+            const paymentDetails = { swift, bank_name: bankName, bank_code: bankCode, account_number: accountNumber, account_name: accountName };
+
+            const saveBtn = document.getElementById("saveEditBtn");
+            saveBtn.disabled = true;
+            saveBtn.textContent = "保存中...";
+
+            try {
+                await apiRequest(`/transactions/${id}`, "PUT", {
+                    agent_name: agentName,
+                    amount: amount,
+                    currency: currency,
+                    payment_details: JSON.stringify(paymentDetails)
+                });
+                showToast("交易記錄已更新", "success");
+                closeEditModal();
+                await loadTransactions();
+            } catch (error) {
+                showToast("更新失敗：" + (error.message || "請稍後重試"), "error");
+                console.error("編輯交易失敗：", error);
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.textContent = "保存修改";
+            }
+        });
+
         async function deleteTx(id) {
             if (!confirm("確定要刪除此筆交易記錄嗎？此操作無法復原。")) return;
 

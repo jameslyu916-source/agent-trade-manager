@@ -188,15 +188,36 @@ def _parse_amount_with_currency(raw_value: str) -> tuple[int | None, str]:
 
 def _validate_swift(swift: str) -> tuple[bool, bool]:
     """
-    驗證 SWIFT/BIC 代碼，返回 (格式正確, 看起來像SWIFT但可能有解析問題)
-    - 格式正確：標準8或11位字母數字
-    - 可能有解析問題：值裡包含中文、冒號、空格等非SWIFT字符
+    驗證 SWIFT/BIC 代碼，返回 (格式正確, 資料異常應阻擋記錄)
+
+    - 格式正確：標準 8 或 11 位字母數字
+    - 資料異常：值明顯不是 SWIFT（太長/太短/含特殊字符/含中文/含空格），應阻擋記錄
     """
     v = swift.strip()
+
+    # 標準 SWIFT 格式：4字母(銀行) + 2字母(國家) + 2字母數字(地區) + 可選3字母數字(分行)
     if re.match(r'^[A-Za-z]{4}[A-Za-z]{2}[A-Za-z0-9]{2}([A-Za-z0-9]{3})?$', v):
-        return True, False   # 格式正確
-    # 檢查是否明顯是解析錯誤（含中文、冒號、多餘空格等）
-    looks_broken = bool(re.search(r'[一-鿿　-〿＀-￯：:，,]', v))
+        return True, False
+
+    # ── 判斷是否「明顯不是 SWIFT 代碼」→ 應阻擋記錄 ──
+    looks_broken = False
+
+    # 含中文、全角字符、冒號、逗號（通常是解析錯誤/缺換行）
+    if re.search(r'[一-鿿　-〿＀-￯：:，,、。]', v):
+        looks_broken = True
+
+    # 含空格 → 合併了多個欄位
+    if ' ' in v:
+        looks_broken = True
+
+    # 長度異常（SWIFT 必須是 8 或 11 位）
+    if len(v) < 8 or len(v) > 11:
+        looks_broken = True
+
+    # 含非字母數字字符（特殊符號如 @#$% 等）
+    if re.search(r'[^A-Za-z0-9]', v):
+        looks_broken = True
+
     return False, looks_broken
 
 

@@ -115,3 +115,30 @@ async def delete_transaction(
     if result is None:
         raise HTTPException(status_code=404, detail="交易不存在")
     return {"message": f"已刪除 {result} 的交易記錄"}
+
+@router.put("/{transaction_id}")
+async def update_transaction(
+    transaction_id: int,
+    updates: schemas.TransactionUpdate,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """更新交易記錄"""
+    tx = crud.update_transaction(db, transaction_id, updates.model_dump(exclude_unset=True))
+    if tx is None:
+        raise HTTPException(status_code=404, detail="交易不存在")
+    # 檢查代理是否存在且活躍
+    agent = crud.get_agent_by_name(db, tx.agent_name)
+    if not agent or not agent.is_active:
+        raise HTTPException(status_code=400, detail="代理不存在或未啟用")
+    return {
+        "id": tx.id,
+        "agent_name": tx.agent_name,
+        "amount": tx.amount,
+        "currency": getattr(tx, 'currency', 'USD') or 'USD',
+        "commission": tx.commission,
+        "timestamp": tx.timestamp,
+        "raw_message": tx.raw_message,
+        "source": tx.source,
+        "payment_details": getattr(tx, 'payment_details', None)
+    }

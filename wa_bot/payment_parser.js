@@ -165,12 +165,26 @@ function parseAmountWithCurrency(rawValue) {
 
 function validateSwift(swift) {
   // 返回 { valid: bool, looksBroken: bool }
-  // looksBroken = 明顯是解析錯誤（含中文、冒號等非SWIFT字符）
+  // looksBroken = 明顯不是 SWIFT（太長/太短/含特殊字符/含中文/含空格），應阻擋記錄
   const v = swift.trim();
   if (/^[A-Za-z]{4}[A-Za-z]{2}[A-Za-z0-9]{2}([A-Za-z0-9]{3})?$/.test(v)) {
     return { valid: true, looksBroken: false };
   }
-  const looksBroken = /[一-鿿　-〿＀-￯：:，,]/.test(v);
+
+  let looksBroken = false;
+
+  // 含中文、全角字符、冒號、逗號（通常是解析錯誤/缺換行）
+  if (/[一-鿿　-〿＀-￯：:，,、。]/.test(v)) looksBroken = true;
+
+  // 含空格 → 合併了多個欄位
+  if (v.includes(' ')) looksBroken = true;
+
+  // 長度異常（SWIFT 必須是 8 或 11 位）
+  if (v.length < 8 || v.length > 11) looksBroken = true;
+
+  // 含非字母數字字符（特殊符號如 @#$% 等）
+  if (/[^A-Za-z0-9]/.test(v)) looksBroken = true;
+
   return { valid: false, looksBroken };
 }
 

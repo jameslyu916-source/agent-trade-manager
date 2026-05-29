@@ -41,6 +41,12 @@ class TransactionBase(BaseModel):
 class TransactionCreate(TransactionBase):
     timestamp: Optional[str] = None  # 可選，默認當前UTC時間
 
+class TransactionUpdate(BaseModel):
+    agent_name: Optional[str] = None
+    amount: Optional[int] = Field(default=None, gt=0)
+    currency: Optional[str] = None
+    payment_details: Optional[str] = None
+
 class TransactionResponse(TransactionBase):
     id: int
     commission: int

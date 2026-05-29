@@ -3,8 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>代理管理 - 代理交易管理系統</title>
+    <title>代理管理 - TradeManager Pro</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+          }
+        }
+      }
+    </script>
     <script src="utils.js"></script>
     <style>
         @keyframes fadeInUp {
@@ -17,37 +30,37 @@
         }
         .animate-fade-in-up { animation: fadeInUp 0.5s ease-out both; }
         .skeleton {
-            background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
+            background: linear-gradient(90deg, #334155 25%, #475569 50%, #334155 75%);
             background-size: 800px 100%;
             animation: shimmer 1.8s infinite;
             border-radius: 6px;
         }
         .sidebar-link {
-            transition: all 0.15s ease;
+            transition: all 0.2s ease;
         }
         .sidebar-link:hover {
-            background-color: #eff6ff;
+            background-color: rgba(245,158,11,0.08);
             padding-left: 16px;
         }
     </style>
 </head>
-<body class="bg-gradient-to-br from-gray-50 via-blue-50/30 to-gray-100 min-h-screen">
+<body class="bg-slate-950 min-h-screen font-sans antialiased">
 
     <!-- 頂部導航欄 -->
-    <nav class="bg-white/80 backdrop-blur-md border-b border-gray-200/60 sticky top-0 z-50">
+    <nav class="bg-slate-900/80 backdrop-blur-xl border-b border-slate-800 sticky top-0 z-50">
         <div class="max-w-7xl mx-auto px-6 py-3 flex justify-between items-center">
             <div class="flex items-center space-x-3">
-                <div class="w-9 h-9 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center shadow-md shadow-blue-500/25">
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div class="w-9 h-9 from-amber-500 to-amber-600 bg-gradient-to-br rounded-lg flex items-center justify-center shadow-md shadow-amber-500/20">
+                    <svg class="w-5 h-5 text-slate-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
                     </svg>
                 </div>
-                <h1 class="text-lg font-bold text-gray-800 tracking-tight">代理交易管理系統</h1>
+                <h1 class="text-lg font-bold text-slate-100 tracking-tight">TradeManager <span class="text-amber-400">Pro</span></h1>
             </div>
             <div class="flex items-center space-x-3">
-                <div class="w-8 h-8 bg-gradient-to-br from-emerald-400 to-emerald-500 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-sm">A</div>
-                <span class="text-sm text-gray-600 font-medium">管理員</span>
-                <button onclick="logout()" class="text-sm bg-white border border-gray-200 text-gray-600 px-3.5 py-1.5 rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all duration-150 font-medium">登出</button>
+                <div class="w-8 h-8 from-amber-400 to-amber-500 bg-gradient-to-br rounded-full flex items-center justify-center text-slate-900 text-xs font-bold shadow-sm">A</div>
+                <span class="text-sm text-slate-400 font-medium">管理員</span>
+                <button onclick="logout()" class="text-sm bg-slate-800 border border-slate-700 text-slate-300 px-3.5 py-1.5 rounded-lg hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 transition-all duration-200 font-medium">登出</button>
             </div>
         </div>
     </nav>
@@ -56,34 +69,34 @@
     <div class="max-w-7xl mx-auto px-6 py-6 flex gap-6">
         <!-- 側邊欄 -->
         <aside class="w-52 shrink-0">
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-3 sticky top-24">
+            <div class="bg-slate-900 rounded-xl border border-slate-800 p-3 sticky top-24">
                 <ul class="space-y-1">
                     <li>
-                        <a href="dashboard.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-gray-600 hover:text-gray-900 text-sm font-medium">
+                        <a href="dashboard.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
                             <span>儀表盤</span>
                         </a>
                     </li>
                     <li>
-                        <a href="transactions.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-gray-600 hover:text-gray-900 text-sm font-medium">
+                        <a href="transactions.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
                             <span>交易記錄</span>
                         </a>
                     </li>
                     <li>
-                        <a href="agents.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg bg-blue-50 text-blue-700 font-semibold text-sm">
+                        <a href="agents.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg bg-amber-500/10 text-amber-400 font-semibold text-sm">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                             <span>代理管理</span>
                         </a>
                     </li>
                     <li>
-                        <a href="reports.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-gray-600 hover:text-gray-900 text-sm font-medium">
+                        <a href="reports.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                             <span>報表下載</span>
                         </a>
                     </li>
                     <li>
-                        <a href="risk.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-gray-600 hover:text-gray-900 text-sm font-medium">
+                        <a href="risk.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
                             <span>風險監控</span>
                         </a>
@@ -96,12 +109,12 @@
         <main class="flex-1 min-w-0">
             <div class="flex justify-between items-center mb-6 animate-fade-in-up" style="animation-delay: 0s;">
                 <div>
-                    <h2 class="text-2xl font-bold text-gray-800">代理管理</h2>
-                    <p class="text-sm text-gray-500 mt-1" id="agentCount">管理代理帳戶與手續費率</p>
+                    <h2 class="text-2xl font-bold text-slate-100">代理管理</h2>
+                    <p class="text-sm text-slate-400 mt-1" id="agentCount">管理代理帳戶與手續費率</p>
                 </div>
                 <button
                     onclick="openAddAgentModal()"
-                    class="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-2.5 rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all text-sm font-semibold shadow-md shadow-blue-500/25 hover:shadow-lg hover:shadow-blue-500/30 active:scale-[0.98] flex items-center space-x-1.5"
+                    class="bg-gradient-to-r from-amber-500 to-amber-600 text-white px-4 py-2.5 rounded-xl hover:from-amber-600 hover:to-amber-700 transition-all text-sm font-semibold shadow-md shadow-amber-500/20 hover:shadow-lg hover:shadow-amber-500/30 active:scale-[0.98] flex items-center space-x-1.5"
                 >
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                     <span>添加代理</span>
@@ -109,15 +122,15 @@
             </div>
 
             <!-- 代理列表表格 -->
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-fade-in-up" style="animation-delay: 0.1s;">
+            <div class="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden animate-fade-in-up" style="animation-delay: 0.1s;">
                 <table class="w-full">
                     <thead>
-                        <tr class="bg-gray-50/80">
-                            <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">代理名稱</th>
-                            <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">手續費率</th>
-                            <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">累計收益</th>
-                            <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">狀態</th>
-                            <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">操作</th>
+                        <tr class="bg-slate-800/80">
+                            <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">代理名稱</th>
+                            <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">手續費率</th>
+                            <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">累計收益</th>
+                            <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">狀態</th>
+                            <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">操作</th>
                         </tr>
                     </thead>
                     <tbody id="agentTable" class="divide-y divide-gray-100">
@@ -133,37 +146,37 @@
 
     <!-- 添加代理模態框 -->
     <div id="addAgentModal" class="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center hidden z-50">
-        <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md animate-fade-in-up">
+        <div class="bg-slate-900 rounded-2xl shadow-2xl p-6 w-full max-w-md animate-fade-in-up">
             <div class="flex items-center justify-between mb-5">
-                <h3 class="text-lg font-bold text-gray-800">添加新代理</h3>
-                <button onclick="closeAddAgentModal()" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600">
+                <h3 class="text-lg font-bold text-slate-100">添加新代理</h3>
+                <button onclick="closeAddAgentModal()" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-800 transition-colors text-slate-500 hover:text-slate-400">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
             </div>
             <form id="addAgentForm" class="space-y-4">
                 <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-1.5">代理名稱</label>
+                    <label class="block text-sm font-semibold text-slate-300 mb-1.5">代理名稱</label>
                     <input
                         type="text"
                         id="agentName"
-                        class="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400 transition-all"
+                        class="w-full px-4 py-2.5 border border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500/50 transition-all"
                         placeholder="請輸入代理名稱"
                         required
                     >
                 </div>
                 <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-1.5">手續費率（例如：0.05 表示 5%）</label>
+                    <label class="block text-sm font-semibold text-slate-300 mb-1.5">手續費率（例如：0.05 表示 5%）</label>
                     <input
                         type="number"
                         id="commissionRate"
                         step="0.01" min="0" max="1" value="0.05"
-                        class="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400 transition-all"
+                        class="w-full px-4 py-2.5 border border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500/50 transition-all"
                         required
                     >
                 </div>
                 <div class="flex justify-end space-x-3 pt-2">
-                    <button type="button" onclick="closeAddAgentModal()" class="px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">取消</button>
-                    <button type="submit" class="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all text-sm font-semibold shadow-md shadow-blue-500/25">確認添加</button>
+                    <button type="button" onclick="closeAddAgentModal()" class="px-4 py-2.5 border border-slate-700 rounded-xl text-sm font-medium text-slate-400 hover:bg-slate-800 transition-colors">取消</button>
+                    <button type="submit" class="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-xl hover:from-amber-600 hover:to-amber-700 transition-all text-sm font-semibold shadow-md shadow-amber-500/20">確認添加</button>
                 </div>
             </form>
         </div>
@@ -171,32 +184,32 @@
 
     <!-- 修改手續費模態框 -->
     <div id="editCommissionModal" class="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center hidden z-50">
-        <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md animate-fade-in-up">
+        <div class="bg-slate-900 rounded-2xl shadow-2xl p-6 w-full max-w-md animate-fade-in-up">
             <div class="flex items-center justify-between mb-5">
-                <h3 class="text-lg font-bold text-gray-800">修改手續費率</h3>
-                <button onclick="closeEditCommissionModal()" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600">
+                <h3 class="text-lg font-bold text-slate-100">修改手續費率</h3>
+                <button onclick="closeEditCommissionModal()" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-800 transition-colors text-slate-500 hover:text-slate-400">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
             </div>
             <form id="editCommissionForm" class="space-y-4">
                 <input type="hidden" id="editAgentName">
                 <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-1.5">代理名稱</label>
-                    <p id="editAgentNameDisplay" class="text-sm font-semibold text-gray-900 bg-gray-50 rounded-xl px-4 py-2.5"></p>
+                    <label class="block text-sm font-semibold text-slate-300 mb-1.5">代理名稱</label>
+                    <p id="editAgentNameDisplay" class="text-sm font-semibold text-slate-200 bg-slate-800 rounded-xl px-4 py-2.5"></p>
                 </div>
                 <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-1.5">新手續費率</label>
+                    <label class="block text-sm font-semibold text-slate-300 mb-1.5">新手續費率</label>
                     <input
                         type="number"
                         id="editCommissionRate"
                         step="0.01" min="0" max="1"
-                        class="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400 transition-all"
+                        class="w-full px-4 py-2.5 border border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500/50 transition-all"
                         required
                     >
                 </div>
                 <div class="flex justify-end space-x-3 pt-2">
-                    <button type="button" onclick="closeEditCommissionModal()" class="px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">取消</button>
-                    <button type="submit" class="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all text-sm font-semibold shadow-md shadow-blue-500/25">確認修改</button>
+                    <button type="button" onclick="closeEditCommissionModal()" class="px-4 py-2.5 border border-slate-700 rounded-xl text-sm font-medium text-slate-400 hover:bg-slate-800 transition-colors">取消</button>
+                    <button type="submit" class="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-xl hover:from-amber-600 hover:to-amber-700 transition-all text-sm font-semibold shadow-md shadow-amber-500/20">確認修改</button>
                 </div>
             </form>
         </div>
@@ -225,29 +238,29 @@
                 tableBody.innerHTML = "";
                 agents.forEach(agent => {
                     const row = document.createElement("tr");
-                    row.className = "hover:bg-gray-50/50 transition-colors";
+                    row.className = "hover:bg-slate-800/50 transition-colors";
                     row.innerHTML = `
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">${agent.agent_name}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                            <span class="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-lg text-xs font-semibold">${(agent.commission_rate * 100).toFixed(1)}%</span>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-200">${agent.agent_name}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300">
+                            <span class="bg-amber-500/10 text-amber-400 px-2.5 py-1 rounded-lg text-xs font-semibold">${(agent.commission_rate * 100).toFixed(1)}%</span>
                         </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-emerald-600">${formatEarnings(agent.total_earnings)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-emerald-400">${formatEarnings(agent.total_earnings)}</td>
                         <td class="px-6 py-4 whitespace-nowrap">
-                            <span class="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700">
-                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                            <span class="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-700">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500/100"></span>
                                 <span>啟用</span>
                             </span>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-1">
-                            <button onclick="openEditCommissionModal('${agent.agent_name}', ${agent.commission_rate})" class="text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2.5 py-1.5 rounded-lg transition-colors text-xs font-semibold">修改手續費</button>
-                            <button onclick="deleteAgent('${agent.agent_name}')" class="text-red-500 hover:text-red-700 hover:bg-red-50 px-2.5 py-1.5 rounded-lg transition-colors text-xs font-semibold">刪除</button>
+                            <button onclick="openEditCommissionModal('${agent.agent_name}', ${agent.commission_rate})" class="text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 px-2.5 py-1.5 rounded-lg transition-colors text-xs font-semibold">修改手續費</button>
+                            <button onclick="deleteAgent('${agent.agent_name}')" class="text-red-400 hover:text-red-400 hover:bg-red-500/10 px-2.5 py-1.5 rounded-lg transition-colors text-xs font-semibold">刪除</button>
                         </td>
                     `;
                     tableBody.appendChild(row);
                 });
 
             } catch (error) {
-                tableBody.innerHTML = `<tr><td colspan="5" class="px-6 py-10 text-center text-red-500 text-sm">載入失敗，請稍後重試</td></tr>`;
+                tableBody.innerHTML = `<tr><td colspan="5" class="px-6 py-10 text-center text-red-400 text-sm">載入失敗，請稍後重試</td></tr>`;
                 console.error("加載代理列表失敗：", error);
             }
         }

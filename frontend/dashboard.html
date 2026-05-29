@@ -3,8 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>儀表盤 - 代理交易管理系統</title>
+    <title>儀表盤 - TradeManager Pro</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+          }
+        }
+      }
+    </script>
     <script src="utils.js?v=3"></script>
     <style>
         @keyframes fadeInUp {
@@ -16,14 +28,14 @@
             100% { background-position: 400px 0; }
         }
         @keyframes pulse-ring {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
-            50%      { box-shadow: 0 0 0 12px rgba(59, 130, 246, 0); }
+            0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
+            50%      { box-shadow: 0 0 0 12px rgba(245, 158, 11, 0); }
         }
         .animate-fade-in-up {
             animation: fadeInUp 0.5s ease-out both;
         }
         .skeleton {
-            background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
+            background: linear-gradient(90deg, #334155 25%, #475569 50%, #334155 75%);
             background-size: 800px 100%;
             animation: shimmer 1.8s infinite;
             border-radius: 6px;
@@ -33,38 +45,36 @@
         }
         .stat-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 12px 24px -8px rgba(0,0,0,0.12);
+            box-shadow: 0 4px 24px -4px rgba(245,158,11,0.15);
         }
         .sidebar-link {
-            transition: all 0.15s ease;
+            transition: all 0.2s ease;
         }
         .sidebar-link:hover {
-            background-color: #eff6ff;
+            background-color: rgba(245,158,11,0.08);
             padding-left: 16px;
         }
     </style>
 </head>
-<body class="bg-gradient-to-br from-gray-50 via-blue-50/30 to-gray-100 min-h-screen">
+<body class="bg-slate-950 min-h-screen font-sans antialiased">
 
     <!-- 頂部導航欄 -->
-    <nav class="bg-white/80 backdrop-blur-md border-b border-gray-200/60 sticky top-0 z-50">
+    <nav class="bg-slate-900/80 backdrop-blur-xl border-b border-slate-800 sticky top-0 z-50">
         <div class="max-w-7xl mx-auto px-6 py-3 flex justify-between items-center">
             <div class="flex items-center space-x-3">
-                <div class="w-9 h-9 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center shadow-md shadow-blue-500/25">
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div class="w-9 h-9 bg-gradient-to-br from-amber-500 to-amber-600 rounded-lg flex items-center justify-center shadow-md shadow-amber-500/20">
+                    <svg class="w-5 h-5 text-slate-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
                     </svg>
                 </div>
-                <h1 class="text-lg font-bold text-gray-800 tracking-tight">代理交易管理系統</h1>
+                <h1 class="text-lg font-bold text-slate-100 tracking-tight">TradeManager <span class="text-amber-400">Pro</span></h1>
             </div>
             <div class="flex items-center space-x-3">
-                <div class="w-8 h-8 bg-gradient-to-br from-emerald-400 to-emerald-500 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-sm">
-                    A
-                </div>
-                <span class="text-sm text-gray-600 font-medium">管理員</span>
+                <div class="w-8 h-8 bg-gradient-to-br from-amber-400 to-amber-500 rounded-full flex items-center justify-center text-slate-900 text-xs font-bold shadow-sm">A</div>
+                <span class="text-sm text-slate-400 font-medium">管理員</span>
                 <button
                     onclick="logout()"
-                    class="text-sm bg-white border border-gray-200 text-gray-600 px-3.5 py-1.5 rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all duration-150 font-medium"
+                    class="text-sm bg-slate-800 border border-slate-700 text-slate-300 px-3.5 py-1.5 rounded-lg hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 transition-all duration-200 font-medium"
                 >
                     登出
                 </button>
@@ -76,10 +86,10 @@
     <div class="max-w-7xl mx-auto px-6 py-6 flex gap-6">
         <!-- 側邊欄 -->
         <aside class="w-52 shrink-0">
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-3 sticky top-24">
+            <div class="bg-slate-900 rounded-xl border border-slate-800 p-3 sticky top-24">
                 <ul class="space-y-1">
                     <li>
-                        <a href="dashboard.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg bg-blue-50 text-blue-700 font-semibold text-sm">
+                        <a href="dashboard.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg bg-amber-500/10 text-amber-400 font-semibold text-sm">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
                             </svg>
@@ -87,7 +97,7 @@
                         </a>
                     </li>
                     <li>
-                        <a href="transactions.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-gray-600 hover:text-gray-900 text-sm font-medium">
+                        <a href="transactions.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
                             </svg>
@@ -95,7 +105,7 @@
                         </a>
                     </li>
                     <li>
-                        <a href="agents.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-gray-600 hover:text-gray-900 text-sm font-medium">
+                        <a href="agents.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
                             </svg>
@@ -103,7 +113,7 @@
                         </a>
                     </li>
                     <li>
-                        <a href="reports.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-gray-600 hover:text-gray-900 text-sm font-medium">
+                        <a href="reports.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                             </svg>
@@ -111,7 +121,7 @@
                         </a>
                     </li>
                     <li>
-                        <a href="risk.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-gray-600 hover:text-gray-900 text-sm font-medium">
+                        <a href="risk.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
                             <span>風險監控</span>
                         </a>
@@ -124,68 +134,68 @@
         <main class="flex-1 min-w-0">
             <!-- 歡迎區 -->
             <div class="mb-6 animate-fade-in-up" style="animation-delay: 0s;">
-                <h2 class="text-2xl font-bold text-gray-800">今日概覽</h2>
-                <p id="welcomeDate" class="text-sm text-gray-500 mt-1">載入中...</p>
+                <h2 class="text-2xl font-bold text-slate-100">今日概覽</h2>
+                <p id="welcomeDate" class="text-sm text-slate-500 mt-1">載入中...</p>
             </div>
 
             <!-- 統計卡片 -->
             <div id="statsRow" class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
                 <!-- Card 1: 總成交額 -->
-                <div class="stat-card bg-white rounded-xl shadow-sm border border-gray-100 p-6 animate-fade-in-up" style="animation-delay: 0.1s;">
+                <div class="stat-card bg-slate-900 rounded-xl border border-slate-800 p-6 animate-fade-in-up" style="animation-delay: 0.1s;">
                     <div class="flex items-start justify-between">
                         <div>
-                            <p class="text-sm font-medium text-gray-500 mb-1">今日總成交額</p>
-                            <p id="totalAmount" class="text-3xl font-bold text-gray-900 mt-1">
+                            <p class="text-sm font-medium text-slate-400 mb-1">今日總成交額</p>
+                            <p id="totalAmount" class="text-3xl font-bold text-slate-100 mt-1">
                                 <span class="skeleton inline-block w-28 h-8 align-middle"></span>
                             </p>
                         </div>
-                        <div class="w-11 h-11 bg-blue-50 rounded-xl flex items-center justify-center shrink-0">
-                            <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div class="w-11 h-11 bg-amber-500/10 rounded-xl flex items-center justify-center shrink-0">
+                            <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                             </svg>
                         </div>
                     </div>
-                    <div class="mt-3 flex items-center text-xs text-gray-400">
-                        <span>HKD 結算</span>
+                    <div class="mt-3 flex items-center text-xs text-slate-500">
+                        <span>多貨幣統計</span>
                     </div>
                 </div>
 
                 <!-- Card 2: 總手續費 -->
-                <div class="stat-card bg-white rounded-xl shadow-sm border border-gray-100 p-6 animate-fade-in-up" style="animation-delay: 0.2s;">
+                <div class="stat-card bg-slate-900 rounded-xl border border-slate-800 p-6 animate-fade-in-up" style="animation-delay: 0.2s;">
                     <div class="flex items-start justify-between">
                         <div>
-                            <p class="text-sm font-medium text-gray-500 mb-1">今日總手續費</p>
-                            <p id="totalCommission" class="text-3xl font-bold text-gray-900 mt-1">
+                            <p class="text-sm font-medium text-slate-400 mb-1">今日總手續費</p>
+                            <p id="totalCommission" class="text-3xl font-bold text-slate-100 mt-1">
                                 <span class="skeleton inline-block w-28 h-8 align-middle"></span>
                             </p>
                         </div>
-                        <div class="w-11 h-11 bg-emerald-50 rounded-xl flex items-center justify-center shrink-0">
-                            <svg class="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div class="w-11 h-11 bg-emerald-500/10 rounded-xl flex items-center justify-center shrink-0">
+                            <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
                             </svg>
                         </div>
                     </div>
-                    <div class="mt-3 flex items-center text-xs text-gray-400">
+                    <div class="mt-3 flex items-center text-xs text-slate-500">
                         <span>代理收益</span>
                     </div>
                 </div>
 
                 <!-- Card 3: 交易筆數 -->
-                <div class="stat-card bg-white rounded-xl shadow-sm border border-gray-100 p-6 animate-fade-in-up" style="animation-delay: 0.3s;">
+                <div class="stat-card bg-slate-900 rounded-xl border border-slate-800 p-6 animate-fade-in-up" style="animation-delay: 0.3s;">
                     <div class="flex items-start justify-between">
                         <div>
-                            <p class="text-sm font-medium text-gray-500 mb-1">今日交易筆數</p>
-                            <p id="transactionCount" class="text-3xl font-bold text-gray-900 mt-1">
+                            <p class="text-sm font-medium text-slate-400 mb-1">今日交易筆數</p>
+                            <p id="transactionCount" class="text-3xl font-bold text-slate-100 mt-1">
                                 <span class="skeleton inline-block w-16 h-8 align-middle"></span>
                             </p>
                         </div>
-                        <div class="w-11 h-11 bg-amber-50 rounded-xl flex items-center justify-center shrink-0">
-                            <svg class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div class="w-11 h-11 bg-purple-500/10 rounded-xl flex items-center justify-center shrink-0">
+                            <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
                             </svg>
                         </div>
                     </div>
-                    <div class="mt-3 flex items-center text-xs text-gray-400">
+                    <div class="mt-3 flex items-center text-xs text-slate-500">
                         <span>即時更新</span>
                     </div>
                 </div>
@@ -193,31 +203,31 @@
 
             <!-- 風險摘要卡片 -->
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 animate-fade-in-up" style="animation-delay: 0.35s;">
-                <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-3 cursor-pointer hover:shadow-md transition-shadow" onclick="window.location.href='risk.html'">
-                    <div class="w-9 h-9 bg-red-50 rounded-lg flex items-center justify-center shrink-0">
-                        <svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                <div class="bg-slate-900 rounded-xl border border-slate-800 p-4 flex items-center gap-3 cursor-pointer hover:border-slate-700 transition-all duration-200" onclick="window.location.href='risk.html'">
+                    <div class="w-9 h-9 bg-red-500/10 rounded-lg flex items-center justify-center shrink-0">
+                        <svg class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
                     </div>
                     <div>
-                        <p class="text-xs text-gray-500">本週異常交易</p>
-                        <p id="riskAnomalyCount" class="text-lg font-bold text-gray-900">-</p>
+                        <p class="text-xs text-slate-400">本週異常交易</p>
+                        <p id="riskAnomalyCount" class="text-lg font-bold text-slate-100">-</p>
                     </div>
                 </div>
-                <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-3 cursor-pointer hover:shadow-md transition-shadow" onclick="window.location.href='risk.html'">
-                    <div class="w-9 h-9 bg-amber-50 rounded-lg flex items-center justify-center shrink-0">
-                        <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                <div class="bg-slate-900 rounded-xl border border-slate-800 p-4 flex items-center gap-3 cursor-pointer hover:border-slate-700 transition-all duration-200" onclick="window.location.href='risk.html'">
+                    <div class="w-9 h-9 bg-amber-500/10 rounded-lg flex items-center justify-center shrink-0">
+                        <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                     </div>
                     <div>
-                        <p class="text-xs text-gray-500">高風險代理</p>
-                        <p id="riskHighRiskCount" class="text-lg font-bold text-gray-900">-</p>
+                        <p class="text-xs text-slate-400">高風險代理</p>
+                        <p id="riskHighRiskCount" class="text-lg font-bold text-slate-100">-</p>
                     </div>
                 </div>
-                <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-3 cursor-pointer hover:shadow-md transition-shadow" onclick="window.location.href='risk.html'">
-                    <div class="w-9 h-9 bg-emerald-50 rounded-lg flex items-center justify-center shrink-0">
-                        <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                <div class="bg-slate-900 rounded-xl border border-slate-800 p-4 flex items-center gap-3 cursor-pointer hover:border-slate-700 transition-all duration-200" onclick="window.location.href='risk.html'">
+                    <div class="w-9 h-9 bg-emerald-500/10 rounded-lg flex items-center justify-center shrink-0">
+                        <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
                     </div>
                     <div>
-                        <p class="text-xs text-gray-500">風控評分</p>
-                        <p id="riskLowestScore" class="text-lg font-bold text-gray-900">-</p>
+                        <p class="text-xs text-slate-400">風控評分</p>
+                        <p id="riskLowestScore" class="text-lg font-bold text-slate-100">-</p>
                     </div>
                 </div>
             </div>
@@ -225,10 +235,10 @@
             <!-- 代理排名和最近交易 -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
                 <!-- 代理排名 -->
-                <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 animate-fade-in-up" style="animation-delay: 0.4s;">
+                <div class="bg-slate-900 rounded-xl border border-slate-800 p-6 animate-fade-in-up" style="animation-delay: 0.4s;">
                     <div class="flex items-center justify-between mb-5">
-                        <h3 class="text-base font-bold text-gray-800">今日代理成交排名</h3>
-                        <span class="text-xs text-gray-400 bg-gray-50 px-2.5 py-1 rounded-full">按成交額排序</span>
+                        <h3 class="text-base font-bold text-slate-100">今日代理成交排名</h3>
+                        <span class="text-xs text-slate-500 bg-slate-800 px-2.5 py-1 rounded-full">按成交額排序</span>
                     </div>
                     <div id="agentRanking" class="space-y-2">
                         <div class="space-y-3">
@@ -240,10 +250,10 @@
                 </div>
 
                 <!-- 最近交易 -->
-                <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 animate-fade-in-up" style="animation-delay: 0.5s;">
+                <div class="bg-slate-900 rounded-xl border border-slate-800 p-6 animate-fade-in-up" style="animation-delay: 0.5s;">
                     <div class="flex items-center justify-between mb-5">
-                        <h3 class="text-base font-bold text-gray-800">最近 5 筆交易</h3>
-                        <a href="transactions.html" class="text-xs text-blue-600 hover:text-blue-700 font-medium transition-colors">查看全部 →</a>
+                        <h3 class="text-base font-bold text-slate-100">最近 5 筆交易</h3>
+                        <a href="transactions.html" class="text-xs text-amber-400 hover:text-amber-300 font-medium transition-colors">查看全部 →</a>
                     </div>
                     <div id="recentTransactions" class="space-y-1">
                         <div class="space-y-3">
@@ -274,14 +284,14 @@
             if (index === 0) return `<span class="text-lg">🥇</span>`;
             if (index === 1) return `<span class="text-lg">🥈</span>`;
             if (index === 2) return `<span class="text-lg">🥉</span>`;
-            return `<span class="w-6 h-6 inline-flex items-center justify-center rounded-full bg-gray-100 text-gray-500 text-xs font-bold">${index + 1}</span>`;
+            return `<span class="w-6 h-6 inline-flex items-center justify-center rounded-full bg-slate-800 text-slate-500 text-xs font-bold">${index + 1}</span>`;
         }
 
         function rankBarColor(index) {
-            if (index === 0) return "bg-gradient-to-r from-yellow-400 to-yellow-300";
-            if (index === 1) return "bg-gradient-to-r from-gray-300 to-gray-200";
-            if (index === 2) return "bg-gradient-to-r from-amber-500 to-amber-400";
-            return "bg-gradient-to-r from-blue-400 to-blue-300";
+            if (index === 0) return "bg-gradient-to-r from-amber-400 to-amber-300";
+            if (index === 1) return "bg-gradient-to-r from-slate-400 to-slate-300";
+            if (index === 2) return "bg-gradient-to-r from-amber-600 to-amber-500";
+            return "bg-gradient-to-r from-slate-600 to-slate-500";
         }
 
         async function loadDashboardData() {
@@ -315,17 +325,17 @@
                         // 多貨幣時顯示分類，單一貨幣直接顯示
                         const currencies = Object.keys(agent.breakdown);
                         const amountDisplay = currencies.length > 1
-                            ? currencies.map(c => `${agent.breakdown[c].amount.toLocaleString('zh-HK')} <span class="text-xs text-gray-400">${c}</span>`).join(' <span class="text-gray-300">|</span> ')
-                            : `<span class="font-bold">${agent.amount.toLocaleString('zh-HK')}</span> <span class="text-xs text-gray-400">${currencies[0] || ''}</span>`;
+                            ? currencies.map(c => `${agent.breakdown[c].amount.toLocaleString('zh-HK')} <span class="text-xs text-slate-500">${c}</span>`).join(' <span class="text-slate-600">|</span> ')
+                            : `<span class="font-bold">${agent.amount.toLocaleString('zh-HK')}</span> <span class="text-xs text-slate-500">${currencies[0] || ''}</span>`;
                         return `
-                            <div class="flex items-center space-x-3 py-2.5 px-3 rounded-lg hover:bg-gray-50 transition-colors">
+                            <div class="flex items-center space-x-3 py-2.5 px-3 rounded-lg hover:bg-slate-800/50 transition-colors">
                                 <div class="shrink-0">${medalIcon(i)}</div>
                                 <div class="flex-1 min-w-0">
                                     <div class="flex justify-between items-baseline mb-1">
-                                        <span class="text-sm font-semibold text-gray-800 truncate">${agent.name}</span>
-                                        <span class="text-sm text-gray-700 ml-2 shrink-0">${amountDisplay}</span>
+                                        <span class="text-sm font-semibold text-slate-200 truncate">${agent.name}</span>
+                                        <span class="text-sm text-slate-300 ml-2 shrink-0">${amountDisplay}</span>
                                     </div>
-                                    <div class="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                    <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
                                         <div class="h-full ${rankBarColor(i)} rounded-full transition-all duration-700 ease-out" style="width: ${pct}%"></div>
                                     </div>
                                 </div>
@@ -341,19 +351,19 @@
                     recentTxDiv.innerHTML = renderEmptyState("暫無交易記錄", "今日尚無交易數據");
                 } else {
                     recentTxDiv.innerHTML = recentTx.map(tx => `
-                        <div class="flex items-center justify-between py-3 px-3 rounded-lg hover:bg-gray-50 transition-colors">
+                        <div class="flex items-center justify-between py-3 px-3 rounded-lg hover:bg-slate-800/50 transition-colors">
                             <div class="flex items-center space-x-3 min-w-0">
-                                <div class="w-9 h-9 bg-gradient-to-br from-blue-100 to-blue-50 rounded-lg flex items-center justify-center shrink-0">
-                                    <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <div class="w-9 h-9 bg-gradient-to-br from-amber-500/20 to-amber-500/10 rounded-lg flex items-center justify-center shrink-0">
+                                    <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2z"/>
                                     </svg>
                                 </div>
                                 <div class="min-w-0">
-                                    <p class="text-sm font-semibold text-gray-800 truncate">${tx.agent_name}</p>
-                                    <p class="text-xs text-gray-400">${utcToHKTime(tx.timestamp)}</p>
+                                    <p class="text-sm font-semibold text-slate-200 truncate">${tx.agent_name}</p>
+                                    <p class="text-xs text-slate-500">${utcToHKTime(tx.timestamp)}</p>
                                 </div>
                             </div>
-                            <span class="text-sm font-bold text-blue-600 shrink-0 ml-3">${formatCurrency(tx.amount, tx.currency || 'USD')}</span>
+                            <span class="text-sm font-bold text-amber-400 shrink-0 ml-3">${formatCurrency(tx.amount, tx.currency || 'USD')}</span>
                         </div>
                     `).join("");
                 }

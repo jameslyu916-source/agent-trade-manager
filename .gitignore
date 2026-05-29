@@ -47,3 +47,6 @@ node_modules/
 # WhatsApp Web cache and auth files
 .wwebjs_auth/
 .wwebjs_cache/
+
+# Claude Code
+.claude/

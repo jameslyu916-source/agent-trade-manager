@@ -11,6 +11,9 @@ GROUP_CHAT_ID = -5201982600  # Group chat ID
 # OpenAI API Key
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
+# DeepSeek API Key（OpenAI 不可用時的備援）
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+
 # Report Settings
 REPORT_TIME = (12, 0)  # Report time (hour, minute)
 CHECK_INTERVAL = 3600  # Check interval in seconds (1 hour)

@@ -1,10 +1,15 @@
 from openai import OpenAI
-from .config import OPENAI_API_KEY
+from .config import OPENAI_API_KEY, DEEPSEEK_API_KEY
 import json
 import hashlib
 import time
 
 client = OpenAI(api_key=OPENAI_API_KEY)
+
+deepseek_client = OpenAI(
+    api_key=DEEPSEEK_API_KEY,
+    base_url="https://api.deepseek.com",
+)
 
 # ── 簡單內存快取（避免同一問題短時間內重複調用 API）──
 _CACHE = {}
@@ -13,6 +18,31 @@ _CACHE_TTL = 300  # 5 分鐘
 
 def _cache_key(query: str) -> str:
     return hashlib.md5(query.strip().lower().encode()).hexdigest()
+
+
+def _call_llm(prompt: str) -> str:
+    """呼叫 LLM，優先使用 OpenAI，失敗時自動降級至 DeepSeek"""
+    # ── Primary: OpenAI gpt-3.5-turbo ──
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"⚠️ OpenAI API 呼叫失敗，嘗試 DeepSeek 備援：{e}")
+
+    # ── Fallback: DeepSeek deepseek-chat ──
+    if not DEEPSEEK_API_KEY:
+        raise RuntimeError("OpenAI 不可用且未設定 DEEPSEEK_API_KEY，無法備援")
+
+    response = deepseek_client.chat.completions.create(
+        model="deepseek-chat",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0,
+    )
+    return response.choices[0].message.content.strip()
 
 
 def parse_natural_language_query(query: str) -> dict:
@@ -90,13 +120,7 @@ def parse_natural_language_query(query: str) -> dict:
 """
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0,
-        )
-
-        content = response.choices[0].message.content.strip()
+        content = _call_llm(prompt)
         content = content.replace("```json", "").replace("```", "").strip()
 
         result = json.loads(content)

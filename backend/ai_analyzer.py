@@ -60,6 +60,12 @@ def score_agent_performance(agent_name: str, transactions: list) -> dict:
     amounts = [tx["amount"] for tx in transactions]
     total = sum(amounts)
     avg = total / len(amounts)
+
+    # 按幣種分組統計
+    currency_breakdown = {}
+    for tx in transactions:
+        cur = tx.get("currency", "USD") or "USD"
+        currency_breakdown[cur] = currency_breakdown.get(cur, 0) + tx["amount"]
     # 金額標準差衡量穩定性，標準差越小越穩定
     std = float(np.std(amounts)) if len(amounts) > 1 else 0
     anomaly_count = sum(1 for tx in transactions if tx.get("is_anomaly", False))
@@ -94,6 +100,7 @@ def score_agent_performance(agent_name: str, transactions: list) -> dict:
         "details": {
             "transaction_count": len(transactions),
             "total_amount": total,
+            "currency_breakdown": currency_breakdown,
             "avg_amount": round(avg),
             "std_amount": round(std),
             "anomaly_count": anomaly_count,

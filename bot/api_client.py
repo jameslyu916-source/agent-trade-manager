@@ -363,4 +363,21 @@ class APIClient:
         except Exception as e:
             print(f"❌ 按代理金額刪除交易失敗：{e}")
             return False
+    def get_settings(self):
+        """獲取所有系統設置"""
+        try:
+            response = requests.get(
+                f"{self.base_url}/settings",
+                headers=self._get_headers()
+            )
+            if response.status_code == 200:
+                return response.json()
+            elif response.status_code == 401:
+                if self.login():
+                    return self.get_settings()
+            return None
+        except Exception as e:
+            print(f"❌ 獲取設置失敗：{e}")
+            return None
+
 api_client = APIClient(API_BASE_URL)

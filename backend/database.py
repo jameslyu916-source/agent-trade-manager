@@ -58,8 +58,29 @@ class Transaction(Base):
     source = Column(String, default="telegram")  # 數據來源：telegram/crawler/manual
     payment_details = Column(String)  # JSON格式的銀行付款詳情（可選）
 
+class SystemSetting(Base):
+    """系統設置表（key-value 結構）"""
+    __tablename__ = "system_settings"
+
+    key = Column(String, primary_key=True)
+    value = Column(String, nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
 # Create all tables in the database (if they don't exist)
 Base.metadata.create_all(bind=engine)
+
+# ── 預設設置 ──
+DEFAULT_SETTINGS = {
+    "telegram_enabled": "true",
+    "telegram_group_ids": '[-5201982600]',
+    "whatsapp_enabled": "true",
+    "whatsapp_group_names": '["測試群聊"]',
+    "report_time": '{"hour": 12, "minute": 0}',
+    "abnormal_single_transaction": "10000000",
+    "abnormal_daily_total": "50000000",
+    "abnormal_no_transaction_hours": "12",
+    "check_interval_minutes": "60",
+}
 
 # ── Migration: add new columns if missing (SQLite doesn't auto-migrate) ──
 def _migrate():
@@ -94,6 +115,22 @@ def _migrate():
                         (agent_name,)
                     )
             print("✅ Agent total_earnings 已遷移至多貨幣 JSON 格式")
+
+        # ── 初始化預設設置 ──
+        try:
+            result = conn.exec_driver_sql("SELECT key FROM system_settings").fetchall()
+            existing_keys = {row[0] for row in result}
+            import json as _json2
+            for key, value in DEFAULT_SETTINGS.items():
+                if key not in existing_keys:
+                    conn.exec_driver_sql(
+                        "INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))",
+                        (key, value)
+                    )
+            if set(DEFAULT_SETTINGS.keys()) - existing_keys:
+                print("✅ 系統預設設置已初始化")
+        except Exception:
+            pass  # table might not exist yet on first run
 
 _migrate()
 

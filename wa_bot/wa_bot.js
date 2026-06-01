@@ -15,6 +15,26 @@ const WATCH_GROUP_NAMES = (process.env.WATCH_GROUP_NAMES || "")
   .filter(Boolean);
 const WA_SEND_REPLY = (process.env.WA_SEND_REPLY || "true") === "true";
 
+// ── 系統設置快取 ──
+let settingsCache = {};
+
+async function refreshSettings() {
+  try {
+    if (!authToken) return;
+    const res = await axios.get(`${API_BASE_URL}/settings`, { headers: getHeaders() });
+    if (res.status === 200) {
+      settingsCache = res.data;
+      console.log("🔄 系統設置已刷新");
+    }
+  } catch (err) {
+    // 首次啟動時 API 可能尚未就緒，靜默跳過
+  }
+}
+
+function getSetting(key, defaultValue) {
+  return settingsCache[key] !== undefined ? settingsCache[key] : defaultValue;
+}
+
 // ==================== API 客戶端 ====================
 let authToken = null;
 
@@ -302,6 +322,9 @@ client.on("ready", async () => {
   console.log("✅ WhatsApp Bot 已就緒！");
   console.log(`📌 監控群組：${WATCH_GROUP_NAMES.join(", ") || "（未設置）"}`);
   await login(); // 登錄後端API
+  await refreshSettings(); // 載入系統設置
+  // 每 5 分鐘刷新設置
+  setInterval(refreshSettings, 5 * 60 * 1000);
 });
 
 // 監聽所有消息
@@ -327,12 +350,17 @@ client.on("message", async (msg) => {
   // 以下保持原有邏輯不變
   if (!msg.from.endsWith("@g.us")) return;
 
+  // ── 檢查 WhatsApp Bot 是否啟用 ──
+  if (getSetting("whatsapp_enabled", true) === false) return;
+
   const chat = await msg.getChat();
   const groupName = chat.name;
 
+  // 優先使用系統設置中的群組列表，若無則回退至 .env
+  const groupNames = getSetting("whatsapp_group_names", null) || WATCH_GROUP_NAMES;
   if (
-    WATCH_GROUP_NAMES.length > 0 &&
-    !WATCH_GROUP_NAMES.includes(groupName)
+    groupNames.length > 0 &&
+    !groupNames.includes(groupName)
   ) {
     console.log(`   ⚠️ 群組「${groupName}」不在監控列表，已跳過`);
     return;

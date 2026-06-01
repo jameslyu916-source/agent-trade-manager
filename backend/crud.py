@@ -1,7 +1,7 @@
 # backend/crud.py --- IGNORE ---
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from .database import User, Agent, Transaction  # 從database.py導入所有模型
+from .database import User, Agent, Transaction, SystemSetting  # 從database.py導入所有模型
 from . import schemas
 from datetime import datetime, timezone, timedelta
 from .database import HK_TZ
@@ -367,4 +367,34 @@ def update_transaction(db: Session, transaction_id: int, updates: dict):
 
     db.commit()
     db.refresh(tx)
+    return tx
+
+
+# ═══════════════════════════════════════════
+#  系統設置 CRUD
+# ═══════════════════════════════════════════
+
+def get_all_settings(db: Session) -> dict:
+    """獲取所有系統設置，返回 {key: value} dict"""
+    settings = db.query(SystemSetting).all()
+    return {s.key: s.value for s in settings}
+
+
+def get_setting(db: Session, key: str) -> str | None:
+    """獲取單個設置的值"""
+    s = db.query(SystemSetting).filter(SystemSetting.key == key).first()
+    return s.value if s else None
+
+
+def update_settings(db: Session, updates: dict):
+    """批量更新設置"""
+    from datetime import timezone as _tz
+    for key, value in updates.items():
+        setting = db.query(SystemSetting).filter(SystemSetting.key == key).first()
+        if setting:
+            setting.value = str(value)
+            setting.updated_at = datetime.now(_tz.utc)
+        else:
+            db.add(SystemSetting(key=key, value=str(value)))
+    db.commit()
     return tx

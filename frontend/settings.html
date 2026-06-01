@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系統設置 - TradeManager Pro</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+          }
+        }
+      }
+    </script>
+    <script src="utils.js"></script>
+    <style>
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(16px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in-up { animation: fadeInUp 0.5s ease-out both; }
+        .sidebar-link {
+            transition: all 0.2s ease;
+        }
+        .sidebar-link:hover {
+            background-color: rgba(245,158,11,0.08);
+            padding-left: 16px;
+        }
+        input[type="date"], input[type="time"] {
+            color-scheme: dark;
+            color: #e2e8f0;
+        }
+        .toggle-switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            display: inline-block;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #334155;
+            transition: 0.3s;
+            border-radius: 24px;
+        }
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: #94a3b8;
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+        input:checked + .toggle-slider {
+            background-color: rgba(245,158,11,0.3);
+        }
+        input:checked + .toggle-slider:before {
+            transform: translateX(20px);
+            background-color: #f59e0b;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 min-h-screen font-sans antialiased">
+
+    <!-- 頂部導航欄 -->
+    <nav class="bg-slate-900/80 backdrop-blur-xl border-b border-slate-800 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-6 py-3 flex justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <div class="w-9 h-9 from-amber-500 to-amber-600 bg-gradient-to-br rounded-lg flex items-center justify-center shadow-md shadow-amber-500/20">
+                    <svg class="w-5 h-5 text-slate-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
+                    </svg>
+                </div>
+                <h1 class="text-lg font-bold text-slate-100 tracking-tight">TradeManager <span class="text-amber-400">Pro</span></h1>
+            </div>
+            <div class="flex items-center space-x-3">
+                <div class="w-8 h-8 from-amber-400 to-amber-500 bg-gradient-to-br rounded-full flex items-center justify-center text-slate-900 text-xs font-bold shadow-sm">A</div>
+                <span class="text-sm text-slate-400 font-medium">管理員</span>
+                <button onclick="logout()" class="text-sm bg-slate-800 border border-slate-700 text-slate-300 px-3.5 py-1.5 rounded-lg hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 transition-all duration-200 font-medium">登出</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 側邊欄和主內容 -->
+    <div class="max-w-7xl mx-auto px-6 py-6 flex gap-6">
+        <!-- 側邊欄 -->
+        <aside class="w-52 shrink-0">
+            <div class="bg-slate-900 rounded-xl border border-slate-800 p-3 sticky top-24">
+                <ul class="space-y-1">
+                    <li>
+                        <a href="dashboard.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+                            <span>儀表盤</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="transactions.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+                            <span>交易記錄</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="agents.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                            <span>代理管理</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="reports.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                            <span>報表下載</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="risk.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                            <span>風險監控</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="settings.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg bg-amber-500/10 text-amber-400 font-semibold text-sm">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                            <span>系統設置</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </aside>
+
+        <!-- 主內容區 -->
+        <main class="flex-1 min-w-0">
+            <div class="mb-6 animate-fade-in-up" style="animation-delay: 0s;">
+                <h2 class="text-2xl font-bold text-slate-100">系統設置</h2>
+                <p class="text-sm text-slate-400 mt-1">管理 Bot 開關、監控群組、異常閾值與報表排程</p>
+            </div>
+
+            <div id="settingsContent" class="space-y-6">
+                <div class="space-y-3">
+                    <div class="skeleton h-32 w-full"></div>
+                    <div class="skeleton h-48 w-full"></div>
+                    <div class="skeleton h-56 w-full"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", async () => {
+            checkAuth();
+            await loadSettings();
+        });
+
+        let settings = {};
+
+        async function loadSettings() {
+            try {
+                settings = await apiRequest("/settings");
+                renderSettings();
+            } catch (e) {
+                document.getElementById("settingsContent").innerHTML =
+                    '<p class="text-center text-red-400 text-sm py-10">載入設置失敗，請稍後重試</p>';
+            }
+        }
+
+        function renderSettings() {
+            const tgEnabled = settings.telegram_enabled !== false;
+            const waEnabled = settings.whatsapp_enabled !== false;
+            const tgGroups = settings.telegram_group_ids || [];
+            const waGroups = settings.whatsapp_group_names || [];
+            const reportTime = settings.report_time || { hour: 12, minute: 0 };
+            const singleTx = settings.abnormal_single_transaction || 10000000;
+            const dailyTotal = settings.abnormal_daily_total || 50000000;
+            const noTxHours = settings.abnormal_no_transaction_hours || 12;
+            const checkInterval = settings.check_interval_minutes || 60;
+
+            document.getElementById("settingsContent").innerHTML = `
+                <!-- Bot 控制 -->
+                <div class="bg-slate-900 rounded-xl border border-slate-800 p-6 animate-fade-in-up" style="animation-delay: 0.05s;">
+                    <h3 class="text-base font-bold text-slate-100 mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        Bot 控制
+                    </h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="bg-slate-800 rounded-xl p-4 flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-blue-500/10 rounded-lg flex items-center justify-center">
+                                    <svg class="w-5 h-5 text-blue-400" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm6.5 8.5l-7.81 7.81a1.5 1.5 0 01-2.12 0L5.5 13.25l1.06-1.06 2.97 2.97 6.75-6.75L18.5 8.5z"/></svg>
+                                </div>
+                                <div>
+                                    <p class="font-semibold text-slate-200">Telegram Bot</p>
+                                    <p class="text-xs text-slate-500" id="tgStatus">${tgEnabled ? '運行中' : '已停用'}</p>
+                                </div>
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="toggleTelegram" ${tgEnabled ? 'checked' : ''} onchange="onToggleChange()">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="bg-slate-800 rounded-xl p-4 flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-green-500/10 rounded-lg flex items-center justify-center">
+                                    <svg class="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                                </div>
+                                <div>
+                                    <p class="font-semibold text-slate-200">WhatsApp Bot</p>
+                                    <p class="text-xs text-slate-500" id="waStatus">${waEnabled ? '運行中' : '已停用'}</p>
+                                </div>
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="toggleWhatsApp" ${waEnabled ? 'checked' : ''} onchange="onToggleChange()">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 監控群組 -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in-up" style="animation-delay: 0.1s;">
+                    <div class="bg-slate-900 rounded-xl border border-slate-800 p-6">
+                        <h3 class="text-base font-bold text-slate-100 mb-4">Telegram 監控群組</h3>
+                        <div class="space-y-2 mb-3" id="tgGroupList">
+                            ${tgGroups.map(id => `
+                                <div class="flex items-center gap-2 bg-slate-800 rounded-lg px-3 py-2">
+                                    <span class="flex-1 text-sm text-slate-300 font-mono">${id}</span>
+                                    <button onclick="removeTgGroup(${id})" class="text-red-400 hover:text-red-300 text-xs font-semibold px-2 py-1 rounded hover:bg-red-500/10 transition-colors">刪除</button>
+                                </div>
+                            `).join("")}
+                            ${tgGroups.length === 0 ? '<p class="text-xs text-slate-500 py-2">尚未添加任何群組</p>' : ''}
+                        </div>
+                        <div class="flex gap-2">
+                            <input type="number" id="newTgGroupId" placeholder="群組 Chat ID（負數）" class="flex-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/40">
+                            <button onclick="addTgGroup()" class="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-3 py-2 rounded-lg hover:bg-amber-500/20 transition-all text-sm font-semibold whitespace-nowrap">+ 新增</button>
+                        </div>
+                    </div>
+                    <div class="bg-slate-900 rounded-xl border border-slate-800 p-6">
+                        <h3 class="text-base font-bold text-slate-100 mb-4">WhatsApp 監控群組</h3>
+                        <div class="space-y-2 mb-3" id="waGroupList">
+                            ${waGroups.map(name => `
+                                <div class="flex items-center gap-2 bg-slate-800 rounded-lg px-3 py-2">
+                                    <span class="flex-1 text-sm text-slate-300">${escapeHtml(name)}</span>
+                                    <button onclick="removeWaGroup('${escapeHtml(name)}')" class="text-red-400 hover:text-red-300 text-xs font-semibold px-2 py-1 rounded hover:bg-red-500/10 transition-colors">刪除</button>
+                                </div>
+                            `).join("")}
+                            ${waGroups.length === 0 ? '<p class="text-xs text-slate-500 py-2">尚未添加任何群組</p>' : ''}
+                        </div>
+                        <div class="flex gap-2">
+                            <input type="text" id="newWaGroupName" placeholder="群組名稱" class="flex-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/40">
+                            <button onclick="addWaGroup()" class="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-3 py-2 rounded-lg hover:bg-amber-500/20 transition-all text-sm font-semibold whitespace-nowrap">+ 新增</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 異常檢測閾值 -->
+                <div class="bg-slate-900 rounded-xl border border-slate-800 p-6 animate-fade-in-up" style="animation-delay: 0.15s;">
+                    <h3 class="text-base font-bold text-slate-100 mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                        異常檢測閾值
+                    </h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">單筆交易異常金額</label>
+                            <input type="number" id="abnormalSingleTx" value="${singleTx}" min="1" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/40">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">每日總計異常金額</label>
+                            <input type="number" id="abnormalDailyTotal" value="${dailyTotal}" min="1" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/40">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">無交易警報時數</label>
+                            <input type="number" id="abnormalNoTxHours" value="${noTxHours}" min="1" max="72" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/40">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">檢查間隔（分鐘）</label>
+                            <select id="checkInterval" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/40">
+                                ${[15, 30, 60, 120, 360, 720].map(m => `<option value="${m}" ${m === checkInterval ? 'selected' : ''}>${m} 分鐘</option>`).join("")}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 報表排程 -->
+                <div class="bg-slate-900 rounded-xl border border-slate-800 p-6 animate-fade-in-up" style="animation-delay: 0.2s;">
+                    <h3 class="text-base font-bold text-slate-100 mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        報表排程
+                    </h3>
+                    <div class="max-w-xs">
+                        <label class="block text-xs font-medium text-slate-400 mb-1">每日自動報表時間</label>
+                        <input type="time" id="reportTime" value="${String(reportTime.hour).padStart(2, '0')}:${String(reportTime.minute).padStart(2, '0')}" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/40">
+                    </div>
+                </div>
+
+                <!-- 儲存按鈕 -->
+                <div class="flex justify-end animate-fade-in-up" style="animation-delay: 0.25s;">
+                    <button onclick="saveSettings()" id="saveBtn" class="bg-gradient-to-r from-amber-500 to-amber-600 text-white px-8 py-2.5 rounded-xl hover:from-amber-600 hover:to-amber-700 transition-all font-semibold text-sm shadow-md shadow-amber-500/20 active:scale-[0.98] flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                        儲存設置
+                    </button>
+                </div>
+            `;
+        }
+
+        function onToggleChange() {
+            // 立即更新狀態文字
+            const tg = document.getElementById("toggleTelegram").checked;
+            const wa = document.getElementById("toggleWhatsApp").checked;
+            document.getElementById("tgStatus").textContent = tg ? '運行中' : '已停用';
+            document.getElementById("waStatus").textContent = wa ? '運行中' : '已停用';
+        }
+
+        function addTgGroup() {
+            const input = document.getElementById("newTgGroupId");
+            const id = parseInt(input.value);
+            if (isNaN(id)) { showToast("請輸入有效的群組 ID", "error"); return; }
+            const groups = settings.telegram_group_ids || [];
+            if (groups.includes(id)) { showToast("此群組 ID 已存在", "warning"); return; }
+            groups.push(id);
+            settings.telegram_group_ids = groups;
+            input.value = "";
+            renderSettings();
+        }
+
+        function removeTgGroup(id) {
+            settings.telegram_group_ids = (settings.telegram_group_ids || []).filter(g => g !== id);
+            renderSettings();
+        }
+
+        function addWaGroup() {
+            const input = document.getElementById("newWaGroupName");
+            const name = input.value.trim();
+            if (!name) { showToast("請輸入群組名稱", "error"); return; }
+            const groups = settings.whatsapp_group_names || [];
+            if (groups.includes(name)) { showToast("此群組名稱已存在", "warning"); return; }
+            groups.push(name);
+            settings.whatsapp_group_names = groups;
+            input.value = "";
+            renderSettings();
+        }
+
+        function removeWaGroup(name) {
+            settings.whatsapp_group_names = (settings.whatsapp_group_names || []).filter(g => g !== name);
+            renderSettings();
+        }
+
+        async function saveSettings() {
+            const tgEnabled = document.getElementById("toggleTelegram").checked;
+            const waEnabled = document.getElementById("toggleWhatsApp").checked;
+            const [hour, minute] = document.getElementById("reportTime").value.split(":").map(Number);
+
+            const updates = {
+                telegram_enabled: tgEnabled,
+                whatsapp_enabled: waEnabled,
+                telegram_group_ids: settings.telegram_group_ids || [],
+                whatsapp_group_names: settings.whatsapp_group_names || [],
+                report_time: { hour, minute },
+                abnormal_single_transaction: parseInt(document.getElementById("abnormalSingleTx").value) || 10000000,
+                abnormal_daily_total: parseInt(document.getElementById("abnormalDailyTotal").value) || 50000000,
+                abnormal_no_transaction_hours: parseInt(document.getElementById("abnormalNoTxHours").value) || 12,
+                check_interval_minutes: parseInt(document.getElementById("checkInterval").value) || 60,
+            };
+
+            const btn = document.getElementById("saveBtn");
+            btn.disabled = true;
+            btn.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg> 儲存中...';
+
+            try {
+                await apiRequest("/settings", "PUT", updates);
+                settings = { ...settings, ...updates };
+                showToast("設置已儲存，約 5 分鐘內生效", "success");
+            } catch (e) {
+                showToast("儲存失敗：" + (e.message || "請稍後重試"), "error");
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg> 儲存設置';
+            }
+        }
+    </script>
+</body>
+</html>

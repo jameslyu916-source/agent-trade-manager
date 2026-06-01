@@ -30,6 +30,24 @@ from .config import (
     ABNORMAL_NO_TRANSACTION_HOURS
 )
 from .ai_parser import parse_natural_language_query
+import json
+
+# ── 系統設置快取（從後端 API 讀取，定時刷新）──
+_settings_cache = {}
+
+
+def refresh_settings():
+    """從後端 API 拉取最新設置"""
+    global _settings_cache
+    s = api_client.get_settings()
+    if s:
+        _settings_cache = s
+        print("🔄 系統設置已刷新")
+
+
+def get_setting(key, default=None):
+    """讀取單個設置項"""
+    return _settings_cache.get(key, default)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -191,6 +209,16 @@ async def list_agents(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Handler for messages in group chats with whitelist check
 async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ── 檢查 Telegram Bot 是否啟用 ──
+    if not get_setting("telegram_enabled", True):
+        return
+
+    # ── 檢查群組是否在監控列表中 ──
+    group_ids = get_setting("telegram_group_ids", [GROUP_CHAT_ID])
+    chat_id = update.effective_chat.id
+    if group_ids and chat_id not in group_ids:
+        return
+
     message = update.effective_message
     user_name = message.from_user.username or message.from_user.first_name
     print(f"收到群消息 [{message.chat.title}] {user_name}: {message.text}")
@@ -436,11 +464,19 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
 async def check_abnormal_transactions(context: ContextTypes.DEFAULT_TYPE):
     """定時檢查異常交易並發送警報"""
     chat_id = context.job.data
-    
+
+    # 若 bot 已停用則跳過
+    if not get_setting("telegram_enabled", True):
+        return
+
+    single_threshold = get_setting("abnormal_single_transaction", ABNORMAL_SINGLE_TRANSACTION)
+    daily_threshold = get_setting("abnormal_daily_total", ABNORMAL_DAILY_TOTAL)
+    no_tx_hours = get_setting("abnormal_no_transaction_hours", ABNORMAL_NO_TRANSACTION_HOURS)
+
     # 異常1：單筆交易金額超過閾值
     recent_transactions = api_client.get_recent_transactions(hours=1)
     for tx in recent_transactions:
-        if tx["amount"] > ABNORMAL_SINGLE_TRANSACTION:
+        if tx["amount"] > single_threshold:
             # 將UTC時間轉換為香港時間顯示
             utc_time = datetime.fromisoformat(tx["timestamp"]).replace(tzinfo=timezone.utc)
             hk_time = utc_time.astimezone(HK_TZ).strftime("%Y-%m-%d %H:%M:%S")
@@ -455,11 +491,11 @@ async def check_abnormal_transactions(context: ContextTypes.DEFAULT_TYPE):
     for agent in agents:
         stats = api_client.get_agent_daily_total(agent)
         daily_total = stats['total_amount']
-        if daily_total > ABNORMAL_DAILY_TOTAL:
+        if daily_total > daily_threshold:
             bd = api_client._format_breakdown(stats['currency_breakdown'])
             await context.bot.send_message(
                 chat_id=chat_id,
-                text=f"🚨 代理單日交易額異常\n代理：{agent}\n今日成交額：{bd}\n已超過預警值 {ABNORMAL_DAILY_TOTAL:,} HKD"
+                text=f"🚨 代理單日交易額異常\n代理：{agent}\n今日成交額：{bd}\n已超過預警值 {daily_threshold:,}"
             )
     
     # 異常3：超過12小時無交易
@@ -470,7 +506,7 @@ async def check_abnormal_transactions(context: ContextTypes.DEFAULT_TYPE):
         now = datetime.now(HK_TZ)
         hours_since_last = (now - last_time).total_seconds() / 3600
         
-        if hours_since_last > ABNORMAL_NO_TRANSACTION_HOURS:
+        if hours_since_last > no_tx_hours:
             hk_time = last_time.strftime("%Y-%m-%d %H:%M:%S")
             await context.bot.send_message(
                 chat_id=chat_id,
@@ -549,6 +585,9 @@ def main():
     # Register the risk report command handler
     application.add_handler(CommandHandler("risk", risk_report))
     
+    # ── 載入系統設置 ──
+    refresh_settings()
+
     # Set up a daily job to send the report at the specified time
     job_queue = application.job_queue
     job_queue.run_daily(
@@ -565,6 +604,12 @@ def main():
         interval=CHECK_INTERVAL,
         first=10,  # Start 10 seconds after the bot starts
         data=GROUP_CHAT_ID
+    )
+    # 每 5 分鐘刷新系統設置
+    job_queue.run_repeating(
+        lambda ctx: refresh_settings(),
+        interval=300,
+        first=30
     )
     
     # Start the bot

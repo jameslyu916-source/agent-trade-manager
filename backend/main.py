@@ -2,10 +2,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.responses import RedirectResponse
 import os
 
 from . import schemas
-from .routers import auth, transactions, agents, reports, analysis
+from .routers import auth, transactions, agents, reports, analysis, settings
 from .database import Base, engine, SessionLocal
 from .crud import create_agent, get_agent_by_name, get_user_by_username, create_user
 from .utils import get_password_hash
@@ -36,11 +37,12 @@ app.include_router(transactions.router)
 app.include_router(agents.router)
 app.include_router(reports.router)
 app.include_router(analysis.router)
+app.include_router(settings.router)
 
 # Root endpoint
 @app.get("/")
 async def root():
-    return {"message": "代理交易管理系統API", "docs": "/docs", "login": "/frontend/index.html"}
+    return RedirectResponse(url="/frontend/index.html")
 
 # Create initial admin user and migrate old allowed_agents data on startup
 @app.on_event("startup")
@@ -71,4 +73,21 @@ async def create_initial_admin():
     except Exception as e:
         print(f"ℹ️ 原有allowed_agents表不存在，跳過數據遷移：{e}")
     
+    # ── 初始化系統設置 ──
+    from .database import SystemSetting, DEFAULT_SETTINGS
+    import json as _json
+    try:
+        existing = db.query(SystemSetting).all()
+        existing_keys = {s.key for s in existing}
+        added = 0
+        for key, value in DEFAULT_SETTINGS.items():
+            if key not in existing_keys:
+                db.add(SystemSetting(key=key, value=value))
+                added += 1
+        if added:
+            db.commit()
+            print(f"✅ 系統預設設置已初始化（{added} 項）")
+    except Exception:
+        pass
+
     db.close()

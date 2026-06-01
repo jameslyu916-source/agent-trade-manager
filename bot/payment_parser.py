@@ -277,7 +277,7 @@ def parse_payment_info(message_text: str) -> dict | None:
 
     回傳格式：
         {
-            "agent_name": "CHAN TAI MAN",     # 戶口全名即為代理名稱
+            "customer_name": "CHAN TAI MAN",  # 戶口全名即為客戶名稱
             "amount": 222456,
             "currency": "USD",
             "raw_message": <原始消息>,
@@ -401,7 +401,7 @@ def parse_payment_info(message_text: str) -> dict | None:
         payment_details["bank_matched"] = matched_bank["name"]
 
     return {
-        "agent_name": agent_name,
+        "customer_name": agent_name,
         "amount": amount or 0,
         "currency": currency,
         "raw_message": raw,

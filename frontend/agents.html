@@ -127,6 +127,14 @@
                 </button>
             </div>
 
+            <!-- 周期選擇器 -->
+            <div class="flex items-center gap-2 mb-4 animate-fade-in-up" style="animation-delay: 0.05s;">
+                <span class="text-xs font-medium text-slate-500 mr-1">交易額</span>
+                <button onclick="switchPeriod('daily')" id="btnDaily" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 transition-all hover:bg-amber-500/20">今日</button>
+                <button onclick="switchPeriod('weekly')" id="btnWeekly" class="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 border border-slate-700 transition-all hover:bg-slate-800 hover:text-slate-200">本週</button>
+                <button onclick="switchPeriod('monthly')" id="btnMonthly" class="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 border border-slate-700 transition-all hover:bg-slate-800 hover:text-slate-200">本月</button>
+            </div>
+
             <!-- 代理列表表格 -->
             <div class="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden animate-fade-in-up" style="animation-delay: 0.1s;">
                 <table class="w-full">
@@ -134,16 +142,17 @@
                         <tr class="bg-slate-800/80">
                             <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">代理名稱</th>
                             <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">手續費率</th>
+                            <th class="px-6 py-3.5 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider" id="txAmountHeader">今日交易額</th>
                             <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">累計收益</th>
                             <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">狀態</th>
                             <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">操作</th>
                         </tr>
                     </thead>
                     <tbody id="agentTable" class="divide-y divide-gray-100">
-                        <tr class="skeleton-row"><td colspan="5" class="px-6 py-3.5"><div class="skeleton h-4 w-48 mx-auto"></div></td></tr>
-                        <tr class="skeleton-row"><td colspan="5" class="px-6 py-3.5"><div class="skeleton h-4 w-56 mx-auto"></div></td></tr>
-                        <tr class="skeleton-row"><td colspan="5" class="px-6 py-3.5"><div class="skeleton h-4 w-40 mx-auto"></div></td></tr>
-                        <tr class="skeleton-row"><td colspan="5" class="px-6 py-3.5"><div class="skeleton h-4 w-52 mx-auto"></div></td></tr>
+                        <tr class="skeleton-row"><td colspan="6" class="px-6 py-3.5"><div class="skeleton h-4 w-48 mx-auto"></div></td></tr>
+                        <tr class="skeleton-row"><td colspan="6" class="px-6 py-3.5"><div class="skeleton h-4 w-56 mx-auto"></div></td></tr>
+                        <tr class="skeleton-row"><td colspan="6" class="px-6 py-3.5"><div class="skeleton h-4 w-40 mx-auto"></div></td></tr>
+                        <tr class="skeleton-row"><td colspan="6" class="px-6 py-3.5"><div class="skeleton h-4 w-52 mx-auto"></div></td></tr>
                     </tbody>
                 </table>
             </div>
@@ -222,53 +231,118 @@
     </div>
 
     <script>
+        let currentPeriod = "daily";
+        let agentTxAmounts = {};  // { agent_name: "1,000 USD | 500 HKD" }
+
+        const periodLabels = { daily: "今日交易額", weekly: "本週交易額", monthly: "本月交易額" };
+        const periodDays = { daily: 1, weekly: 7, monthly: 30 };
+
         document.addEventListener("DOMContentLoaded", async () => {
             checkAuth();
             await loadAgents();
         });
 
+        function setPeriodButtons(active) {
+            ["daily", "weekly", "monthly"].forEach(p => {
+                const btn = document.getElementById("btn" + p.charAt(0).toUpperCase() + p.slice(1));
+                if (p === active) {
+                    btn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20";
+                } else {
+                    btn.className = "px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 border border-slate-700 transition-all hover:bg-slate-800 hover:text-slate-200";
+                }
+            });
+        }
+
+        async function switchPeriod(period) {
+            currentPeriod = period;
+            setPeriodButtons(period);
+            document.getElementById("txAmountHeader").textContent = periodLabels[period];
+            await loadAgentTxAmounts();
+            renderAgentRows();
+        }
+
+        async function loadAgentTxAmounts() {
+            const agents = await apiRequest("/agents/");
+            agentTxAmounts = {};
+
+            if (currentPeriod === "daily") {
+                // 用 daily-summary 一次拿所有代理的今日統計
+                try {
+                    const summaries = await apiRequest("/transactions/daily-summary");
+                    summaries.forEach(s => {
+                        agentTxAmounts[s.agent_name] = formatCurrencyBreakdown(s.currency_breakdown);
+                    });
+                } catch (e) { console.error("加載每日統計失敗：", e); }
+            } else {
+                // 逐個代理查詢週期統計
+                const days = periodDays[currentPeriod];
+                await Promise.all(agents.map(async (agent) => {
+                    try {
+                        const stats = await apiRequest(`/transactions/agent-period/${days}/${encodeURIComponent(agent.agent_name)}`);
+                        agentTxAmounts[agent.agent_name] = formatCurrencyBreakdown(stats.currency_breakdown);
+                    } catch (e) {
+                        agentTxAmounts[agent.agent_name] = '<span class="text-slate-600">-</span>';
+                    }
+                }));
+            }
+        }
+
         async function loadAgents() {
             const tableBody = document.getElementById("agentTable");
 
             try {
-                tableBody.innerHTML = `<tr><td colspan="5" class="px-6 py-10 text-center">${renderSkeleton(4, "h-8")}</td></tr>`;
+                tableBody.innerHTML = `<tr><td colspan="6" class="px-6 py-10 text-center">${renderSkeleton(4, "h-8")}</td></tr>`;
 
                 const agents = await apiRequest("/agents/");
                 document.getElementById("agentCount").textContent = `共 ${agents.length} 位代理`;
 
                 if (agents.length === 0) {
-                    tableBody.innerHTML = `<tr><td colspan="5" class="px-6 py-10">${renderEmptyState("暫無代理", "點擊右上角按鈕添加第一位代理")}</td></tr>`;
+                    tableBody.innerHTML = `<tr><td colspan="6" class="px-6 py-10">${renderEmptyState("暫無代理", "點擊右上角按鈕添加第一位代理")}</td></tr>`;
                     return;
                 }
 
-                tableBody.innerHTML = "";
-                agents.forEach(agent => {
-                    const row = document.createElement("tr");
-                    row.className = "hover:bg-slate-800/50 transition-colors";
-                    row.innerHTML = `
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-200">${agent.agent_name}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300">
-                            <span class="bg-amber-500/10 text-amber-400 px-2.5 py-1 rounded-lg text-xs font-semibold">${(agent.commission_rate * 100).toFixed(1)}%</span>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-emerald-400">${formatEarnings(agent.total_earnings)}</td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <span class="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-700">
-                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500/100"></span>
-                                <span>啟用</span>
-                            </span>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-1">
-                            <button onclick="openEditCommissionModal('${agent.agent_name}', ${agent.commission_rate})" class="text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 px-2.5 py-1.5 rounded-lg transition-colors text-xs font-semibold">修改手續費</button>
-                            <button onclick="deleteAgent('${agent.agent_name}')" class="text-red-400 hover:text-red-400 hover:bg-red-500/10 px-2.5 py-1.5 rounded-lg transition-colors text-xs font-semibold">刪除</button>
-                        </td>
-                    `;
-                    tableBody.appendChild(row);
-                });
+                // 加載交易額數據
+                await loadAgentTxAmounts();
+
+                // 暫存 agents 數據供 renderAgentRows 使用
+                window._cachedAgents = agents;
+                renderAgentRows();
 
             } catch (error) {
-                tableBody.innerHTML = `<tr><td colspan="5" class="px-6 py-10 text-center text-red-400 text-sm">載入失敗，請稍後重試</td></tr>`;
+                tableBody.innerHTML = `<tr><td colspan="6" class="px-6 py-10 text-center text-red-400 text-sm">載入失敗，請稍後重試</td></tr>`;
                 console.error("加載代理列表失敗：", error);
             }
+        }
+
+        function renderAgentRows() {
+            const agents = window._cachedAgents || [];
+            const tableBody = document.getElementById("agentTable");
+            tableBody.innerHTML = "";
+
+            agents.forEach(agent => {
+                const txAmount = agentTxAmounts[agent.agent_name] || '<span class="text-slate-600">-</span>';
+                const row = document.createElement("tr");
+                row.className = "hover:bg-slate-800/50 transition-colors";
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-200">${agent.agent_name}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-300">
+                        <span class="bg-amber-500/10 text-amber-400 px-2.5 py-1 rounded-lg text-xs font-semibold">${(agent.commission_rate * 100).toFixed(1)}%</span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-amber-400 text-right">${txAmount}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-emerald-400">${formatEarnings(agent.total_earnings)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-700">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500/100"></span>
+                            <span>啟用</span>
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-1">
+                        <button onclick="openEditCommissionModal('${agent.agent_name}', ${agent.commission_rate})" class="text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 px-2.5 py-1.5 rounded-lg transition-colors text-xs font-semibold">修改手續費</button>
+                        <button onclick="deleteAgent('${agent.agent_name}')" class="text-red-400 hover:text-red-400 hover:bg-red-500/10 px-2.5 py-1.5 rounded-lg transition-colors text-xs font-semibold">刪除</button>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
         }
 
         // ==================== 添加代理 ====================

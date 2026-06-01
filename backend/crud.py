@@ -131,9 +131,13 @@ def delete_agent(db: Session, agent_name: str):
 # ==================== Transaction ====================
 def create_transaction(db: Session, transaction: schemas.TransactionCreate):
     """創建新交易記錄"""
-    # 獲取代理手續費率
+    # 獲取代理手續費率，若代理不存在則自動註冊
     agent = get_agent_by_name(db, transaction.agent_name)
-    commission_rate = agent.commission_rate if agent else 0.05
+    if not agent:
+        agent = Agent(agent_name=transaction.agent_name, commission_rate=0.05)
+        db.add(agent)
+        db.flush()
+    commission_rate = agent.commission_rate
     
     # 計算手續費（四捨五入到整數HKD）
     commission = int(round(transaction.amount * commission_rate))
@@ -146,6 +150,7 @@ def create_transaction(db: Session, transaction: schemas.TransactionCreate):
     
     db_transaction = Transaction(
         agent_name=transaction.agent_name,
+        customer_name=getattr(transaction, 'customer_name', None) or "",
         amount=transaction.amount,
         currency=transaction.currency if hasattr(transaction, 'currency') and transaction.currency else "USD",
         commission=commission,
@@ -290,6 +295,7 @@ def get_all_transactions_for_period(db: Session, days: int = 30):
         {
             "id": tx.id,
             "agent_name": tx.agent_name,
+            "customer_name": getattr(tx, 'customer_name', '') or '',
             "amount": tx.amount,
             "currency": getattr(tx, 'currency', 'USD') or 'USD',
             "commission": tx.commission,
@@ -341,6 +347,8 @@ def update_transaction(db: Session, transaction_id: int, updates: dict):
     # 更新基本欄位
     if "agent_name" in updates:
         tx.agent_name = updates["agent_name"]
+    if "customer_name" in updates and updates["customer_name"] is not None:
+        tx.customer_name = updates["customer_name"]
     if "amount" in updates:
         tx.amount = updates["amount"]
     if "currency" in updates:

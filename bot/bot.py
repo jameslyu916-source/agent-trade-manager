@@ -241,12 +241,14 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
     message = update.effective_message
     user_name = message.from_user.username or message.from_user.first_name
+    agent_display_name = message.from_user.first_name or user_name
     print(f"收到群消息 [{message.chat.title}] {user_name}: {message.text}")
 
     # ── 優先檢查是否為結構化付款資訊 ──
     payment_info = parse_payment_info(message.text)
     if payment_info:
-        print(f"🏦 檢測到付款資訊: {payment_info['agent_name']} {payment_info['amount']:,} {payment_info['currency']}")
+        customer_name = payment_info.get("customer_name", "Unknown")
+        print(f"🏦 檢測到付款資訊: 客戶={customer_name} {payment_info['amount']:,} {payment_info['currency']}")
         warnings = payment_info.get("warnings", [])
         has_errors = any(w.startswith("❌") for w in warnings)
         has_warnings = any(w.startswith("⚠️") for w in warnings)
@@ -257,42 +259,36 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
             await update.message.reply_text(error_msg)
             return
 
-        if payment_info["amount"] > 0 and payment_info["agent_name"] != "Unknown":
-            # 檢查代理（戶口全名）是否在白名單
-            if api_client.is_agent_allowed(payment_info["agent_name"]):
-                api_client.create_transaction(
-                    agent_name=payment_info["agent_name"],
-                    amount=payment_info["amount"],
-                    timestamp=payment_info.get("timestamp"),
-                    raw_message=payment_info["raw_message"],
-                    source=payment_info.get("source", "telegram"),
-                    currency=payment_info["currency"],
-                    payment_details=payment_info["payment_details"]
-                )
-                print(f"💾 付款資訊已記錄")
+        if payment_info["amount"] > 0 and customer_name != "Unknown":
+            # 不再檢查白名單，直接記錄交易
+            api_client.create_transaction(
+                agent_name=agent_display_name,
+                customer_name=customer_name,
+                amount=payment_info["amount"],
+                timestamp=payment_info.get("timestamp"),
+                raw_message=payment_info["raw_message"],
+                source=payment_info.get("source", "telegram"),
+                currency=payment_info["currency"],
+                payment_details=payment_info["payment_details"]
+            )
+            print(f"💾 付款資訊已記錄（代理: {agent_display_name}, 客戶: {customer_name}）")
 
-                # 構建回覆訊息
-                reply_parts = [
-                    f"✅ 已紀錄收款：{payment_info['agent_name']}",
-                    f"金額：{payment_info['amount']:,} {payment_info['currency']}",
-                ]
-                pd = payment_info.get("payment_details_dict", {})
-                if pd.get("bank_name"):
-                    reply_parts.append(f"銀行：{pd['bank_name']}")
-                if pd.get("account_number"):
-                    reply_parts.append(f"戶口：{pd['account_number']}")
+            # 構建回覆訊息
+            reply_parts = [
+                f"✅ 已紀錄收款：{customer_name}",
+                f"金額：{payment_info['amount']:,} {payment_info['currency']}",
+            ]
+            pd = payment_info.get("payment_details_dict", {})
+            if pd.get("bank_name"):
+                reply_parts.append(f"銀行：{pd['bank_name']}")
+            if pd.get("account_number"):
+                reply_parts.append(f"戶口：{pd['account_number']}")
 
-                # ⚠️ 警告仍然顯示，但不阻擋記錄
-                if has_warnings:
-                    reply_parts.append("\n⚠️ 請注意以下問題：\n" + "\n".join(warnings))
+            # ⚠️ 警告仍然顯示，但不阻擋記錄
+            if has_warnings:
+                reply_parts.append("\n⚠️ 請注意以下問題：\n" + "\n".join(warnings))
 
-                await update.message.reply_text("\n".join(reply_parts))
-            else:
-                print(f"⚠️ 戶口全名「{payment_info['agent_name']}」不在白名單中")
-                await update.message.reply_text(
-                    f"⚠️ 戶口全名「{payment_info['agent_name']}」不在白名單中，付款未記錄\n"
-                    f"請先用 /addagent {payment_info['agent_name']} 添加"
-                )
+            await update.message.reply_text("\n".join(reply_parts))
         elif payment_info["amount"] <= 0:
             await update.message.reply_text("❌ 無法解析付款金額，請檢查 Mso-Pobo 格式")
         return
@@ -308,20 +304,22 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                 if last_tx:
                     api_client.delete_transaction(last_tx["id"])
                     cur = last_tx.get('currency', 'USD') or 'USD'
+                    cust = last_tx.get('customer_name', last_tx['agent_name'])
                     await update.message.reply_text(
-                        f"✅ 已取消上一筆 Telegram 交易：{last_tx['agent_name']} {last_tx['amount']:,} {cur}"
+                        f"✅ 已取消上一筆 Telegram 交易：{cust} {last_tx['amount']:,} {cur}"
                     )
                 else:
                     await update.message.reply_text("⚠️ 沒有找到可取消的 Telegram 交易記錄")
             elif cancellation["target"] == "agent":
-                # 取消指定代理最近一筆 Telegram 交易
+                # 取消指定代理（發送者）最近一筆 Telegram 交易
                 agent = cancellation["agent_name"]
                 last_tx = api_client.get_last_transaction(agent)
                 if last_tx:
                     api_client.delete_transaction(last_tx["id"])
                     cur = last_tx.get('currency', 'USD') or 'USD'
+                    cust = last_tx.get('customer_name', last_tx['agent_name'])
                     await update.message.reply_text(
-                        f"✅ 已取消 {agent} 的最近一筆 Telegram 交易：{last_tx['amount']:,} {cur}"
+                        f"✅ 已取消 {agent} 的最近一筆 Telegram 交易：{cust} {last_tx['amount']:,} {cur}"
                     )
                 else:
                     await update.message.reply_text(f"⚠️ 沒有找到 {agent} 的 Telegram 交易記錄")
@@ -343,27 +341,21 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
     transaction = parse_transaction(message.text)
     if transaction:
-        # Check if the agent is in the whitelist before saving the transaction
-        if api_client.is_agent_allowed(transaction['agent_name']):
-            print(f"✅ 檢測到有效交易: {transaction['agent_name']} - {transaction['amount']}HKD")
-            api_client.create_transaction(
-                agent_name=transaction['agent_name'],
-                amount=transaction['amount'],
-                timestamp=transaction['timestamp'],
-                raw_message=transaction['raw_message'],
-                currency="HKD"
-            )
-            print("💾 交易紀錄已保存")
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=f"已紀錄交易：{transaction['agent_name']} 成交 {transaction['amount']:,}HKD"
-            )
-        else:
-            print(f"⚠️ 代理 {transaction['agent_name']} 不在白名單中，忽略交易")
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=f"⚠️ 代理 {transaction['agent_name']} 不在白名單中，交易未记录"
-            )
+        customer_name = transaction.get("customer_name", "Unknown")
+        print(f"✅ 檢測到有效交易: 客戶={customer_name} - {transaction['amount']}HKD（代理: {agent_display_name}）")
+        api_client.create_transaction(
+            agent_name=agent_display_name,
+            customer_name=customer_name,
+            amount=transaction['amount'],
+            timestamp=transaction['timestamp'],
+            raw_message=transaction['raw_message'],
+            currency="HKD"
+        )
+        print("💾 交易紀錄已保存")
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=f"已紀錄交易：{agent_display_name} 回報 {customer_name} 成交 {transaction['amount']:,}HKD"
+        )
         return
         
     # 自然語言查詢檢測：關鍵詞擴展覆蓋更多問法
@@ -468,7 +460,9 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                 for tx in recent:
                     hk_time = datetime.fromisoformat(tx["timestamp"]).replace(tzinfo=timezone.utc).astimezone(HK_TZ).strftime("%m/%d %H:%M")
                     cur = tx.get('currency', 'HKD')
-                    lines.append(f"• {hk_time} | {tx['agent_name']} | {tx['amount']:,} {cur}")
+                    cust = tx.get('customer_name', '') or ''
+                    cust_str = f"({cust})" if cust else ""
+                    lines.append(f"• {hk_time} | {tx['agent_name']}{cust_str} | {tx['amount']:,} {cur}")
                 await update.message.reply_text("\n".join(lines))
 
         else:

@@ -45,6 +45,7 @@ class AgentResponse(AgentBase):
 # ==================== Transaction ====================
 class TransactionBase(BaseModel):
     agent_name: str
+    customer_name: Optional[str] = ""  # 客戶戶口全名
     amount: int = Field(gt=0)  # 金額必須大於0
     currency: str = "USD"  # 貨幣單位
     raw_message: Optional[str] = None
@@ -56,6 +57,7 @@ class TransactionCreate(TransactionBase):
 
 class TransactionUpdate(BaseModel):
     agent_name: Optional[str] = None
+    customer_name: Optional[str] = None
     amount: Optional[int] = Field(default=None, gt=0)
     currency: Optional[str] = None
     payment_details: Optional[str] = None
@@ -87,6 +89,7 @@ class AgentDailyStats(BaseModel):
 class AnomalyTransaction(BaseModel):
     id: int
     agent_name: str
+    customer_name: Optional[str] = ""
     amount: int
     currency: str = "USD"
     timestamp: str

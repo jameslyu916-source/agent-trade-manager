@@ -50,6 +50,7 @@ class Transaction(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     agent_name = Column(String, index=True, nullable=False)
+    customer_name = Column(String, default="")  # 客戶戶口全名
     amount = Column(Integer, nullable=False)  # 交易金額
     currency = Column(String, default="HKD")  # 貨幣單位（USD/HKD/CNY等）
     commission = Column(Integer, default=0)   # 手續費
@@ -94,6 +95,10 @@ def _migrate():
             conn.exec_driver_sql("UPDATE transactions SET currency = 'HKD' WHERE currency IS NULL OR currency = ''")
         if "payment_details" not in existing_cols:
             conn.exec_driver_sql("ALTER TABLE transactions ADD COLUMN payment_details TEXT")
+        if "customer_name" not in existing_cols:
+            conn.exec_driver_sql("ALTER TABLE transactions ADD COLUMN customer_name VARCHAR DEFAULT ''")
+            # 現有數據中 agent_name 實際上是客戶名，回填到 customer_name
+            conn.exec_driver_sql("UPDATE transactions SET customer_name = agent_name WHERE customer_name IS NULL OR customer_name = ''")
 
         # Migrate agent total_earnings from Integer to JSON string
         result = conn.exec_driver_sql("PRAGMA table_info(agents)")

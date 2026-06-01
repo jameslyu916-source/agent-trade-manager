@@ -40,8 +40,13 @@ def generate_daily_report(date=None):
     # 創建 DataFrame（含貨幣欄位）
     df = pd.DataFrame(daily_transactions)
     if "currency" in df.columns:
-        df = df[["agent_name", "amount", "currency", "timestamp", "commission"]]
-        df.columns = ["代理名稱", "交易金額", "貨幣", "交易時間", "手續費"]
+        cols = ["agent_name", "amount", "currency", "timestamp", "commission"]
+        cols_display = ["代理名稱", "交易金額", "貨幣", "交易時間", "手續費"]
+        if "customer_name" in df.columns:
+            cols.insert(1, "customer_name")
+            cols_display.insert(1, "客戶名稱")
+        df = df[cols]
+        df.columns = cols_display
     else:
         df = df[["agent_name", "amount", "timestamp", "commission"]]
         df.columns = ["代理名稱", "交易金額", "交易時間", "手續費"]

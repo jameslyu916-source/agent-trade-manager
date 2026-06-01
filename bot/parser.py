@@ -167,7 +167,7 @@ def parse_transaction(message_text: str) -> dict | None:
         # 代理名長度檢查（避免誤判太長或太短的字串）
         if 1 <= len(agent) <= 50 and amount > 0:
             return {
-                "agent_name": agent,
+                "customer_name": agent,
                 "amount": amount,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "raw_message": raw,

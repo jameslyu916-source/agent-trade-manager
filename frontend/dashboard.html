@@ -356,7 +356,9 @@
                 if (recentTx.length === 0) {
                     recentTxDiv.innerHTML = renderEmptyState("暫無交易記錄", "今日尚無交易數據");
                 } else {
-                    recentTxDiv.innerHTML = recentTx.map(tx => `
+                    recentTxDiv.innerHTML = recentTx.map(tx => {
+                        const cust = tx.customer_name || "";
+                        return `
                         <div class="flex items-center justify-between py-3 px-3 rounded-lg hover:bg-slate-800/50 transition-colors">
                             <div class="flex items-center space-x-3 min-w-0">
                                 <div class="w-9 h-9 bg-gradient-to-br from-amber-500/20 to-amber-500/10 rounded-lg flex items-center justify-center shrink-0">
@@ -365,13 +367,13 @@
                                     </svg>
                                 </div>
                                 <div class="min-w-0">
-                                    <p class="text-sm font-semibold text-slate-200 truncate">${tx.agent_name}</p>
+                                    <p class="text-sm font-semibold text-slate-200 truncate">${tx.agent_name}${cust ? ` <span class="text-xs text-slate-500">→ ${cust}</span>` : ""}</p>
                                     <p class="text-xs text-slate-500">${utcToHKTime(tx.timestamp)}</p>
                                 </div>
                             </div>
                             <span class="text-sm font-bold text-amber-400 shrink-0 ml-3">${formatCurrency(tx.amount, tx.currency || 'USD')}</span>
                         </div>
-                    `).join("");
+                    `;}).join("");
                 }
 
             } catch (error) {

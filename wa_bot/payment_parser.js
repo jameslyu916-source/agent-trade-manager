@@ -344,7 +344,7 @@ function parsePaymentInfo(messageText) {
   }
 
   return {
-    agent_name: agentName,
+    customer_name: agentName,
     amount: amount || 0,
     currency: currency,
     raw_message: raw,

@@ -16,11 +16,7 @@ async def create_transaction(
     current_user = Depends(get_current_user)
 ):
     """創建新交易記錄"""
-    # Check if the agent exists and is active
-    agent = crud.get_agent_by_name(db, agent_name=transaction.agent_name)
-    if not agent or not agent.is_active:
-        raise HTTPException(status_code=400, detail="代理不存在或未啟用")
-    
+    # 不再檢查代理是否存在/啟用（代理和客戶都不需要白名單）
     return crud.create_transaction(db=db, transaction=transaction)
 
 @router.get("/daily", response_model=schemas.DailyStats)
@@ -95,6 +91,7 @@ async def get_last_transaction(
     return {
         "id": tx.id,
         "agent_name": tx.agent_name,
+        "customer_name": getattr(tx, 'customer_name', '') or '',
         "amount": tx.amount,
         "currency": getattr(tx, 'currency', 'USD') or 'USD',
         "commission": tx.commission,
@@ -127,13 +124,10 @@ async def update_transaction(
     tx = crud.update_transaction(db, transaction_id, updates.model_dump(exclude_unset=True))
     if tx is None:
         raise HTTPException(status_code=404, detail="交易不存在")
-    # 檢查代理是否存在且活躍
-    agent = crud.get_agent_by_name(db, tx.agent_name)
-    if not agent or not agent.is_active:
-        raise HTTPException(status_code=400, detail="代理不存在或未啟用")
     return {
         "id": tx.id,
         "agent_name": tx.agent_name,
+        "customer_name": getattr(tx, 'customer_name', '') or '',
         "amount": tx.amount,
         "currency": getattr(tx, 'currency', 'USD') or 'USD',
         "commission": tx.commission,

@@ -78,6 +78,7 @@ async function createTransaction(data) {
   try {
     const payload = {
       agent_name: data.agent_name,
+      customer_name: data.customer_name || "",
       amount: data.amount,
       currency: data.currency || "USD",
       raw_message: data.raw_message || null,
@@ -192,7 +193,7 @@ function parseTransaction(messageText) {
       const agent = match[1].trim();
       const amount = tryParseAmount(match[2]);
       if (agent && amount && agent.length >= 1 && agent.length <= 50) {
-        return { agent_name: agent, amount, raw_message: raw, source: "whatsapp" };
+        return { customer_name: agent, amount, raw_message: raw, source: "whatsapp" };
       }
     }
   }
@@ -216,7 +217,7 @@ function parseTransaction(messageText) {
       const agent = match[2].trim();
       // 避免代理名位置抓到純數字
       if (agent && amount && !/^[\d,.]+$/.test(agent) && agent.length >= 1 && agent.length <= 50) {
-        return { agent_name: agent, amount, raw_message: raw, source: "whatsapp" };
+        return { customer_name: agent, amount, raw_message: raw, source: "whatsapp" };
       }
     }
   }
@@ -228,7 +229,7 @@ function parseTransaction(messageText) {
     const amount = tryParseAmount(looseMatch[2]);
     const noise = ["今日", "昨天", "本週", "本月", "月", "日", "號", "today", "daily", "total"];
     if (agent && amount && !noise.includes(agent.toLowerCase()) && agent.length >= 1 && agent.length <= 50) {
-      return { agent_name: agent, amount, raw_message: raw, source: "whatsapp" };
+      return { customer_name: agent, amount, raw_message: raw, source: "whatsapp" };
     }
   }
 
@@ -274,7 +275,7 @@ function parseCancellation(messageText) {
   // 如果 remainder 裡有數字，嘗試用 parseTransaction 提取
   const tempParsed = parseTransaction(remainder + " 交易 1");
   if (tempParsed) {
-    agent = tempParsed.agent_name;
+    agent = tempParsed.customer_name || tempParsed.agent_name;
     // 再嘗試提取金額
     const amountMatch = remainder.match(/([\d,]+(?:\.\d+)?)/);
     if (amountMatch) {
@@ -386,10 +387,14 @@ client.on("message", async (msg) => {
 
   const text = msg.body;
 
+  const senderId = msg.author;
+  const senderDisplayName = (msg._data && msg._data.notifyName) || senderId;
+
   // ── 優先檢查是否為結構化付款資訊 ──
   const paymentInfo = parsePaymentInfo(text);
   if (paymentInfo) {
-    console.log(`🏦 檢測到付款資訊: ${paymentInfo.agent_name} ${paymentInfo.amount} ${paymentInfo.currency}`);
+    const customerName = paymentInfo.customer_name || "Unknown";
+    console.log(`🏦 檢測到付款資訊: 客戶=${customerName} ${paymentInfo.amount} ${paymentInfo.currency}`);
     const warnings = paymentInfo.warnings || [];
     const hasErrors = warnings.some(w => w.startsWith("❌"));
     const hasWarnings = warnings.some(w => w.startsWith("⚠️"));
@@ -402,18 +407,11 @@ client.on("message", async (msg) => {
       return;
     }
 
-    if (paymentInfo.amount > 0 && paymentInfo.agent_name !== "Unknown") {
-      const allowed = await isAgentAllowed(paymentInfo.agent_name);
-      if (!allowed) {
-        console.log(`   ⚠️ 戶口全名「${paymentInfo.agent_name}」不在白名單`);
-        if (WA_SEND_REPLY) {
-          await msg.reply(`⚠️ 戶口全名「${paymentInfo.agent_name}」不在白名單中，付款未記錄`);
-        }
-        return;
-      }
-
+    if (paymentInfo.amount > 0 && customerName !== "Unknown") {
+      // 不再檢查白名單，直接記錄交易
       const success = await createTransaction({
-        agent_name: paymentInfo.agent_name,
+        agent_name: senderDisplayName,
+        customer_name: customerName,
         amount: paymentInfo.amount,
         currency: paymentInfo.currency,
         raw_message: paymentInfo.raw_message,
@@ -422,10 +420,10 @@ client.on("message", async (msg) => {
       });
 
       if (success) {
-        console.log(`   ✅ 付款資訊已記錄！`);
+        console.log(`   ✅ 付款資訊已記錄！（代理: ${senderDisplayName}, 客戶: ${customerName}）`);
         if (WA_SEND_REPLY) {
           const pd = paymentInfo.payment_details_dict || {};
-          let replyMsg = `✅ 已紀錄收款：${paymentInfo.agent_name}\n金額：${paymentInfo.amount.toLocaleString()} ${paymentInfo.currency}`;
+          let replyMsg = `✅ 已紀錄收款：${customerName}\n金額：${paymentInfo.amount.toLocaleString()} ${paymentInfo.currency}`;
           if (pd.bank_name) replyMsg += `\n銀行：${pd.bank_name}`;
           if (pd.account_number) replyMsg += `\n戶口：${pd.account_number}`;
           if (hasWarnings) replyMsg += "\n\n⚠️ 請注意以下問題：\n" + warnings.join("\n");
@@ -482,22 +480,22 @@ client.on("message", async (msg) => {
     return;
   }
 
-  console.log(`   📨 解析成功：${parsed.agent_name} ${parsed.amount} HKD`);
+  const parsedCustomerName = parsed.customer_name || parsed.agent_name || "Unknown";
+  console.log(`   📨 解析成功：客戶=${parsedCustomerName} ${parsed.amount} HKD（代理: ${senderDisplayName}）`);
 
-  const allowed = await isAgentAllowed(parsed.agent_name);
-  if (!allowed) {
-    console.log(`   ⚠️ 代理「${parsed.agent_name}」不在白名單`);
-    if (WA_SEND_REPLY) {
-      await msg.reply(`⚠️ 代理「${parsed.agent_name}」不在白名單中，交易未記錄`);
-    }
-    return;
-  }
-
-  const success = await createTransaction(parsed);
+  // 不再檢查白名單，直接記錄交易
+  const success = await createTransaction({
+    agent_name: senderDisplayName,
+    customer_name: parsedCustomerName,
+    amount: parsed.amount,
+    currency: "HKD",
+    raw_message: parsed.raw_message,
+    source: "whatsapp"
+  });
   if (success) {
     console.log(`   ✅ 交易已記錄！`);
     if (WA_SEND_REPLY) {
-      await msg.reply(`✅ 已紀錄交易：${parsed.agent_name} 成交 ${parsed.amount.toLocaleString()} HKD`);
+      await msg.reply(`✅ 已紀錄交易：${senderDisplayName} 回報 ${parsedCustomerName} 成交 ${parsed.amount.toLocaleString()} HKD`);
     }
   }
 });

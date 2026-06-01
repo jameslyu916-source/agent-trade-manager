@@ -388,13 +388,11 @@ def get_setting(db: Session, key: str) -> str | None:
 
 def update_settings(db: Session, updates: dict):
     """批量更新設置"""
-    from datetime import timezone as _tz
     for key, value in updates.items():
         setting = db.query(SystemSetting).filter(SystemSetting.key == key).first()
         if setting:
             setting.value = str(value)
-            setting.updated_at = datetime.now(_tz.utc)
+            setting.updated_at = datetime.now(timezone.utc)
         else:
             db.add(SystemSetting(key=key, value=str(value)))
     db.commit()
-    return tx

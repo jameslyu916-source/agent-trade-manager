@@ -33,6 +33,7 @@ from .ai_parser import parse_natural_language_query
 import json
 
 # ── 系統設置快取（從後端 API 讀取，定時刷新）──
+import time as _time
 _settings_cache = {}
 
 
@@ -42,7 +43,26 @@ def refresh_settings():
     s = api_client.get_settings()
     if s:
         _settings_cache = s
-        print("🔄 系統設置已刷新")
+        tg = "啟用" if s.get("telegram_enabled", True) else "停用"
+        wa = "啟用" if s.get("whatsapp_enabled", True) else "停用"
+        print(f"🔄 系統設置已刷新（TG: {tg} | WA: {wa}）")
+    else:
+        print("⚠️ 系統設置刷新失敗（API 未就緒或認證失敗）")
+
+
+def init_settings(max_retries=5):
+    """啟動時載入設置（含重試機制）"""
+    for i in range(max_retries):
+        global _settings_cache
+        s = api_client.get_settings()
+        if s:
+            _settings_cache = s
+            print(f"✅ 系統設置載入成功（嘗試 {i + 1} 次）")
+            return True
+        print(f"⏳ 設置載入失敗，2 秒後重試（{i + 1}/{max_retries}）...")
+        _time.sleep(2)
+    print("❌ 系統設置載入失敗，將使用預設值")
+    return False
 
 
 def get_setting(key, default=None):
@@ -585,8 +605,8 @@ def main():
     # Register the risk report command handler
     application.add_handler(CommandHandler("risk", risk_report))
     
-    # ── 載入系統設置 ──
-    refresh_settings()
+    # ── 載入系統設置（含重試）──
+    init_settings()
 
     # Set up a daily job to send the report at the specified time
     job_queue = application.job_queue
@@ -605,10 +625,10 @@ def main():
         first=10,  # Start 10 seconds after the bot starts
         data=GROUP_CHAT_ID
     )
-    # 每 5 分鐘刷新系統設置
+    # 每 60 秒刷新系統設置
     job_queue.run_repeating(
         lambda ctx: refresh_settings(),
-        interval=300,
+        interval=60,
         first=30
     )
     

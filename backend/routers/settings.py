@@ -1,5 +1,5 @@
 # backend/routers/settings.py — 系統設置 API
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from ..database import get_db
 from ..routers.auth import get_current_user
@@ -43,11 +43,16 @@ async def get_settings(
 
 @router.put("")
 async def update_settings(
-    updates: dict,
+    request: Request,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
     """批量更新系統設置"""
+    try:
+        updates = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="無法解析請求內容")
+
     valid_keys = {
         "telegram_enabled", "telegram_group_ids",
         "whatsapp_enabled", "whatsapp_group_names",

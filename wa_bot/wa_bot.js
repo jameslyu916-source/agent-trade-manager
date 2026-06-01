@@ -20,15 +20,33 @@ let settingsCache = {};
 
 async function refreshSettings() {
   try {
-    if (!authToken) return;
+    if (!authToken) return false;
     const res = await axios.get(`${API_BASE_URL}/settings`, { headers: getHeaders() });
     if (res.status === 200) {
       settingsCache = res.data;
-      console.log("🔄 系統設置已刷新");
+      const tg = res.data.telegram_enabled !== false ? "啟用" : "停用";
+      const wa = res.data.whatsapp_enabled !== false ? "啟用" : "停用";
+      console.log(`🔄 系統設置已刷新（TG: ${tg} | WA: ${wa}）`);
+      return true;
     }
+    return false;
   } catch (err) {
-    // 首次啟動時 API 可能尚未就緒，靜默跳過
+    console.log("⚠️ 系統設置刷新失敗：", err.message);
+    return false;
   }
+}
+
+async function initSettings(maxRetries = 5) {
+  for (let i = 0; i < maxRetries; i++) {
+    if (await refreshSettings()) {
+      console.log(`✅ 系統設置載入成功（嘗試 ${i + 1} 次）`);
+      return true;
+    }
+    console.log(`⏳ 設置載入失敗，2 秒後重試（${i + 1}/${maxRetries}）...`);
+    await new Promise(r => setTimeout(r, 2000));
+  }
+  console.log("❌ 系統設置載入失敗，將使用預設值");
+  return false;
 }
 
 function getSetting(key, defaultValue) {
@@ -322,9 +340,9 @@ client.on("ready", async () => {
   console.log("✅ WhatsApp Bot 已就緒！");
   console.log(`📌 監控群組：${WATCH_GROUP_NAMES.join(", ") || "（未設置）"}`);
   await login(); // 登錄後端API
-  await refreshSettings(); // 載入系統設置
-  // 每 5 分鐘刷新設置
-  setInterval(refreshSettings, 5 * 60 * 1000);
+  await initSettings(); // 載入系統設置（含重試）
+  // 每 60 秒刷新設置
+  setInterval(refreshSettings, 60 * 1000);
 });
 
 // 監聽所有消息

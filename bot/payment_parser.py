@@ -342,28 +342,37 @@ def parse_payment_info(message_text: str) -> dict | None:
         if is_valid:
             matched_bank = _lookup_bank_by_swift(swift_val)
             if matched_bank:
-                # 如果沒有銀行名稱，自動補上
                 if "bank_name" not in extracted:
                     extracted["bank_name"] = matched_bank["name"]
-                # 如果沒有銀行代碼，自動補上
                 if "bank_code" not in extracted:
                     extracted["bank_code"] = matched_bank["code"]
-                # 檢查 SWIFT 代碼是否與銀行名稱一致
                 if "bank_name" in extracted:
                     bank_by_name = _lookup_bank_by_name_or_alias(extracted["bank_name"])
                     if bank_by_name and bank_by_name["name"] != matched_bank["name"]:
                         warnings.append(f"⚠️ SWIFT 代碼與銀行名稱不一致：SWIFT 對應「{matched_bank['name']}」，名稱給出「{extracted['bank_name']}」")
-            else:
+            elif currency != "CNY":
                 warnings.append(f"⚠️ 無法識別的 SWIFT 代碼：{swift_val}")
-        elif looks_broken:
-            # 明顯是解析錯誤（欄位沒換行合併了），應阻擋記錄
-            warnings.append(f"❌ SWIFT 欄位格式異常（可能缺少換行）：{swift_val}")
-        else:
-            warnings.append(f"⚠️ SWIFT 代碼格式不正確：{swift_val}")
+        elif currency != "CNY":
+            # CNY 交易通常無 SWIFT 代碼，不報錯
+            if looks_broken:
+                warnings.append(f"❌ SWIFT 欄位格式異常（可能缺少換行）：{swift_val}")
+            else:
+                warnings.append(f"⚠️ SWIFT 代碼格式不正確：{swift_val}")
     elif "bank_name" in extracted:
         matched_bank = _lookup_bank_by_name_or_alias(extracted["bank_name"])
         if not matched_bank:
             warnings.append(f"⚠️ 無法識別的銀行名稱：{extracted['bank_name']}")
+
+    # ── 驗證銀行識別資訊 ──
+    has_swift = extracted.get("swift", "").strip()
+    has_bank_name = extracted.get("bank_name", "").strip()
+    has_bank_code = extracted.get("bank_code", "").strip()
+    if not has_swift and not has_bank_name and not has_bank_code:
+        warnings.append("❌ 缺少銀行識別資訊（SWIFT、銀行名稱或銀行代碼至少需要一項）")
+
+    # ── 驗證銀行地址 ──
+    if not extracted.get("bank_address", "").strip():
+        warnings.append("❌ 缺少銀行地址")
 
     # ── 驗證必填欄位 ──
     if "account_number" not in extracted:

@@ -288,6 +288,10 @@
                                     <label class="block text-xs font-medium text-slate-500 mb-1">銀行名稱</label>
                                     <input type="text" id="editBankName" placeholder="銀行全名" class="w-full px-3 py-2 border border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400">
                                 </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-500 mb-1">銀行地址</label>
+                                    <input type="text" id="editBankAddress" placeholder="銀行地址" class="w-full px-3 py-2 border border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400">
+                                </div>
                                 <div class="grid grid-cols-2 gap-3">
                                     <div>
                                         <label class="block text-xs font-medium text-slate-500 mb-1">戶口號碼</label>
@@ -486,6 +490,7 @@
 
             document.getElementById("editSwift").value = pd.swift || "";
             document.getElementById("editBankName").value = pd.bank_name || "";
+            document.getElementById("editBankAddress").value = pd.bank_address || "";
             document.getElementById("editBankCode").value = pd.bank_code || "";
             document.getElementById("editAccountNumber").value = pd.account_number || "";
             document.getElementById("editAccountName").value = pd.account_name || "";
@@ -549,6 +554,7 @@
             const swift = document.getElementById("editSwift").value.trim();
             const bankCode = document.getElementById("editBankCode").value.trim();
             const bankName = document.getElementById("editBankName").value.trim();
+            const bankAddress = document.getElementById("editBankAddress").value.trim();
             const accountNumber = document.getElementById("editAccountNumber").value.trim();
             const accountName = document.getElementById("editAccountName").value.trim();
 
@@ -576,7 +582,7 @@
             errorDiv.classList.add("hidden");
 
             // 構建 payment_details
-            const paymentDetails = { swift, bank_name: bankName, bank_code: bankCode, account_number: accountNumber, account_name: accountName };
+            const paymentDetails = { swift, bank_name: bankName, bank_code: bankCode, bank_address: bankAddress, account_number: accountNumber, account_name: accountName };
 
             const saveBtn = document.getElementById("saveEditBtn");
             saveBtn.disabled = true;

@@ -288,19 +288,35 @@ function parsePaymentInfo(messageText) {
             warnings.push(`⚠️ SWIFT 代碼與銀行名稱不一致：SWIFT 對應「${matchedBank.name}」，名稱給出「${extracted["bank_name"]}」`);
           }
         }
-      } else {
+      } else if (currency !== "CNY") {
         warnings.push(`⚠️ 無法識別的 SWIFT 代碼：${swiftVal}`);
       }
-    } else if (looksBroken) {
-      warnings.push(`❌ SWIFT 欄位格式異常（可能缺少換行）：${swiftVal}`);
-    } else {
-      warnings.push(`⚠️ SWIFT 代碼格式不正確：${swiftVal}`);
+    } else if (currency !== "CNY") {
+      // CNY 交易通常無 SWIFT 代碼，不報錯
+      if (looksBroken) {
+        warnings.push(`❌ SWIFT 欄位格式異常（可能缺少換行）：${swiftVal}`);
+      } else {
+        warnings.push(`⚠️ SWIFT 代碼格式不正確：${swiftVal}`);
+      }
     }
   } else if ("bank_name" in extracted) {
     matchedBank = lookupBankByNameOrAlias(extracted["bank_name"]);
     if (!matchedBank) {
       warnings.push(`⚠️ 無法識別的銀行名稱：${extracted["bank_name"]}`);
     }
+  }
+
+  // ── 驗證銀行識別資訊 ──
+  const hasSwift = (extracted["swift"] || "").trim();
+  const hasBankName = (extracted["bank_name"] || "").trim();
+  const hasBankCode = (extracted["bank_code"] || "").trim();
+  if (!hasSwift && !hasBankName && !hasBankCode) {
+    warnings.push("❌ 缺少銀行識別資訊（SWIFT、銀行名稱或銀行代碼至少需要一項）");
+  }
+
+  // ── 驗證銀行地址 ──
+  if (!(extracted["bank_address"] || "").trim()) {
+    warnings.push("❌ 缺少銀行地址");
   }
 
   // 驗證必填欄位

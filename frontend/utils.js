@@ -141,6 +141,7 @@ function renderPaymentDetails(paymentDetailsJson) {
         const items = [];
         if (pd.swift) items.push(`<span class="text-gray-400">SWIFT:</span> ${escapeHtml(pd.swift)}`);
         if (pd.bank_name) items.push(`<span class="text-gray-400">銀行:</span> ${escapeHtml(pd.bank_name)}`);
+        if (pd.bank_address) items.push(`<span class="text-gray-400">地址:</span> ${escapeHtml(pd.bank_address)}`);
         if (pd.bank_code) items.push(`<span class="text-gray-400">代碼:</span> ${escapeHtml(pd.bank_code)}`);
         if (pd.account_number) items.push(`<span class="text-gray-400">戶口:</span> ${escapeHtml(pd.account_number)}`);
         if (!items.length) return "";

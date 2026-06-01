@@ -95,6 +95,8 @@ def _format_payment_details(pd_str: str | None) -> str:
         parts = []
         if pd_obj.get("bank_name"):
             parts.append(pd_obj["bank_name"])
+        if pd_obj.get("bank_address"):
+            parts.append(pd_obj["bank_address"])
         if pd_obj.get("account_number"):
             parts.append(pd_obj["account_number"])
         if pd_obj.get("swift"):

@@ -153,6 +153,8 @@ def create_transaction(db: Session, transaction: schemas.TransactionCreate):
         customer_name=getattr(transaction, 'customer_name', None) or "",
         amount=transaction.amount,
         currency=transaction.currency if hasattr(transaction, 'currency') and transaction.currency else "USD",
+        from_currency=getattr(transaction, 'from_currency', None) or "",
+        to_currency=getattr(transaction, 'to_currency', None) or "",
         commission=commission,
         timestamp=timestamp,
         raw_message=transaction.raw_message,
@@ -298,6 +300,8 @@ def get_all_transactions_for_period(db: Session, days: int = 30):
             "customer_name": getattr(tx, 'customer_name', '') or '',
             "amount": tx.amount,
             "currency": getattr(tx, 'currency', 'USD') or 'USD',
+            "from_currency": getattr(tx, 'from_currency', '') or '',
+            "to_currency": getattr(tx, 'to_currency', '') or '',
             "commission": tx.commission,
             "timestamp": tx.timestamp,
             "source": tx.source,
@@ -349,6 +353,10 @@ def update_transaction(db: Session, transaction_id: int, updates: dict):
         tx.agent_name = updates["agent_name"]
     if "customer_name" in updates and updates["customer_name"] is not None:
         tx.customer_name = updates["customer_name"]
+    if "from_currency" in updates and updates["from_currency"] is not None:
+        tx.from_currency = updates["from_currency"]
+    if "to_currency" in updates and updates["to_currency"] is not None:
+        tx.to_currency = updates["to_currency"]
     if "amount" in updates:
         tx.amount = updates["amount"]
     if "currency" in updates:

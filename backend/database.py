@@ -53,6 +53,8 @@ class Transaction(Base):
     customer_name = Column(String, default="")  # 客戶戶口全名
     amount = Column(Integer, nullable=False)  # 交易金額
     currency = Column(String, default="HKD")  # 貨幣單位（USD/HKD/CNY等）
+    from_currency = Column(String, default="")  # 兌換來源貨幣
+    to_currency = Column(String, default="")    # 兌換目標貨幣
     commission = Column(Integer, default=0)   # 手續費
     timestamp = Column(String, nullable=False)  # UTC時間ISO格式
     raw_message = Column(String)
@@ -97,8 +99,13 @@ def _migrate():
             conn.exec_driver_sql("ALTER TABLE transactions ADD COLUMN payment_details TEXT")
         if "customer_name" not in existing_cols:
             conn.exec_driver_sql("ALTER TABLE transactions ADD COLUMN customer_name VARCHAR DEFAULT ''")
-            # 現有數據中 agent_name 實際上是客戶名，回填到 customer_name
             conn.exec_driver_sql("UPDATE transactions SET customer_name = agent_name WHERE customer_name IS NULL OR customer_name = ''")
+        if "from_currency" not in existing_cols:
+            conn.exec_driver_sql("ALTER TABLE transactions ADD COLUMN from_currency VARCHAR DEFAULT ''")
+        if "to_currency" not in existing_cols:
+            conn.exec_driver_sql("ALTER TABLE transactions ADD COLUMN to_currency VARCHAR DEFAULT ''")
+            # 現有數據的 to_currency 回填為 currency（即目標貨幣）
+            conn.exec_driver_sql("UPDATE transactions SET to_currency = currency WHERE to_currency IS NULL OR to_currency = ''")
 
         # Migrate agent total_earnings from Integer to JSON string
         result = conn.exec_driver_sql("PRAGMA table_info(agents)")

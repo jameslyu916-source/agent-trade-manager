@@ -135,6 +135,10 @@
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                         更新分析
                     </button>
+                    <button id="btnActiveFilter" onclick="toggleActiveFilter()" class="px-3 py-2 border border-slate-700 rounded-xl text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-all font-medium flex items-center gap-1.5" title="僅顯示活躍代理">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>
+                        全部代理
+                    </button>
                 </div>
             </div>
 
@@ -211,10 +215,25 @@
     </div>
 
     <script>
+        let activeOnly = false;
+
         document.addEventListener("DOMContentLoaded", async () => {
             checkAuth();
             await loadRiskData();
         });
+
+        function toggleActiveFilter() {
+            activeOnly = !activeOnly;
+            const btn = document.getElementById("btnActiveFilter");
+            if (activeOnly) {
+                btn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>僅活躍代理`;
+                btn.className = "px-3 py-2 border border-amber-500/30 rounded-xl text-sm text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 transition-all font-medium flex items-center gap-1.5";
+            } else {
+                btn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>全部代理`;
+                btn.className = "px-3 py-2 border border-slate-700 rounded-xl text-sm text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-all font-medium flex items-center gap-1.5";
+            }
+            loadRiskData();
+        }
 
         function riskColorClasses(level) {
             switch (level) {
@@ -254,7 +273,7 @@
                 // 並行請求
                 const [anomalyData, riskData] = await Promise.all([
                     apiRequest(`/analysis/anomalies?days=${days}`),
-                    apiRequest(`/analysis/risk-report?days=${days}`)
+                    apiRequest(`/analysis/risk-report?days=${days}&active_only=${activeOnly}`)
                 ]);
 
                 // 更新總覽

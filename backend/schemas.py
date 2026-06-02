@@ -48,6 +48,8 @@ class TransactionBase(BaseModel):
     customer_name: Optional[str] = ""  # 客戶戶口全名
     amount: int = Field(gt=0)  # 金額必須大於0
     currency: str = "USD"  # 貨幣單位
+    from_currency: Optional[str] = ""  # 兌換來源貨幣
+    to_currency: Optional[str] = ""    # 兌換目標貨幣
     raw_message: Optional[str] = None
     source: str = "telegram"
     payment_details: Optional[str] = None  # JSON格式的銀行付款詳情
@@ -60,6 +62,8 @@ class TransactionUpdate(BaseModel):
     customer_name: Optional[str] = None
     amount: Optional[int] = Field(default=None, gt=0)
     currency: Optional[str] = None
+    from_currency: Optional[str] = None
+    to_currency: Optional[str] = None
     payment_details: Optional[str] = None
 
 class TransactionResponse(TransactionBase):

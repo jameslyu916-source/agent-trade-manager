@@ -53,6 +53,16 @@ function getSetting(key, defaultValue) {
   return settingsCache[key] !== undefined ? settingsCache[key] : defaultValue;
 }
 
+// ── 貨幣兌換配對（與 bot/payment_parser.py 一致）──
+const EXCHANGE_OPTIONS = {
+  HKD: [{ from: "CNY", label: "人民幣 → 港幣" }, { from: "USDT", label: "USDT → 港幣" }],
+  USD: [{ from: "CNY", label: "人民幣 → 美金" }, { from: "USDT", label: "USDT → 美金" }],
+  CNY: [{ from: "USD", label: "美金 → 人民幣" }, { from: "HKD", label: "港幣 → 人民幣" }, { from: "USDT", label: "USDT → 人民幣" }],
+};
+
+// 暫存等待代理選擇兌換方式的付款資訊: senderId -> {paymentInfo, agentName, customerName, toCurrency, chat, expireAt}
+const pendingExchanges = new Map();
+
 // ==================== API 客戶端 ====================
 let authToken = null;
 
@@ -81,6 +91,8 @@ async function createTransaction(data) {
       customer_name: data.customer_name || "",
       amount: data.amount,
       currency: data.currency || "USD",
+      from_currency: data.from_currency || "",
+      to_currency: data.to_currency || "",
       raw_message: data.raw_message || null,
       source: data.source || "whatsapp",
       payment_details: data.payment_details || null
@@ -390,6 +402,43 @@ client.on("message", async (msg) => {
   const senderId = msg.author;
   const senderDisplayName = (msg._data && msg._data.notifyName) || senderId;
 
+  // ── 檢查是否有待處理的兌換方式選擇 ──
+  const pending = pendingExchanges.get(senderId);
+  if (pending) {
+    const num = parseInt(text.trim());
+    const options = EXCHANGE_OPTIONS[pending.toCurrency] || [];
+    pendingExchanges.delete(senderId);
+
+    if (isNaN(num) || num < 1 || num > options.length) {
+      // 取消或無效輸入
+      if (WA_SEND_REPLY) {
+        await msg.reply(`❌ 已取消記錄：${pending.customerName} ${pending.paymentInfo.amount.toLocaleString()} ${pending.toCurrency}`);
+      }
+      return;
+    }
+
+    const chosen = options[num - 1];
+    const success = await createTransaction({
+      agent_name: pending.agentName,
+      customer_name: pending.customerName,
+      amount: pending.paymentInfo.amount,
+      currency: pending.paymentInfo.currency,
+      raw_message: pending.paymentInfo.raw_message,
+      source: "whatsapp",
+      payment_details: pending.paymentInfo.payment_details,
+      from_currency: chosen.from,
+      to_currency: pending.toCurrency
+    });
+
+    if (success) {
+      console.log(`💾 付款資訊已記錄（${pending.agentName}, ${pending.customerName}, ${chosen.from}→${pending.toCurrency}）`);
+      if (WA_SEND_REPLY) {
+        await msg.reply(`✅ 已紀錄收款：${pending.customerName}\n兌換：${chosen.from} → ${pending.toCurrency}\n金額：${pending.paymentInfo.amount.toLocaleString()} ${pending.toCurrency}`);
+      }
+    }
+    return;
+  }
+
   // ── 優先檢查是否為結構化付款資訊 ──
   const paymentInfo = parsePaymentInfo(text);
   if (paymentInfo) {
@@ -408,27 +457,42 @@ client.on("message", async (msg) => {
     }
 
     if (paymentInfo.amount > 0 && customerName !== "Unknown") {
-      // 不再檢查白名單，直接記錄交易
-      const success = await createTransaction({
-        agent_name: senderDisplayName,
-        customer_name: customerName,
-        amount: paymentInfo.amount,
-        currency: paymentInfo.currency,
-        raw_message: paymentInfo.raw_message,
-        source: "whatsapp",
-        payment_details: paymentInfo.payment_details
-      });
+      const toCurrency = (paymentInfo.currency || "HKD").toUpperCase();
+      const options = EXCHANGE_OPTIONS[toCurrency];
 
-      if (success) {
-        console.log(`   ✅ 付款資訊已記錄！（代理: ${senderDisplayName}, 客戶: ${customerName}）`);
-        if (WA_SEND_REPLY) {
-          const pd = paymentInfo.payment_details_dict || {};
-          let replyMsg = `✅ 已紀錄收款：${customerName}\n金額：${paymentInfo.amount.toLocaleString()} ${paymentInfo.currency}`;
-          if (pd.bank_name) replyMsg += `\n銀行：${pd.bank_name}`;
-          if (pd.account_number) replyMsg += `\n戶口：${pd.account_number}`;
-          if (hasWarnings) replyMsg += "\n\n⚠️ 請注意以下問題：\n" + warnings.join("\n");
-          await msg.reply(replyMsg);
-        }
+      const pd = paymentInfo.payment_details_dict || {};
+      let replyMsg = `✅ 已檢測付款：${customerName}\n金額：${paymentInfo.amount.toLocaleString()} ${toCurrency}`;
+      if (pd.bank_name) replyMsg += `\n銀行：${pd.bank_name}`;
+      if (pd.account_number) replyMsg += `\n戶口：${pd.account_number}`;
+
+      if (options && options.length > 0) {
+        // 有兌換選項，發送文字選單讓代理回覆數字
+        replyMsg += "\n\n請回覆數字選擇兌換方式：";
+        options.forEach((opt, i) => {
+          replyMsg += `\n${i + 1}. ${opt.label}`;
+        });
+        replyMsg += `\n${options.length + 1}. 取消`;
+        if (hasWarnings) replyMsg += "\n\n⚠️ 請注意：\n" + warnings.join("\n");
+
+        if (WA_SEND_REPLY) { await msg.reply(replyMsg); }
+        // 暫存，等待代理回覆數字
+        pendingExchanges.set(senderId, {
+          paymentInfo, agentName: senderDisplayName,
+          customerName, toCurrency,
+          expireAt: Date.now() + 5 * 60 * 1000  // 5 分鐘過期
+        });
+      } else {
+        // 未知目標貨幣，直接記錄
+        replyMsg += `\n⚠️ 未知目標貨幣「${toCurrency}」，將直接記錄`;
+        if (hasWarnings) replyMsg += "\n\n⚠️ 請注意：\n" + warnings.join("\n");
+        if (WA_SEND_REPLY) { await msg.reply(replyMsg); }
+        await createTransaction({
+          agent_name: senderDisplayName, customer_name: customerName,
+          amount: paymentInfo.amount, currency: paymentInfo.currency,
+          raw_message: paymentInfo.raw_message, source: "whatsapp",
+          payment_details: paymentInfo.payment_details
+        });
+        console.log(`   💾 付款資訊已記錄（代理: ${senderDisplayName}, 客戶: ${customerName}）`);
       }
     } else if (paymentInfo.amount <= 0 && WA_SEND_REPLY) {
       await msg.reply("❌ 無法解析付款金額，請檢查 Mso-Pobo 格式");

@@ -2,12 +2,13 @@ import os
 os.environ["PYTHONUTF8"] = "1"
 import requests as req
 from dotenv import load_dotenv
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     ContextTypes,
     CommandHandler,
     MessageHandler,
+    CallbackQueryHandler,
     filters,
     JobQueue
 )
@@ -68,6 +69,32 @@ def init_settings(max_retries=5):
 def get_setting(key, default=None):
     """讀取單個設置項"""
     return _settings_cache.get(key, default)
+
+# ── 貨幣兌換配對邏輯 ──
+
+# 根據目標貨幣，推斷可能的來源貨幣（三種兌換類型）
+_EXCHANGE_OPTIONS = {
+    "HKD": [("CNY", "人民幣 → 港幣"), ("USDT", "USDT → 港幣")],
+    "USD": [("CNY", "人民幣 → 美金"), ("USDT", "USDT → 美金")],
+    "CNY": [("USD", "美金 → 人民幣"), ("HKD", "港幣 → 人民幣"), ("USDT", "USDT → 人民幣")],
+}
+
+# 暫存等待代理選擇兌換方式的付款資訊: message_id -> {payment_info, agent_name, ...}
+_pending_exchanges = {}
+
+def _build_exchange_keyboard(to_currency: str):
+    """根據目標貨幣生成兌換方式選擇按鈕"""
+    options = _EXCHANGE_OPTIONS.get(to_currency.upper(), [])
+    if not options:
+        return None
+    keyboard = []
+    for from_cur, label in options:
+        keyboard.append([InlineKeyboardButton(
+            label, callback_data=f"exch:{from_cur}:{to_currency.upper()}"
+        )])
+    keyboard.append([InlineKeyboardButton("❌ 取消", callback_data="exch:cancel")])
+    return InlineKeyboardMarkup(keyboard)
+
 
 # Load environment variables from .env file
 load_dotenv()
@@ -260,35 +287,51 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
             return
 
         if payment_info["amount"] > 0 and customer_name != "Unknown":
-            # 不再檢查白名單，直接記錄交易
-            api_client.create_transaction(
-                agent_name=agent_display_name,
-                customer_name=customer_name,
-                amount=payment_info["amount"],
-                timestamp=payment_info.get("timestamp"),
-                raw_message=payment_info["raw_message"],
-                source=payment_info.get("source", "telegram"),
-                currency=payment_info["currency"],
-                payment_details=payment_info["payment_details"]
-            )
-            print(f"💾 付款資訊已記錄（代理: {agent_display_name}, 客戶: {customer_name}）")
+            to_currency = payment_info.get("currency", "HKD").upper()
+            keyboard = _build_exchange_keyboard(to_currency)
 
             # 構建回覆訊息
-            reply_parts = [
-                f"✅ 已紀錄收款：{customer_name}",
-                f"金額：{payment_info['amount']:,} {payment_info['currency']}",
-            ]
             pd = payment_info.get("payment_details_dict", {})
+            reply_parts = [
+                f"✅ 已檢測付款：{customer_name}",
+                f"金額：{payment_info['amount']:,} {to_currency}",
+            ]
             if pd.get("bank_name"):
                 reply_parts.append(f"銀行：{pd['bank_name']}")
             if pd.get("account_number"):
                 reply_parts.append(f"戶口：{pd['account_number']}")
 
-            # ⚠️ 警告仍然顯示，但不阻擋記錄
-            if has_warnings:
-                reply_parts.append("\n⚠️ 請注意以下問題：\n" + "\n".join(warnings))
-
-            await update.message.reply_text("\n".join(reply_parts))
+            if keyboard:
+                reply_parts.append("\n請選擇兌換方式：")
+                if has_warnings:
+                    reply_parts.append("\n⚠️ 請注意：\n" + "\n".join(warnings))
+                sent_msg = await update.message.reply_text(
+                    "\n".join(reply_parts), reply_markup=keyboard
+                )
+                # 暫存付款資訊，等代理選擇兌換方式後再記錄
+                _pending_exchanges[sent_msg.message_id] = {
+                    "payment_info": payment_info,
+                    "agent_name": agent_display_name,
+                    "customer_name": customer_name,
+                    "to_currency": to_currency,
+                }
+            else:
+                # 無法生成鍵盤（未知貨幣），直接記錄
+                reply_parts.append(f"\n⚠️ 未知目標貨幣「{to_currency}」，無法判斷兌換方式，將直接記錄")
+                if has_warnings:
+                    reply_parts.append("\n⚠️ 請注意以下問題：\n" + "\n".join(warnings))
+                await update.message.reply_text("\n".join(reply_parts))
+                api_client.create_transaction(
+                    agent_name=agent_display_name,
+                    customer_name=customer_name,
+                    amount=payment_info["amount"],
+                    timestamp=payment_info.get("timestamp"),
+                    raw_message=payment_info["raw_message"],
+                    source=payment_info.get("source", "telegram"),
+                    currency=payment_info["currency"],
+                    payment_details=payment_info["payment_details"],
+                )
+                print(f"💾 付款資訊已記錄（代理: {agent_display_name}, 客戶: {customer_name}）")
         elif payment_info["amount"] <= 0:
             await update.message.reply_text("❌ 無法解析付款金額，請檢查 Mso-Pobo 格式")
         return
@@ -473,6 +516,64 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
         return
    
     print("ℹ️ 普通消息，無需處理")
+
+# ── 兌換方式選擇回調處理 ──
+async def handle_exchange_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """處理代理點擊兌換方式按鈕"""
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data  # "exch:CNY:HKD" or "exch:cancel"
+    msg_id = query.message.message_id
+    pending = _pending_exchanges.pop(msg_id, None)
+
+    if not pending:
+        await query.edit_message_text("⚠️ 該選擇已過期，請重新發送付款資訊")
+        return
+
+    if data == "exch:cancel":
+        await query.edit_message_text(
+            f"❌ 已取消記錄：{pending['customer_name']} {pending['payment_info']['amount']:,} {pending['to_currency']}"
+        )
+        return
+
+    # 解析兌換方式
+    parts = data.split(":")
+    from_cur = parts[1] if len(parts) > 1 else ""
+    to_cur = parts[2] if len(parts) > 2 else pending["to_currency"]
+
+    payment_info = pending["payment_info"]
+    agent_name = pending["agent_name"]
+    customer_name = pending["customer_name"]
+
+    # 記錄交易
+    api_client.create_transaction(
+        agent_name=agent_name,
+        customer_name=customer_name,
+        amount=payment_info["amount"],
+        timestamp=payment_info.get("timestamp"),
+        raw_message=payment_info["raw_message"],
+        source=payment_info.get("source", "telegram"),
+        currency=payment_info["currency"],
+        payment_details=payment_info["payment_details"],
+        from_currency=from_cur,
+        to_currency=to_cur,
+    )
+    print(f"💾 付款資訊已記錄（代理: {agent_name}, 客戶: {customer_name}, {from_cur}→{to_cur}）")
+
+    # 更新回覆訊息
+    pd = payment_info.get("payment_details_dict", {})
+    reply_parts = [
+        f"✅ 已紀錄收款：{customer_name}",
+        f"兌換：{from_cur} → {to_cur}",
+        f"金額：{payment_info['amount']:,} {to_cur}",
+    ]
+    if pd.get("bank_name"):
+        reply_parts.append(f"銀行：{pd['bank_name']}")
+    if pd.get("account_number"):
+        reply_parts.append(f"戶口：{pd['account_number']}")
+
+    await query.edit_message_text("\n".join(reply_parts))
         
 # Handler for checking abnormal transactions and sending alerts
 async def check_abnormal_transactions(context: ContextTypes.DEFAULT_TYPE):
@@ -582,6 +683,9 @@ def main():
         filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
         echo
     ))
+    # Register callback handler for exchange pair selection
+    application.add_handler(CallbackQueryHandler(handle_exchange_callback))
+
     # Register message handler for group messages
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),

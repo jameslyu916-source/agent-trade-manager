@@ -35,9 +35,13 @@ async def generate_daily_report(
     for tx in transactions:
         cur = getattr(tx, 'currency', None) or 'USD'
         pd_str = getattr(tx, 'payment_details', None)
+        from_cur = getattr(tx, 'from_currency', '') or ''
+        to_cur = getattr(tx, 'to_currency', '') or ''
+        pair = f"{from_cur} → {to_cur}" if from_cur and to_cur else ""
         tx_rows.append({
             "代理名稱": tx.agent_name,
             "客戶名稱": getattr(tx, 'customer_name', '') or '',
+            "兌換": pair,
             "交易金額": tx.amount,
             "貨幣": cur,
             "手續費": tx.commission,

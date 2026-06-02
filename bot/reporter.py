@@ -45,6 +45,14 @@ def generate_daily_report(date=None):
         if "customer_name" in df.columns:
             cols.insert(1, "customer_name")
             cols_display.insert(1, "客戶名稱")
+        # 合併 from_currency → to_currency 為兌換欄位
+        if "from_currency" in df.columns and "to_currency" in df.columns:
+            df["兌換"] = df.apply(
+                lambda r: f"{r['from_currency']} → {r['to_currency']}" if r['from_currency'] and r['to_currency'] else "",
+                axis=1
+            )
+            cols.insert(-2, "兌換")
+            cols_display.insert(-2, "兌換")
         df = df[cols]
         df.columns = cols_display
     else:

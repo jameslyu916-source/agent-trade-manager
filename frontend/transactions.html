@@ -195,6 +195,7 @@
                                 <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">時間</th>
                                 <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">代理名稱</th>
                                 <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">客戶名稱</th>
+                                <th class="px-6 py-3.5 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">兌換</th>
                                 <th class="px-6 py-3.5 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">交易金額</th>
                                 <th class="px-6 py-3.5 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">手續費</th>
                                 <th class="px-6 py-3.5 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">數據來源</th>
@@ -277,6 +278,22 @@
                                     <option value="EUR">EUR</option><option value="GBP">GBP</option><option value="JPY">JPY</option>
                                     <option value="AUD">AUD</option><option value="SGD">SGD</option><option value="CAD">CAD</option>
                                     <option value="CHF">CHF</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">兌換來源</label>
+                                <select id="editFromCurrency" class="w-full px-3 py-2 border border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400">
+                                    <option value="">-</option>
+                                    <option value="CNY">CNY</option><option value="USD">USD</option><option value="HKD">HKD</option><option value="USDT">USDT</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">兌換目標</label>
+                                <select id="editToCurrency" class="w-full px-3 py-2 border border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400">
+                                    <option value="">-</option>
+                                    <option value="CNY">CNY</option><option value="USD">USD</option><option value="HKD">HKD</option><option value="USDT">USDT</option>
                                 </select>
                             </div>
                         </div>
@@ -388,14 +405,14 @@
                 document.getElementById("summaryCommission").innerHTML = commissionHtml;
 
                 if (allTransactions.length === 0) {
-                    tableBody.innerHTML = `<tr><td colspan="7" class="px-6 py-14">${renderEmptyState("暫無交易記錄", date ? `於 ${date} 沒有找到交易數據` : "今日尚無交易")}</td></tr>`;
+                    tableBody.innerHTML = `<tr><td colspan="8" class="px-6 py-14">${renderEmptyState("暫無交易記錄", date ? `於 ${date} 沒有找到交易數據` : "今日尚無交易")}</td></tr>`;
                     return;
                 }
 
                 renderPage(0);
 
             } catch (error) {
-                tableBody.innerHTML = '<tr><td colspan="7" class="px-6 py-14 text-center text-red-500 text-sm">載入失敗，請稍後重試</td></tr>';
+                tableBody.innerHTML = '<tr><td colspan="8" class="px-6 py-14 text-center text-red-500 text-sm">載入失敗，請稍後重試</td></tr>';
                 console.error("加載交易記錄失敗：", error);
             }
         }
@@ -420,6 +437,7 @@
                     </td>
                     <td class="px-6 py-3.5 whitespace-nowrap text-sm font-semibold text-slate-200">${tx.agent_name}</td>
                     <td class="px-6 py-3.5 whitespace-nowrap text-sm text-slate-300">${tx.customer_name || "-"}</td>
+                    <td class="px-6 py-3.5 whitespace-nowrap text-sm text-center">${(tx.from_currency && tx.to_currency) ? `<span class="bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded text-xs font-medium">${tx.from_currency} → ${tx.to_currency}</span>` : '<span class="text-slate-600">-</span>'}</td>
                     <td class="px-6 py-3.5 whitespace-nowrap text-sm font-bold text-amber-400 text-right">
                         ${formatCurrency(tx.amount, tx.currency || 'USD')}
                     </td>
@@ -494,6 +512,8 @@
             document.getElementById("editTxId").value = tx.id;
             document.getElementById("editAgentName").value = tx.agent_name;
             document.getElementById("editCustomerName").value = tx.customer_name || "";
+            document.getElementById("editFromCurrency").value = tx.from_currency || "";
+            document.getElementById("editToCurrency").value = tx.to_currency || "";
             document.getElementById("editAmount").value = tx.amount;
             document.getElementById("editCurrency").value = (tx.currency || "USD").toUpperCase();
 
@@ -567,6 +587,8 @@
             const customerName = document.getElementById("editCustomerName").value.trim();
             const amount = parseInt(document.getElementById("editAmount").value);
             const currency = document.getElementById("editCurrency").value;
+            const fromCurrency = document.getElementById("editFromCurrency").value;
+            const toCurrency = document.getElementById("editToCurrency").value;
             const swift = document.getElementById("editSwift").value.trim();
             const bankCode = document.getElementById("editBankCode").value.trim();
             const bankName = document.getElementById("editBankName").value.trim();
@@ -610,6 +632,8 @@
                     customer_name: customerName,
                     amount: amount,
                     currency: currency,
+                    from_currency: fromCurrency,
+                    to_currency: toCurrency,
                     payment_details: JSON.stringify(paymentDetails)
                 });
                 showToast("交易記錄已更新", "success");

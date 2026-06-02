@@ -96,6 +96,38 @@ def _build_exchange_keyboard(to_currency: str):
     return InlineKeyboardMarkup(keyboard)
 
 
+# ── 交易格式範本 ──
+_FORMAT_EXAMPLE = """📋 交易信息格式範例（已填寫）：
+
+收款銀行：Citibank, N.A. Hong Kong Branch
+收款銀行SWIFT代號：CITIHKHXXXX
+銀行地址：Champion Tower, Three Garden Road, Central, Hong Kong
+收款人名字：CHAN TAI MAN
+銀行代碼：006
+收款人帳號：391-17721113
+金額：16888 USD
+
+--- 以下為可選項 ---
+備註：G12345678
+投保人：陳大文"""
+
+_FORMAT_TEMPLATE = """📋 交易信息格式（請複製並填寫）：
+
+收款銀行：
+收款銀行SWIFT代號：
+銀行地址：
+收款人名字：
+銀行代碼：
+收款人帳號：
+金額：
+
+--- 以下為可選項 ---
+備註：
+投保人："""
+
+_FORMAT_FULL = _FORMAT_EXAMPLE + "\n\n" + _FORMAT_TEMPLATE
+
+
 # Load environment variables from .env file
 load_dotenv()
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -248,11 +280,15 @@ async def list_agents(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not agents:
         await update.message.reply_text("暫無白名單代理")
         return
-    
+
     text = "📋 當前白名單代理：\n"
     for i, agent in enumerate(agents, 1):
         text += f"{i}. {agent}\n"
     await update.message.reply_text(text)
+
+# /format command handler
+async def format_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(_FORMAT_FULL)
 
 # Handler for messages in group chats with whitelist check
 async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -283,7 +319,10 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
         # ── 有嚴重錯誤（缺必填欄位）→ 阻擋記錄，只回報錯誤 ──
         if has_errors:
             error_msg = "❌ 付款資訊不完整，請修正後重新發送：\n\n" + "\n".join(warnings)
-            await update.message.reply_text(error_msg)
+            fmt_btn = InlineKeyboardMarkup([[
+                InlineKeyboardButton("📋 查看格式範例", callback_data="fmt:example")
+            ]])
+            await update.message.reply_text(error_msg, reply_markup=fmt_btn)
             return
 
         if payment_info["amount"] > 0 and customer_name != "Unknown":
@@ -525,7 +564,15 @@ async def handle_exchange_callback(update: Update, context: ContextTypes.DEFAULT
     query = update.callback_query
     await query.answer()
 
-    data = query.data  # "exch:CNY:HKD" or "exch:cancel"
+    data = query.data  # "exch:CNY:HKD" or "exch:cancel" or "fmt:example"
+
+    # ── 格式範例按鈕 ──
+    if data == "fmt:example":
+        await query.edit_message_text(
+            query.message.text + "\n\n" + _FORMAT_FULL
+        )
+        return
+
     msg_id = query.message.message_id
     pending = _pending_exchanges.pop(msg_id, None)
 
@@ -707,7 +754,8 @@ def main():
     application.add_handler(CommandHandler("addagent", add_agent))
     application.add_handler(CommandHandler("delagent", remove_agent))
     application.add_handler(CommandHandler("agents", list_agents))
-    
+    application.add_handler(CommandHandler("format", format_command))
+
     # Register the risk report command handler
     application.add_handler(CommandHandler("risk", risk_report))
     

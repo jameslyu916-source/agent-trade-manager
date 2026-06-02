@@ -63,6 +63,37 @@ const EXCHANGE_OPTIONS = {
 // 暫存等待代理選擇兌換方式的付款資訊: senderId -> {paymentInfo, agentName, customerName, toCurrency, chat, expireAt}
 const pendingExchanges = new Map();
 
+// ── 交易格式範本 ──
+const FORMAT_EXAMPLE = `📋 交易信息格式範例（已填寫）：
+
+收款銀行：Citibank, N.A. Hong Kong Branch
+收款銀行SWIFT代號：CITIHKHXXXX
+銀行地址：Champion Tower, Three Garden Road, Central, Hong Kong
+收款人名字：CHAN TAI MAN
+銀行代碼：006
+收款人帳號：391-17721113
+金額：16888 USD
+
+--- 以下為可選項 ---
+備註：G12345678
+投保人：陳大文`;
+
+const FORMAT_TEMPLATE = `📋 交易信息格式（請複製並填寫）：
+
+收款銀行：
+收款銀行SWIFT代號：
+銀行地址：
+收款人名字：
+銀行代碼：
+收款人帳號：
+金額：
+
+--- 以下為可選項 ---
+備註：
+投保人：`;
+
+const FORMAT_FULL = FORMAT_EXAMPLE + "\n\n" + FORMAT_TEMPLATE;
+
 // ==================== API 客戶端 ====================
 let authToken = null;
 
@@ -381,6 +412,13 @@ client.on("message", async (msg) => {
   }
 
   // 以下保持原有邏輯不變
+  // ── 格式範例請求（私聊和群組都可用）──
+  const msgText = msg.body.trim();
+  if (msgText === "/format" || msgText === "/Format") {
+    if (WA_SEND_REPLY) { await msg.reply(FORMAT_FULL); }
+    return;
+  }
+
   if (!msg.from.endsWith("@g.us")) return;
 
   // ── 檢查 WhatsApp Bot 是否啟用 ──
@@ -458,7 +496,7 @@ client.on("message", async (msg) => {
     // ── 有嚴重錯誤（缺必填欄位）→ 阻擋記錄，只回報錯誤 ──
     if (hasErrors) {
       if (WA_SEND_REPLY) {
-        await msg.reply("❌ 付款資訊不完整，請修正後重新發送：\n\n" + warnings.join("\n"));
+        await msg.reply("❌ 付款資訊不完整，請修正後重新發送：\n\n" + warnings.join("\n") + "\n\n輸入 /format 獲取格式範例");
       }
       return;
     }

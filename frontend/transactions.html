@@ -374,6 +374,31 @@
         const PAGE_SIZE = 20;
         let allTransactions = [];
 
+        function renderCurrencyIcon(cur) {
+            const icons = {
+                CNY: `<svg class="w-4 h-4 shrink-0" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7.5" fill="#dc2626" stroke="#f87171" stroke-width="0.5"/><text x="8" y="11.5" text-anchor="middle" fill="white" font-size="9" font-weight="700">¥</text></svg>`,
+                HKD: `<svg class="w-4 h-4 shrink-0" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7.5" fill="#b45309" stroke="#fbbf24" stroke-width="0.5"/><text x="8" y="10.5" text-anchor="middle" fill="white" font-size="6.5" font-weight="800">HK</text></svg>`,
+                USD: `<svg class="w-4 h-4 shrink-0" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7.5" fill="#15803d" stroke="#4ade80" stroke-width="0.5"/><text x="8" y="11.5" text-anchor="middle" fill="white" font-size="9" font-weight="700">$</text></svg>`,
+                USDT: `<svg class="w-4 h-4 shrink-0" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7.5" fill="#0d9488" stroke="#2dd4bf" stroke-width="0.5"/><text x="8" y="11.5" text-anchor="middle" fill="white" font-size="9" font-weight="700">₮</text></svg>`,
+                EUR: `<svg class="w-4 h-4 shrink-0" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7.5" fill="#1e40af" stroke="#60a5fa" stroke-width="0.5"/><text x="8" y="11.5" text-anchor="middle" fill="white" font-size="9" font-weight="700">€</text></svg>`,
+                GBP: `<svg class="w-4 h-4 shrink-0" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7.5" fill="#7c3aed" stroke="#c084fc" stroke-width="0.5"/><text x="8" y="11.5" text-anchor="middle" fill="white" font-size="9" font-weight="700">£</text></svg>`,
+                JPY: `<svg class="w-4 h-4 shrink-0" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7.5" fill="#9d174d" stroke="#f472b6" stroke-width="0.5"/><text x="8" y="11.5" text-anchor="middle" fill="white" font-size="8" font-weight="700">円</text></svg>`,
+            };
+            if (icons[cur]) return icons[cur];
+            // fallback: emoji for less common currencies
+            const fallback = { AUD: '🇦🇺', SGD: '🇸🇬', CAD: '🇨🇦', CHF: '🇨🇭' };
+            return fallback[cur] ? `<span class="text-sm">${fallback[cur]}</span>` : `<span class="text-[10px] font-bold text-slate-500">${cur}</span>`;
+        }
+
+        function renderExchangePair(from, to) {
+            if (!from || !to) return '<span class="text-slate-600">-</span>';
+            return `<span class="inline-flex items-center gap-1.5 bg-gradient-to-r from-slate-800/80 to-slate-800/40 px-2.5 py-1 rounded-lg border border-slate-700/50">
+                ${renderCurrencyIcon(from)}<span class="text-xs font-medium text-slate-300">${from}</span>
+                <span class="text-slate-600 text-[10px] mx-0.5">→</span>
+                ${renderCurrencyIcon(to)}<span class="text-xs font-medium text-slate-300">${to}</span>
+            </span>`;
+        }
+
         document.addEventListener("DOMContentLoaded", async () => {
             checkAuth();
             const today = new Date().toISOString().split('T')[0];
@@ -451,9 +476,9 @@
                             ${utcToHKTime(tx.timestamp)}
                         </div>
                     </td>
-                    <td class="px-6 py-3.5 whitespace-nowrap text-sm font-semibold text-slate-200">${tx.agent_name}</td>
-                    <td class="px-6 py-3.5 whitespace-nowrap text-sm text-slate-300">${tx.customer_name || "-"}</td>
-                    <td class="px-6 py-3.5 whitespace-nowrap text-sm text-center">${(tx.from_currency && tx.to_currency) ? `<span class="bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded text-xs font-medium">${tx.from_currency} → ${tx.to_currency}</span>` : '<span class="text-slate-600">-</span>'}</td>
+                    <td class="px-6 py-3.5 whitespace-nowrap text-sm text-slate-400">${tx.agent_name}</td>
+                    <td class="px-6 py-3.5 whitespace-nowrap text-sm font-semibold text-slate-200">${tx.customer_name || "-"}</td>
+                    <td class="px-6 py-3.5 whitespace-nowrap text-sm text-center">${renderExchangePair(tx.from_currency, tx.to_currency)}</td>
                     <td class="px-6 py-3.5 whitespace-nowrap text-sm font-bold text-amber-400 text-right">
                         ${formatCurrency(tx.amount, tx.currency || 'USD')}
                     </td>

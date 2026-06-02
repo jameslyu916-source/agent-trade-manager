@@ -93,6 +93,8 @@ async function createTransaction(data) {
       currency: data.currency || "USD",
       from_currency: data.from_currency || "",
       to_currency: data.to_currency || "",
+      remarks: data.remarks || "",
+      insured_person: data.insured_person || "",
       raw_message: data.raw_message || null,
       source: data.source || "whatsapp",
       payment_details: data.payment_details || null
@@ -427,13 +429,18 @@ client.on("message", async (msg) => {
       source: "whatsapp",
       payment_details: pending.paymentInfo.payment_details,
       from_currency: chosen.from,
-      to_currency: pending.toCurrency
+      to_currency: pending.toCurrency,
+      remarks: pending.paymentInfo.remarks || "",
+      insured_person: pending.paymentInfo.insured_person || ""
     });
 
     if (success) {
       console.log(`💾 付款資訊已記錄（${pending.agentName}, ${pending.customerName}, ${chosen.from}→${pending.toCurrency}）`);
       if (WA_SEND_REPLY) {
-        await msg.reply(`✅ 已紀錄收款：${pending.customerName}\n兌換：${chosen.from} → ${pending.toCurrency}\n金額：${pending.paymentInfo.amount.toLocaleString()} ${pending.toCurrency}`);
+        let replyMsg = `✅ 已紀錄收款：${pending.customerName}\n兌換：${chosen.from} → ${pending.toCurrency}\n金額：${pending.paymentInfo.amount.toLocaleString()} ${pending.toCurrency}`;
+        if (pending.paymentInfo.remarks) replyMsg += `\n備註：${pending.paymentInfo.remarks}`;
+        if (pending.paymentInfo.insured_person) replyMsg += `\n投保人：${pending.paymentInfo.insured_person}`;
+        await msg.reply(replyMsg);
       }
     }
     return;
@@ -490,7 +497,9 @@ client.on("message", async (msg) => {
           agent_name: senderDisplayName, customer_name: customerName,
           amount: paymentInfo.amount, currency: paymentInfo.currency,
           raw_message: paymentInfo.raw_message, source: "whatsapp",
-          payment_details: paymentInfo.payment_details
+          payment_details: paymentInfo.payment_details,
+          remarks: paymentInfo.remarks || "",
+          insured_person: paymentInfo.insured_person || ""
         });
         console.log(`   💾 付款資訊已記錄（代理: ${senderDisplayName}, 客戶: ${customerName}）`);
       }

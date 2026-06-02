@@ -45,6 +45,8 @@ async def generate_daily_report(
             "交易金額": tx.amount,
             "貨幣": cur,
             "手續費": tx.commission,
+            "備註": getattr(tx, 'remarks', '') or '',
+            "投保人": getattr(tx, 'insured_person', '') or '',
             "交易時間(香港)": datetime.fromisoformat(tx.timestamp).replace(tzinfo=timezone.utc).astimezone(HK_TZ).strftime("%Y-%m-%d %H:%M:%S"),
             "數據來源": tx.source,
             "付款詳情": _format_payment_details(pd_str),

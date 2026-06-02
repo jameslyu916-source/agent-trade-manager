@@ -53,6 +53,12 @@ def generate_daily_report(date=None):
             )
             cols.insert(-2, "兌換")
             cols_display.insert(-2, "兌換")
+        if "remarks" in df.columns:
+            cols.insert(-2, "remarks")
+            cols_display.insert(-2, "備註")
+        if "insured_person" in df.columns:
+            cols.insert(-2, "insured_person")
+            cols_display.insert(-2, "投保人")
         df = df[cols]
         df.columns = cols_display
     else:

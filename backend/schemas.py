@@ -50,6 +50,8 @@ class TransactionBase(BaseModel):
     currency: str = "USD"  # 貨幣單位
     from_currency: Optional[str] = ""  # 兌換來源貨幣
     to_currency: Optional[str] = ""    # 兌換目標貨幣
+    remarks: Optional[str] = ""         # 備註
+    insured_person: Optional[str] = ""  # 投保人
     raw_message: Optional[str] = None
     source: str = "telegram"
     payment_details: Optional[str] = None  # JSON格式的銀行付款詳情
@@ -64,6 +66,8 @@ class TransactionUpdate(BaseModel):
     currency: Optional[str] = None
     from_currency: Optional[str] = None
     to_currency: Optional[str] = None
+    remarks: Optional[str] = None
+    insured_person: Optional[str] = None
     payment_details: Optional[str] = None
 
 class TransactionResponse(TransactionBase):

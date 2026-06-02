@@ -330,6 +330,8 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                     source=payment_info.get("source", "telegram"),
                     currency=payment_info["currency"],
                     payment_details=payment_info["payment_details"],
+                    remarks=payment_info.get("remarks", ""),
+                    insured_person=payment_info.get("insured_person", ""),
                 )
                 print(f"💾 付款資訊已記錄（代理: {agent_display_name}, 客戶: {customer_name}）")
         elif payment_info["amount"] <= 0:
@@ -558,6 +560,8 @@ async def handle_exchange_callback(update: Update, context: ContextTypes.DEFAULT
         payment_details=payment_info["payment_details"],
         from_currency=from_cur,
         to_currency=to_cur,
+        remarks=payment_info.get("remarks", ""),
+        insured_person=payment_info.get("insured_person", ""),
     )
     print(f"💾 付款資訊已記錄（代理: {agent_name}, 客戶: {customer_name}, {from_cur}→{to_cur}）")
 
@@ -572,6 +576,10 @@ async def handle_exchange_callback(update: Update, context: ContextTypes.DEFAULT
         reply_parts.append(f"銀行：{pd['bank_name']}")
     if pd.get("account_number"):
         reply_parts.append(f"戶口：{pd['account_number']}")
+    if payment_info.get("remarks"):
+        reply_parts.append(f"備註：{payment_info['remarks']}")
+    if payment_info.get("insured_person"):
+        reply_parts.append(f"投保人：{payment_info['insured_person']}")
 
     await query.edit_message_text("\n".join(reply_parts))
         

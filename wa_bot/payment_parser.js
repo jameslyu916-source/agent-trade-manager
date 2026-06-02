@@ -88,19 +88,28 @@ const FIELD_PATTERNS = {
   account_number: [
     /(?:綜合|综合)?\s*(?:戶口|户口|帳戶|账户|帳號|账号|賬戶|账户)\s*(?:號碼|号码|號|号|編號|编号|Number|No|NO|num)/i,
     /(?:Account|ACCOUNT|account)\s*(?:Number|No|NO|num|Nbr)\s*/i,
+      /收款人\s*(?:帳號|账号)\s*(?:\([A-Za-z]{3}\))?/i,
     /A\/C\s*(?:No|Number|num)?\s*/i,
   ],
   account_name: [
     /(?:戶口|户口|帳戶|账户|賬戶)\s*(?:全名|名稱|名称|姓名|戶名|户名)/i,
     /(?:Account|ACCOUNT|account)\s*(?:Name|NAME|name|Holder|HOLDER)/i,
     /(?:Beneficiary|BENEFICIARY)\s*(?:Name|NAME|name)/i,
-    /收款人\s*(?:名稱|名称|姓名|全名)/i,
+    /收款人\s*(?:名稱|名称|姓名|全名|名字)/i,
   ],
   amount: [
     /Mso[- ]?Pobo/i,
     /(?:Amount|AMOUNT|amount)\s*/i,
     /(?:金額|金额|交易金額|交易金额)\s*/i,
     /(?:收款金額|收款金额|入金金額|入金金额)\s*/i,
+  ],
+  remarks: [
+    /備註\s*/i,
+    /备注\s*/i,
+    /(?:Remarks|REMARKS|remarks)\s*/i,
+  ],
+  insured_person: [
+    /投保人\s*/i,
   ],
 };
 
@@ -338,6 +347,8 @@ function parsePaymentInfo(messageText) {
     bank_code: extracted["bank_code"] || "",
     account_number: extracted["account_number"] || "",
     account_name: agentName,
+    remarks: extracted["remarks"] || "",
+    insured_person: extracted["insured_person"] || "",
   };
   if (matchedBank) {
     paymentDetails.bank_matched = matchedBank.name;
@@ -351,6 +362,8 @@ function parsePaymentInfo(messageText) {
     source: "whatsapp",
     payment_details: JSON.stringify(paymentDetails),
     payment_details_dict: paymentDetails,
+    remarks: extracted["remarks"] || "",
+    insured_person: extracted["insured_person"] || "",
     warnings: warnings,
     matched_bank: matchedBank,
   };

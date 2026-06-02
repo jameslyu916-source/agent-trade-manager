@@ -155,6 +155,8 @@ def create_transaction(db: Session, transaction: schemas.TransactionCreate):
         currency=transaction.currency if hasattr(transaction, 'currency') and transaction.currency else "USD",
         from_currency=getattr(transaction, 'from_currency', None) or "",
         to_currency=getattr(transaction, 'to_currency', None) or "",
+        remarks=getattr(transaction, 'remarks', None) or "",
+        insured_person=getattr(transaction, 'insured_person', None) or "",
         commission=commission,
         timestamp=timestamp,
         raw_message=transaction.raw_message,
@@ -302,6 +304,8 @@ def get_all_transactions_for_period(db: Session, days: int = 30):
             "currency": getattr(tx, 'currency', 'USD') or 'USD',
             "from_currency": getattr(tx, 'from_currency', '') or '',
             "to_currency": getattr(tx, 'to_currency', '') or '',
+            "remarks": getattr(tx, 'remarks', '') or '',
+            "insured_person": getattr(tx, 'insured_person', '') or '',
             "commission": tx.commission,
             "timestamp": tx.timestamp,
             "source": tx.source,
@@ -357,6 +361,10 @@ def update_transaction(db: Session, transaction_id: int, updates: dict):
         tx.from_currency = updates["from_currency"]
     if "to_currency" in updates and updates["to_currency"] is not None:
         tx.to_currency = updates["to_currency"]
+    if "remarks" in updates and updates["remarks"] is not None:
+        tx.remarks = updates["remarks"]
+    if "insured_person" in updates and updates["insured_person"] is not None:
+        tx.insured_person = updates["insured_person"]
     if "amount" in updates:
         tx.amount = updates["amount"]
     if "currency" in updates:

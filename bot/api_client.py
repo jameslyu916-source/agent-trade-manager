@@ -31,7 +31,7 @@ class APIClient:
         """獲取帶有認證信息的請求頭"""
         return {"Authorization": f"Bearer {self.token}"}
     
-    def create_transaction(self, agent_name, amount, timestamp=None, raw_message=None, source="telegram", currency="USD", payment_details=None, customer_name="", from_currency="", to_currency=""):
+    def create_transaction(self, agent_name, amount, timestamp=None, raw_message=None, source="telegram", currency="USD", payment_details=None, customer_name="", from_currency="", to_currency="", remarks="", insured_person=""):
         """創建交易記錄"""
         data = {
             "agent_name": agent_name,
@@ -40,6 +40,8 @@ class APIClient:
             "currency": currency,
             "from_currency": from_currency,
             "to_currency": to_currency,
+            "remarks": remarks,
+            "insured_person": insured_person,
             "raw_message": raw_message,
             "source": source
         }
@@ -59,7 +61,7 @@ class APIClient:
             elif response.status_code == 401:
                 # 令牌過期，重新登錄
                 if self.login():
-                    return self.create_transaction(agent_name, amount, timestamp, raw_message, source, currency, payment_details, customer_name, from_currency, to_currency)
+                    return self.create_transaction(agent_name, amount, timestamp, raw_message, source, currency, payment_details, customer_name, from_currency, to_currency, remarks, insured_person)
             print(f"❌ 創建交易失敗：{response.text}")
             return False
         except Exception as e:

@@ -368,6 +368,27 @@ class APIClient:
         except Exception as e:
             print(f"❌ 按代理金額刪除交易失敗：{e}")
             return False
+    def get_exchange_rates(self, date: str = None):
+        """獲取指定日期的所有匯率記錄，默認今日"""
+        params = {}
+        if date:
+            params["date"] = date
+        try:
+            response = requests.get(
+                f"{self.base_url}/exchange-rates/",
+                params=params,
+                headers=self._get_headers()
+            )
+            if response.status_code == 200:
+                return response.json()
+            elif response.status_code == 401:
+                if self.login():
+                    return self.get_exchange_rates(date)
+            return []
+        except Exception as e:
+            print(f"❌ 獲取匯率失敗：{e}")
+            return []
+
     def get_settings(self):
         """獲取所有系統設置"""
         try:

@@ -348,6 +348,27 @@
                                         <input type="text" id="editAccountName" placeholder="戶口全名" class="w-full px-3 py-2 border border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400">
                                     </div>
                                 </div>
+                                <!-- 換匯信息 -->
+                                <div class="border-t border-slate-800 pt-3 mt-1">
+                                    <p class="text-xs font-semibold text-amber-500 mb-2">換匯信息（可選）</p>
+                                    <div class="grid grid-cols-3 gap-3">
+                                        <div>
+                                            <label class="block text-xs font-medium text-slate-500 mb-1">兌換前金額</label>
+                                            <input type="number" id="editConversionSourceAmount" placeholder="如 500000" step="any" class="w-full px-3 py-2 border border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-400">
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-medium text-slate-500 mb-1">使用匯率</label>
+                                            <input type="number" id="editConversionRate" placeholder="如 7.04" step="0.0001" class="w-full px-3 py-2 border border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-400">
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-medium text-slate-500 mb-1">來源幣種</label>
+                                            <select id="editConversionSourceCurrency" class="w-full px-3 py-2 border border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-400">
+                                                <option value="">-</option>
+                                                <option value="CNY">CNY</option><option value="USD">USD</option><option value="HKD">HKD</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </details>
                         <div id="editValidationErrors" class="hidden text-xs text-red-500 space-y-1 bg-red-50 rounded-lg p-3"></div>
@@ -575,6 +596,17 @@
             document.getElementById("editAccountNumber").value = pd.account_number || "";
             document.getElementById("editAccountName").value = pd.account_name || "";
 
+            // 換匯信息
+            if (pd.conversion) {
+                document.getElementById("editConversionSourceAmount").value = pd.conversion.source_amount || "";
+                document.getElementById("editConversionRate").value = pd.conversion.rate || "";
+                document.getElementById("editConversionSourceCurrency").value = pd.conversion.source_currency || "";
+            } else {
+                document.getElementById("editConversionSourceAmount").value = "";
+                document.getElementById("editConversionRate").value = "";
+                document.getElementById("editConversionSourceCurrency").value = "";
+            }
+
             // 即時驗證 SWIFT / 銀行代碼
             updateSwiftStatus();
             updateBankCodeStatus();
@@ -642,6 +674,9 @@
             const bankAddress = document.getElementById("editBankAddress").value.trim();
             const accountNumber = document.getElementById("editAccountNumber").value.trim();
             const accountName = document.getElementById("editAccountName").value.trim();
+            const convSourceAmount = parseFloat(document.getElementById("editConversionSourceAmount").value) || null;
+            const convRate = parseFloat(document.getElementById("editConversionRate").value) || null;
+            const convSourceCurrency = document.getElementById("editConversionSourceCurrency").value;
 
             if (!agentName) errors.push("代理名稱不能為空");
             if (!amount || amount <= 0) errors.push("交易金額必須為正整數");
@@ -666,8 +701,27 @@
             }
             errorDiv.classList.add("hidden");
 
-            // 構建 payment_details
+            // 構建 payment_details（含換匯信息）
             const paymentDetails = { swift, bank_name: bankName, bank_code: bankCode, bank_address: bankAddress, account_number: accountNumber, account_name: accountName };
+            if (convSourceAmount || convRate || convSourceCurrency) {
+                // 保留原有的 conversion 字段中未編輯的部分（如 matched, daily_rate, autocorrected）
+                let existingConv = {};
+                try {
+                    const origTx = allTransactions.find(t => t.id == id);
+                    if (origTx && origTx.payment_details) {
+                        const origPd = typeof origTx.payment_details === "string" ? JSON.parse(origTx.payment_details) : origTx.payment_details;
+                        if (origPd.conversion) existingConv = origPd.conversion;
+                    }
+                } catch (e) {}
+                paymentDetails.conversion = {
+                    source_amount: convSourceAmount || existingConv.source_amount || 0,
+                    rate: convRate || existingConv.rate || 0,
+                    source_currency: convSourceCurrency || existingConv.source_currency || "CNY",
+                    matched: existingConv.matched || false,
+                    daily_rate: existingConv.daily_rate || null,
+                    autocorrected: existingConv.autocorrected || false,
+                };
+            }
 
             const saveBtn = document.getElementById("saveEditBtn");
             saveBtn.disabled = true;

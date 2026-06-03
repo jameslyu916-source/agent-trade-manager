@@ -144,6 +144,22 @@ function renderPaymentDetails(paymentDetailsJson) {
         if (pd.bank_address) items.push(`<span class="text-gray-400">地址:</span> ${escapeHtml(pd.bank_address)}`);
         if (pd.bank_code) items.push(`<span class="text-gray-400">代碼:</span> ${escapeHtml(pd.bank_code)}`);
         if (pd.account_number) items.push(`<span class="text-gray-400">戶口:</span> ${escapeHtml(pd.account_number)}`);
+
+        // 換匯信息
+        if (pd.conversion && pd.conversion.source_amount) {
+            const conv = pd.conversion;
+            const srcAmt = conv.source_amount.toLocaleString("zh-HK");
+            const srcCur = conv.source_currency || "CNY";
+            let convHtml = `<span class="text-amber-400">兌換:</span> ${srcAmt} ${srcCur} / ${conv.rate}`;
+            if (conv.matched) {
+                convHtml += ` <span class="text-green-400">(≈${conv.daily_rate})</span>`;
+            }
+            if (conv.autocorrected) {
+                convHtml += ` <span class="text-orange-400">[已補全萬位]</span>`;
+            }
+            items.push(convHtml);
+        }
+
         if (!items.length) return "";
         return `<div class="text-xs text-gray-500 mt-1 space-x-2">${items.join(" <span class='text-gray-300'>|</span> ")}</div>`;
     } catch (e) {

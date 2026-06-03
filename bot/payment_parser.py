@@ -483,3 +483,47 @@ def parse_payment_info(message_text: str) -> dict | None:
         "warnings": warnings,
         "matched_bank": matched_bank,
     }
+
+
+# ═══════════════════════════════════════════
+#  换汇公式行解析器
+#  格式: "50w / 7.04 = 71,023 USD"
+#        "1,375,292 / 7.07 = 194,525 USD"
+#        "50w / 0.896 = 558,036 HKD"
+# ═══════════════════════════════════════════
+
+_CONVERSION_LINE_RE = re.compile(
+    r'^([\d,]+(?:\.\d+)?(?:w|万|萬)?)\s*/\s*([\d.]+)\s*=\s*([\d,]+(?:\.\d+)?)\s*(USD|HKD|CNY|RMB)\s*$',
+    re.IGNORECASE
+)
+
+
+def parse_conversion_line(text: str) -> dict | None:
+    """解析换汇公式行，返回 {source_amount, rate, result_amount, result_currency} 或 None"""
+    if not text or not text.strip():
+        return None
+
+    m = _CONVERSION_LINE_RE.match(text.strip())
+    if not m:
+        return None
+
+    source_str = m.group(1).replace(",", "")
+    rate = float(m.group(2))
+    result_str = m.group(3).replace(",", "")
+    result_currency = m.group(4).upper()
+    if result_currency == "RMB":
+        result_currency = "CNY"
+
+    source_has_wan = source_str.endswith(("w", "万", "萬"))
+    source_amount = float(source_str.rstrip("w万萬"))
+    if source_has_wan:
+        source_amount *= 10000
+
+    result_amount = int(float(result_str))
+
+    return {
+        "source_amount": source_amount,
+        "rate": rate,
+        "result_amount": result_amount,
+        "result_currency": result_currency,
+    }

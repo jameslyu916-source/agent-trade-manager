@@ -424,4 +424,36 @@ function parsePaymentInfo(messageText) {
   };
 }
 
-module.exports = { parsePaymentInfo };
+// ═══════════════════════════════════════════
+//  换汇公式行解析器
+// ═══════════════════════════════════════════
+
+const CONVERSION_LINE_RE = /^([\d,]+(?:\.\d+)?(?:w|万|萬)?)\s*\/\s*([\d.]+)\s*=\s*([\d,]+(?:\.\d+)?)\s*(USD|HKD|CNY|RMB)\s*$/i;
+
+function parseConversionLine(text) {
+  if (!text || !text.trim()) return null;
+
+  const m = text.trim().match(CONVERSION_LINE_RE);
+  if (!m) return null;
+
+  const sourceStr = m[1].replace(/,/g, "");
+  const rate = parseFloat(m[2]);
+  const resultStr = m[3].replace(/,/g, "");
+  let resultCurrency = m[4].toUpperCase();
+  if (resultCurrency === "RMB") resultCurrency = "CNY";
+
+  const sourceHasWan = /[w万萬]$/.test(sourceStr);
+  let sourceAmount = parseFloat(sourceStr.replace(/[w万萬]$/, ""));
+  if (sourceHasWan) sourceAmount *= 10000;
+
+  const resultAmount = parseInt(resultStr.replace(/,/g, ""), 10);
+
+  return {
+    source_amount: sourceAmount,
+    rate: rate,
+    result_amount: resultAmount,
+    result_currency: resultCurrency,
+  };
+}
+
+module.exports = { parsePaymentInfo, parseConversionLine };

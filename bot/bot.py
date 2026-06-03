@@ -15,7 +15,7 @@ from telegram.ext import (
 from telegram.request import HTTPXRequest
 # Import the transaction parser
 from .parser import parse_cancellation
-from .payment_parser import parse_payment_info
+from .payment_parser import parse_payment_info, parse_conversion_line
 
 # Import the API client
 from .api_client import api_client
@@ -81,6 +81,90 @@ _EXCHANGE_OPTIONS = {
 
 # 暫存等待代理選擇兌換方式的付款資訊: message_id -> {payment_info, agent_name, ...}
 _pending_exchanges = {}
+# 每個聊天的最新消息文本: chat_id -> 上一條消息文本
+_last_messages = {}
+
+
+# ── 換匯公式自動推斷輔助函數 ──
+def _amounts_match(conversion_result: int, payment_amount: int) -> bool:
+    """檢查換匯公式的結果與付款金額是否匹配（容差 max(1, 0.1%)）"""
+    tolerance = max(1, int(payment_amount * 0.001))
+    return abs(conversion_result - payment_amount) <= tolerance
+
+
+def _rate_within_threshold(used_rate: float, daily_rate: float, threshold: float = 0.03) -> bool:
+    """檢查使用匯率與每日匯率的差距是否在 threshold 範圍內"""
+    if not daily_rate or daily_rate <= 0:
+        return False
+    return abs(used_rate - daily_rate) / daily_rate <= threshold
+
+
+async def _resolve_conversion(payment_info: dict, prev_text: str | None, to_currency: str):
+    """嘗試從前一條消息提取換匯公式，比對今日匯率判斷是否可自動推斷 CNY"""
+    if not prev_text:
+        return None
+
+    conv = parse_conversion_line(prev_text)
+    if not conv:
+        return None
+
+    # 檢查數學等式: source_amount / rate ≈ result_amount
+    source_amount = conv["source_amount"]
+    autocorrected = False
+    expected_result = source_amount / conv["rate"] if conv["rate"] != 0 else 0
+    if not _amounts_match(int(expected_result), conv["result_amount"]):
+        # 嘗試補全萬位
+        corrected_source = source_amount * 10000
+        corrected_result = corrected_source / conv["rate"] if conv["rate"] != 0 else 0
+        if _amounts_match(int(corrected_result), conv["result_amount"]):
+            source_amount = corrected_source
+            autocorrected = True
+        else:
+            return None
+
+    # 驗證 result_amount 與付款 amount 是否匹配
+    if not _amounts_match(conv["result_amount"], payment_info["amount"]):
+        return None
+
+    # 獲取今日匯率
+    today_str = datetime.now(HK_TZ).strftime("%Y-%m-%d")
+    rates = api_client.get_exchange_rates(date=today_str)
+    daily_rate_map = {}
+    for r in (rates or []):
+        daily_rate_map[(r["from_currency"], r["to_currency"])] = r["rate"]
+
+    expected_pair = ("CNY", conv["result_currency"])
+    daily_rate = daily_rate_map.get(expected_pair)
+
+    conversion_info = {
+        "source_amount": source_amount,
+        "rate": conv["rate"],
+        "source_currency": "CNY",
+        "matched": False,
+    }
+    if autocorrected:
+        conversion_info["autocorrected"] = True
+
+    if daily_rate and _rate_within_threshold(conv["rate"], daily_rate):
+        conversion_info["matched"] = True
+        conversion_info["daily_rate"] = daily_rate
+        wan_note = f"（已自動補全萬位 {conv['source_amount']:,.0f}→{source_amount:,.0f}）" if autocorrected else ""
+        return {
+            "auto_inferred": True,
+            "from_currency": "CNY",
+            "conversion": conversion_info,
+            "note": f"📐 從換匯公式自動推斷：{conv['result_currency']} {conv['rate']} (≈今日 CNY→{conv['result_currency']} {daily_rate:.3f}){wan_note}",
+        }
+    else:
+        daily_str = f"{daily_rate:.3f}" if daily_rate else "無今日數據"
+        wan_note = f"（已自動補全萬位 {conv['source_amount']:,.0f}→{source_amount:,.0f}）" if autocorrected else ""
+        return {
+            "auto_inferred": False,
+            "from_currency": None,
+            "conversion": conversion_info,
+            "note": f"📐 檢測到換匯公式 {source_amount:,.0f} / {conv['rate']} = {conv['result_amount']:,} {conv['result_currency']}，但匯率與今日 CNY→{conv['result_currency']} ({daily_str}) 差異超過 3%，請手動選擇{wan_note}",
+        }
+
 
 def _build_exchange_keyboard(to_currency: str):
     """根據目標貨幣生成兌換方式選擇按鈕"""
@@ -305,6 +389,11 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     message = update.effective_message
     user_name = message.from_user.username or message.from_user.first_name
     agent_display_name = message.from_user.first_name or user_name
+
+    # ── 讀取並更新聊天消息歷史 ──
+    prev_text = _last_messages.get(chat_id, None)
+    _last_messages[chat_id] = message.text
+
     print(f"收到群消息 [{message.chat.title}] {user_name}: {message.text}")
 
     # ── 優先檢查是否為結構化付款資訊 ──
@@ -340,7 +429,36 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
             if pd.get("account_number"):
                 reply_parts.append(f"戶口：{pd['account_number']}")
 
-            if keyboard:
+            # ── 嘗試從前一條消息自動推斷換匯來源 ──
+            conversion_result = await _resolve_conversion(payment_info, prev_text, to_currency)
+
+            if conversion_result and conversion_result["auto_inferred"]:
+                # 自動推斷成功，跳過兌換選單直接記錄
+                if conversion_result["conversion"]:
+                    pd["conversion"] = conversion_result["conversion"]
+                    payment_info["payment_details"] = json.dumps(pd, ensure_ascii=False)
+                reply_parts.append(conversion_result["note"])
+                if has_warnings:
+                    reply_parts.append("\n⚠️ 請注意：\n" + "\n".join(warnings))
+                await update.message.reply_text("\n".join(reply_parts))
+                api_client.create_transaction(
+                    agent_name=agent_display_name,
+                    customer_name=customer_name,
+                    amount=payment_info["amount"],
+                    timestamp=payment_info.get("timestamp"),
+                    raw_message=payment_info["raw_message"],
+                    source=payment_info.get("source", "telegram"),
+                    currency=payment_info["currency"],
+                    payment_details=payment_info["payment_details"],
+                    from_currency="CNY",
+                    to_currency=to_currency,
+                    remarks=payment_info.get("remarks", ""),
+                    insured_person=payment_info.get("insured_person", ""),
+                )
+                print(f"💾 付款資訊已記錄（自動推斷 CNY→{to_currency}，代理: {agent_display_name}, 客戶: {customer_name}）")
+            elif keyboard:
+                if conversion_result and conversion_result["note"]:
+                    reply_parts.append(conversion_result["note"])
                 reply_parts.append("\n請選擇兌換方式：")
                 if has_warnings:
                     reply_parts.append("\n⚠️ 請注意：\n" + "\n".join(warnings))
@@ -353,13 +471,19 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                     "agent_name": agent_display_name,
                     "customer_name": customer_name,
                     "to_currency": to_currency,
+                    "conversion_info": conversion_result["conversion"] if conversion_result else None,
                 }
             else:
                 # 無法生成鍵盤（未知貨幣），直接記錄
+                if conversion_result and conversion_result["note"]:
+                    reply_parts.append(conversion_result["note"])
                 reply_parts.append(f"\n⚠️ 未知目標貨幣「{to_currency}」，無法判斷兌換方式，將直接記錄")
                 if has_warnings:
                     reply_parts.append("\n⚠️ 請注意以下問題：\n" + "\n".join(warnings))
                 await update.message.reply_text("\n".join(reply_parts))
+                if conversion_result and conversion_result["conversion"]:
+                    pd["conversion"] = conversion_result["conversion"]
+                    payment_info["payment_details"] = json.dumps(pd, ensure_ascii=False)
                 api_client.create_transaction(
                     agent_name=agent_display_name,
                     customer_name=customer_name,
@@ -369,6 +493,8 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                     source=payment_info.get("source", "telegram"),
                     currency=payment_info["currency"],
                     payment_details=payment_info["payment_details"],
+                    from_currency=conversion_result["from_currency"] if conversion_result else "",
+                    to_currency=to_currency,
                     remarks=payment_info.get("remarks", ""),
                     insured_person=payment_info.get("insured_person", ""),
                 )
@@ -578,6 +704,13 @@ async def handle_exchange_callback(update: Update, context: ContextTypes.DEFAULT
     payment_info = pending["payment_info"]
     agent_name = pending["agent_name"]
     customer_name = pending["customer_name"]
+    conversion_info = pending.get("conversion_info")
+
+    # 注入換匯信息到 payment_details
+    if conversion_info:
+        pd = payment_info.get("payment_details_dict", {})
+        pd["conversion"] = conversion_info
+        payment_info["payment_details"] = json.dumps(pd, ensure_ascii=False)
 
     # 記錄交易
     api_client.create_transaction(

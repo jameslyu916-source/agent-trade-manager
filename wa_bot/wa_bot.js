@@ -2,7 +2,7 @@
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 const axios = require("axios");
-const { parsePaymentInfo } = require("./payment_parser");
+const { parsePaymentInfo, parseConversionLine } = require("./payment_parser");
 require("dotenv").config();
 
 // ==================== 配置 ====================
@@ -70,6 +70,91 @@ const EXCHANGE_OPTIONS = {
 
 // 暫存等待代理選擇兌換方式的付款資訊: senderId -> {paymentInfo, agentName, customerName, toCurrency, chat, expireAt}
 const pendingExchanges = new Map();
+// 每個聊天的最新消息: chatId -> 上一條消息文本
+const lastMessages = new Map();
+
+// ── 換匯公式自動推斷輔助函數 ──
+function amountsMatch(conversionResult, paymentAmount) {
+  const tolerance = Math.max(1, Math.floor(paymentAmount * 0.001));
+  return Math.abs(conversionResult - paymentAmount) <= tolerance;
+}
+
+function rateWithinThreshold(usedRate, dailyRate, threshold = 0.03) {
+  if (!dailyRate || dailyRate <= 0) return false;
+  return Math.abs(usedRate - dailyRate) / dailyRate <= threshold;
+}
+
+async function resolveConversion(paymentInfo, prevText, toCurrency) {
+  if (!prevText) return null;
+
+  const conv = parseConversionLine(prevText);
+  if (!conv) return null;
+
+  // 檢查數學等式: source_amount / rate ≈ result_amount
+  let sourceAmount = conv.source_amount;
+  let autocorrected = false;
+  const expectedResult = conv.rate !== 0 ? sourceAmount / conv.rate : 0;
+  if (!amountsMatch(Math.round(expectedResult), conv.result_amount)) {
+    // 嘗試補全萬位
+    const correctedSource = sourceAmount * 10000;
+    const correctedResult = conv.rate !== 0 ? correctedSource / conv.rate : 0;
+    if (amountsMatch(Math.round(correctedResult), conv.result_amount)) {
+      sourceAmount = correctedSource;
+      autocorrected = true;
+    } else {
+      return null;
+    }
+  }
+
+  // 驗證 result_amount 與付款 amount 是否匹配
+  if (!amountsMatch(conv.result_amount, paymentInfo.amount)) return null;
+
+  // 獲取今日匯率
+  const today = new Date().toISOString().split("T")[0];
+  const rates = await getExchangeRates(today);
+  const dailyRateMap = {};
+  for (const r of (rates || [])) {
+    dailyRateMap[`${r.from_currency}:${r.to_currency}`] = r.rate;
+  }
+
+  const expectedPair = `CNY:${conv.result_currency}`;
+  const dailyRate = dailyRateMap[expectedPair];
+
+  const conversionInfo = {
+    source_amount: sourceAmount,
+    rate: conv.rate,
+    source_currency: "CNY",
+    matched: false,
+  };
+  if (autocorrected) {
+    conversionInfo.autocorrected = true;
+  }
+
+  if (dailyRate && rateWithinThreshold(conv.rate, dailyRate)) {
+    conversionInfo.matched = true;
+    conversionInfo.daily_rate = dailyRate;
+    const wanNote = autocorrected
+      ? `（已自動補全萬位 ${conv.source_amount.toLocaleString()}→${sourceAmount.toLocaleString()}）`
+      : "";
+    return {
+      auto_inferred: true,
+      from_currency: "CNY",
+      conversion: conversionInfo,
+      note: `📐 從換匯公式自動推斷：${conv.result_currency} ${conv.rate} (≈今日 CNY→${conv.result_currency} ${dailyRate.toFixed(3)})${wanNote}`,
+    };
+  } else {
+    const dailyStr = dailyRate ? dailyRate.toFixed(3) : "無今日數據";
+    const wanNote = autocorrected
+      ? `（已自動補全萬位 ${conv.source_amount.toLocaleString()}→${sourceAmount.toLocaleString()}）`
+      : "";
+    return {
+      auto_inferred: false,
+      from_currency: null,
+      conversion: conversionInfo,
+      note: `📐 檢測到換匯公式 ${sourceAmount.toLocaleString()} / ${conv.rate} = ${conv.result_amount.toLocaleString()} ${conv.result_currency}，但匯率與今日 CNY→${conv.result_currency} (${dailyStr}) 差異超過 3%，請手動選擇${wanNote}`,
+    };
+  }
+}
 
 // ── 交易格式範本 ──
 const FORMAT_EXAMPLE = `📋 交易信息格式範例（已填寫）：
@@ -188,6 +273,23 @@ async function saveExchangeRate(data) {
     }
     console.error("❌ 儲存匯率失敗：", err.response?.data || err.message);
     return false;
+  }
+}
+
+async function getExchangeRates(date) {
+  try {
+    const params = date ? `?date=${encodeURIComponent(date)}` : "";
+    const res = await axios.get(`${API_BASE_URL}/exchange-rates/${params}`, {
+      headers: getHeaders(),
+    });
+    return res.data || [];
+  } catch (err) {
+    if (err.response?.status === 401) {
+      await login();
+      return getExchangeRates(date);
+    }
+    console.error("❌ 獲取匯率失敗：", err.message);
+    return [];
   }
 }
 
@@ -555,6 +657,10 @@ client.on("message", async (msg) => {
   const senderId = msg.author;
   const senderDisplayName = (msg._data && msg._data.notifyName) || senderId;
 
+  // ── 讀取並更新聊天消息歷史 ──
+  const prevText = lastMessages.get(msg.from) || null;
+  lastMessages.set(msg.from, text);
+
   // ── 檢查是否有待處理的兌換方式選擇 ──
   const pending = pendingExchanges.get(senderId);
   if (pending) {
@@ -571,6 +677,14 @@ client.on("message", async (msg) => {
     }
 
     const chosen = options[num - 1];
+
+    // 注入換匯信息到 payment_details
+    if (pending.conversionInfo) {
+      const pd = pending.paymentInfo.payment_details_dict || {};
+      pd.conversion = pending.conversionInfo;
+      pending.paymentInfo.payment_details = JSON.stringify(pd);
+    }
+
     const success = await createTransaction({
       agent_name: pending.agentName,
       customer_name: pending.customerName,
@@ -623,8 +737,34 @@ client.on("message", async (msg) => {
       if (pd.bank_name) replyMsg += `\n銀行：${pd.bank_name}`;
       if (pd.account_number) replyMsg += `\n戶口：${pd.account_number}`;
 
-      if (options && options.length > 0) {
+      // ── 嘗試從前一條消息自動推斷換匯來源 ──
+      const conversionResult = await resolveConversion(paymentInfo, prevText, toCurrency);
+
+      if (conversionResult && conversionResult.auto_inferred) {
+        // 自動推斷成功，跳過兌換選單直接記錄
+        if (conversionResult.conversion) {
+          pd.conversion = conversionResult.conversion;
+          paymentInfo.payment_details = JSON.stringify(pd);
+        }
+        replyMsg += `\n${conversionResult.note}`;
+        if (hasWarnings) replyMsg += "\n\n⚠️ 請注意：\n" + warnings.join("\n");
+        if (WA_SEND_REPLY) { await msg.reply(replyMsg); }
+        await createTransaction({
+          agent_name: senderDisplayName, customer_name: customerName,
+          amount: paymentInfo.amount, currency: paymentInfo.currency,
+          raw_message: paymentInfo.raw_message, source: "whatsapp",
+          payment_details: paymentInfo.payment_details,
+          from_currency: "CNY",
+          to_currency: toCurrency,
+          remarks: paymentInfo.remarks || "",
+          insured_person: paymentInfo.insured_person || ""
+        });
+        console.log(`💾 付款資訊已記錄（自動推斷 CNY→${toCurrency}，代理: ${senderDisplayName}, 客戶: ${customerName}）`);
+      } else if (options && options.length > 0) {
         // 有兌換選項，發送文字選單讓代理回覆數字
+        if (conversionResult && conversionResult.note) {
+          replyMsg += `\n${conversionResult.note}`;
+        }
         replyMsg += "\n\n請回覆數字選擇兌換方式：";
         options.forEach((opt, i) => {
           replyMsg += `\n${i + 1}. ${opt.label}`;
@@ -637,18 +777,28 @@ client.on("message", async (msg) => {
         pendingExchanges.set(senderId, {
           paymentInfo, agentName: senderDisplayName,
           customerName, toCurrency,
+          conversionInfo: conversionResult ? conversionResult.conversion : null,
           expireAt: Date.now() + 5 * 60 * 1000  // 5 分鐘過期
         });
       } else {
         // 未知目標貨幣，直接記錄
+        if (conversionResult && conversionResult.note) {
+          replyMsg += `\n${conversionResult.note}`;
+        }
         replyMsg += `\n⚠️ 未知目標貨幣「${toCurrency}」，將直接記錄`;
         if (hasWarnings) replyMsg += "\n\n⚠️ 請注意：\n" + warnings.join("\n");
         if (WA_SEND_REPLY) { await msg.reply(replyMsg); }
+        if (conversionResult && conversionResult.conversion) {
+          pd.conversion = conversionResult.conversion;
+          paymentInfo.payment_details = JSON.stringify(pd);
+        }
         await createTransaction({
           agent_name: senderDisplayName, customer_name: customerName,
           amount: paymentInfo.amount, currency: paymentInfo.currency,
           raw_message: paymentInfo.raw_message, source: "whatsapp",
           payment_details: paymentInfo.payment_details,
+          from_currency: conversionResult ? conversionResult.from_currency || "" : "",
+          to_currency: toCurrency,
           remarks: paymentInfo.remarks || "",
           insured_person: paymentInfo.insured_person || ""
         });

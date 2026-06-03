@@ -366,6 +366,22 @@ async function deleteTransactionById(txId) {
 }
 
 // ==================== WhatsApp 客戶端 ====================
+const fs = require("fs");
+const path = require("path");
+const PID_FILE = path.join(__dirname, "wa_bot.pid");
+
+// 寫入 PID 檔案
+fs.writeFileSync(PID_FILE, String(process.pid));
+
+// 清理 PID 檔案
+function cleanupPidFile() {
+  try { if (fs.existsSync(PID_FILE)) fs.unlinkSync(PID_FILE); } catch (_) {}
+}
+
+process.on("exit", cleanupPidFile);
+process.on("SIGTERM", () => { cleanupPidFile(); process.exit(); });
+process.on("SIGINT", () => { cleanupPidFile(); process.exit(); });
+
 const client = new Client({
   // LocalAuth 會將登錄狀態保存到本地，重啟後不需要重新掃碼
   authStrategy: new LocalAuth({ clientId: "wa-bot" }),

@@ -222,6 +222,7 @@
                                 <div>
                                     <p class="font-semibold text-slate-200">WhatsApp Bot</p>
                                     <p class="text-xs text-slate-500" id="waStatus">${waEnabled ? '運行中' : '已停用'}</p>
+                                    <button onclick="restartWhatsApp(event)" id="restartWaBtn" class="mt-1 text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 px-2 py-0.5 rounded transition-colors font-medium">↻ 重啟</button>
                                 </div>
                             </div>
                             <label class="toggle-switch">
@@ -358,6 +359,25 @@
         function removeWaGroup(name) {
             settings.whatsapp_group_names = (settings.whatsapp_group_names || []).filter(g => g !== name);
             renderSettings();
+        }
+
+        async function restartWhatsApp(e) {
+            e.stopPropagation();
+            const btn = document.getElementById("restartWaBtn");
+            if (btn.disabled) return;
+            btn.disabled = true;
+            btn.textContent = "⏳ 重啟中...";
+
+            try {
+                const res = await apiRequest("/settings/restart-whatsapp", "POST");
+                showToast(res.detail || "WhatsApp Bot 已重啟", "success");
+                // 等待一秒後刷新狀態
+                setTimeout(() => loadSettings(), 1000);
+            } catch (e) {
+                showToast("重啟失敗：" + (e.message || "請稍後重試"), "error");
+                btn.disabled = false;
+                btn.textContent = "↻ 重啟";
+            }
         }
 
         async function saveSettings() {

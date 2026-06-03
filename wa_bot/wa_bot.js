@@ -821,9 +821,10 @@ client.on("message", async (msg) => {
           await deleteTransactionById(lastTx.id);
           const cur = lastTx.currency || "USD";
           const src = lastTx.source === "telegram" ? "TG" : "WA";
-          console.log(`   ✅ 已取消上一筆 [${src}]：${lastTx.agent_name} ${lastTx.amount} ${cur}`);
+          const cust = lastTx.customer_name ? `（${lastTx.customer_name}）` : "";
+          console.log(`   ✅ 已取消上一筆 [${src}]：${lastTx.agent_name} ${cust} ${lastTx.amount} ${cur}`);
           if (WA_SEND_REPLY) {
-            await msg.reply(`✅ 已取消上一筆 WhatsApp 交易：${lastTx.agent_name} ${lastTx.amount.toLocaleString()} ${cur}`);
+            await msg.reply(`✅ 已取消上一筆 WhatsApp 交易：${lastTx.agent_name}${cust} ${lastTx.amount.toLocaleString()} ${cur}`);
           }
         } else {
           if (WA_SEND_REPLY) await msg.reply("⚠️ 沒有找到可取消的 WhatsApp 交易記錄");
@@ -833,9 +834,10 @@ client.on("message", async (msg) => {
         if (lastTx) {
           await deleteTransactionById(lastTx.id);
           const cur = lastTx.currency || "USD";
+          const cust2 = lastTx.customer_name ? `（${lastTx.customer_name}）` : "";
           console.log(`   ✅ 已取消 ${cancellation.agent_name} 的交易`);
           if (WA_SEND_REPLY) {
-            await msg.reply(`✅ 已取消 ${cancellation.agent_name} 的最近一筆 WhatsApp 交易：${lastTx.amount.toLocaleString()} ${cur}`);
+            await msg.reply(`✅ 已取消 ${cancellation.agent_name}${cust2} 的最近一筆 WhatsApp 交易：${lastTx.amount.toLocaleString()} ${cur}`);
           }
         } else {
           if (WA_SEND_REPLY) await msg.reply(`⚠️ 沒有找到 ${cancellation.agent_name} 的 WhatsApp 交易記錄`);

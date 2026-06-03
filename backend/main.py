@@ -6,7 +6,7 @@ from starlette.responses import RedirectResponse
 import os
 
 from . import schemas
-from .routers import auth, transactions, agents, reports, analysis, settings
+from .routers import auth, transactions, agents, reports, analysis, settings, exchange_rates
 from .database import Base, engine, SessionLocal
 from .crud import create_agent, get_agent_by_name, get_user_by_username, create_user
 from .utils import get_password_hash
@@ -38,6 +38,7 @@ app.include_router(agents.router)
 app.include_router(reports.router)
 app.include_router(analysis.router)
 app.include_router(settings.router)
+app.include_router(exchange_rates.router)
 
 # Root endpoint
 @app.get("/")

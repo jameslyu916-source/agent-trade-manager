@@ -160,6 +160,67 @@ async function isAgentAllowed(agentName) {
   }
 }
 
+async function saveExchangeRate(data) {
+  try {
+    const payload = {
+      date: data.date,
+      from_currency: data.from_currency,
+      to_currency: data.to_currency,
+      rate: data.rate,
+      source: "POBO-MSO"
+    };
+    const res = await axios.post(`${API_BASE_URL}/exchange-rates/`, payload, {
+      headers: getHeaders(),
+    });
+    return res.status === 200;
+  } catch (err) {
+    if (err.response?.status === 401) {
+      await login();
+      return saveExchangeRate(data);
+    }
+    console.error("❌ 儲存匯率失敗：", err.response?.data || err.message);
+    return false;
+  }
+}
+
+// ── 匯率訊息解析 ──
+const RE_DATE = /^(\d{1,2})\/(\d{1,2})\s*\/?\s*(\d{4})$/;
+const RE_RATE_LINE = /人[兌兑](美|港)\s*\(POBO-MSO\)\s*:\s*([\d.]+)/;
+const CURRENCY_MAP = { "美": "USD", "港": "HKD" };
+
+function parseExchangeRates(text) {
+  if (!text || !text.trim()) return null;
+
+  const lines = text.split(/\r?\n/);
+  // 跳過開頭空白行
+  let i = 0;
+  while (i < lines.length && lines[i].trim() === "") i++;
+  if (i >= lines.length) return null;
+
+  // 第一行非空行必須是日期
+  const dateMatch = lines[i].trim().match(RE_DATE);
+  if (!dateMatch) return null;
+  const day = dateMatch[1].padStart(2, "0");
+  const month = dateMatch[2].padStart(2, "0");
+  const year = dateMatch[3];
+  const dateStr = `${year}-${month}-${day}`;
+
+  // 掃描後續行，收集 POBO-MSO 匯率
+  const rates = [];
+  for (let j = i + 1; j < lines.length; j++) {
+    const m = lines[j].match(RE_RATE_LINE);
+    if (m) {
+      rates.push({
+        to_currency: CURRENCY_MAP[m[1]],
+        rate: parseFloat(m[2])
+      });
+    }
+  }
+
+  if (rates.length === 0) return null;
+  return { date: dateStr, rates };
+}
+
 // ==================== 消息解析（與 parser.py 邏輯一致）====================
 
 // 常見干擾詞
@@ -182,6 +243,7 @@ function normalizeText(text) {
   t = t.replace(/（/g, "(").replace(/）/g, ")");
   t = t.replace(/【/g, "[").replace(/】/g, "]");
   t = t.replace(/HKD/gi, "").replace(/元/g, "").replace(/塊/g, "");
+  t = t.replace(/@\S+/g, "");  // 移除 WhatsApp @提及（含電話號碼）
   t = t.replace(/\s+/g, " ");
   // 移除干擾詞
   for (const w of NOISE_WORDS) {
@@ -433,6 +495,33 @@ client.on("message", async (msg) => {
   if (msgText === "/format" || msgText === "/Format") {
     if (WA_SEND_REPLY) { await msg.reply(FORMAT_FULL); }
     return;
+  }
+
+  // ── 匯率訊息檢測（不限群組，在群組過濾之前）──
+  if (msg.from.endsWith("@g.us")) {
+    const exchangeRates = parseExchangeRates(msgText);
+    if (exchangeRates) {
+      console.log(`💱 檢測到匯率訊息：${exchangeRates.date}，${exchangeRates.rates.length} 組匯率`);
+      let savedCount = 0;
+      for (const r of exchangeRates.rates) {
+        const ok = await saveExchangeRate({
+          date: exchangeRates.date,
+          from_currency: "CNY",
+          to_currency: r.to_currency,
+          rate: r.rate
+        });
+        if (ok) savedCount++;
+        console.log(`   ${ok ? "✅" : "❌"} CNY → ${r.to_currency}: ${r.rate}`);
+      }
+      if (savedCount > 0 && WA_SEND_REPLY) {
+        let confirmMsg = `✅ 已記錄今日匯率 (${exchangeRates.date})：`;
+        for (const r of exchangeRates.rates) {
+          confirmMsg += `\nCNY → ${r.to_currency}: ${r.rate}`;
+        }
+        await msg.reply(confirmMsg);
+      }
+      return;
+    }
   }
 
   if (!msg.from.endsWith("@g.us")) return;

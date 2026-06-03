@@ -1,7 +1,7 @@
 # backend/crud.py --- IGNORE ---
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from .database import User, Agent, Transaction, SystemSetting  # 從database.py導入所有模型
+from .database import User, Agent, Transaction, SystemSetting, ExchangeRate  # 從database.py導入所有模型
 from . import schemas
 from datetime import datetime, timezone, timedelta
 from .database import HK_TZ
@@ -420,3 +420,39 @@ def update_settings(db: Session, updates: dict):
         else:
             db.add(SystemSetting(key=key, value=str(value)))
     db.commit()
+
+
+# ═══════════════════════════════════════════
+#  每日匯率 CRUD
+# ═══════════════════════════════════════════
+
+def upsert_exchange_rate(db: Session, date: str, from_currency: str, to_currency: str,
+                         rate: float, source: str = "POBO-MSO"):
+    """插入或更新單日匯率"""
+    existing = db.query(ExchangeRate).filter(
+        ExchangeRate.date == date,
+        ExchangeRate.from_currency == from_currency,
+        ExchangeRate.to_currency == to_currency,
+        ExchangeRate.source == source
+    ).first()
+
+    if existing:
+        existing.rate = rate
+        existing.recorded_at = datetime.now(timezone.utc)
+    else:
+        db.add(ExchangeRate(
+            date=date, from_currency=from_currency, to_currency=to_currency,
+            rate=rate, source=source
+        ))
+    db.commit()
+    return existing or db.query(ExchangeRate).filter(
+        ExchangeRate.date == date,
+        ExchangeRate.from_currency == from_currency,
+        ExchangeRate.to_currency == to_currency,
+        ExchangeRate.source == source
+    ).first()
+
+
+def get_exchange_rates_by_date(db: Session, date: str):
+    """查詢指定日期的所有匯率"""
+    return db.query(ExchangeRate).filter(ExchangeRate.date == date).all()

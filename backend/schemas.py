@@ -110,3 +110,25 @@ class AgentRiskReport(BaseModel):
     risk_level: str
     risk_color: str
     details: dict
+
+
+# ==================== Exchange Rate ====================
+class ExchangeRateCreate(BaseModel):
+    date: str  # YYYY-MM-DD
+    from_currency: str
+    to_currency: str
+    rate: float = Field(gt=0)
+    source: str = "POBO-MSO"
+
+
+class ExchangeRateResponse(BaseModel):
+    id: int
+    date: str
+    from_currency: str
+    to_currency: str
+    rate: float
+    source: str
+    recorded_at: datetime
+
+    class Config:
+        from_attributes = True

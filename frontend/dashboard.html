@@ -238,6 +238,28 @@
                 </div>
             </div>
 
+            <!-- 今日匯率 -->
+            <div id="exchangeRateCard" class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 animate-fade-in-up" style="animation-delay: 0.38s;">
+                <div class="bg-slate-900 rounded-xl border border-slate-800 p-4 flex items-center gap-4">
+                    <div class="w-10 h-10 bg-amber-500/10 rounded-lg flex items-center justify-center shrink-0">
+                        <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-400">CNY → USD</p>
+                        <p id="rateCnyUsd" class="text-xl font-bold text-slate-100">--</p>
+                    </div>
+                </div>
+                <div class="bg-slate-900 rounded-xl border border-slate-800 p-4 flex items-center gap-4">
+                    <div class="w-10 h-10 bg-emerald-500/10 rounded-lg flex items-center justify-center shrink-0">
+                        <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-400">CNY → HKD</p>
+                        <p id="rateCnyHkd" class="text-xl font-bold text-slate-100">--</p>
+                    </div>
+                </div>
+            </div>
+
             <!-- 代理排名和最近交易 -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
                 <!-- 代理排名 -->
@@ -307,6 +329,9 @@
                     apiRequest("/transactions/daily-summary"),
                     apiRequest("/transactions/list")
                 ]);
+
+                // 載入今日匯率
+                loadExchangeRates();
 
                 // 更新統計卡片 — 總成交額按貨幣分類顯示
                 document.getElementById("totalAmount").innerHTML = formatCurrencyBreakdown(dailyStats.currency_breakdown);
@@ -401,6 +426,28 @@
                 document.getElementById("riskAnomalyCount").textContent = "N/A";
                 document.getElementById("riskHighRiskCount").textContent = "N/A";
                 document.getElementById("riskLowestScore").textContent = "N/A";
+            }
+        }
+
+        async function loadExchangeRates() {
+            try {
+                const rates = await apiRequest("/exchange-rates/");
+                const usdEl = document.getElementById("rateCnyUsd");
+                const hkdEl = document.getElementById("rateCnyHkd");
+
+                if (rates && rates.length > 0) {
+                    const usdRate = rates.find(r => r.to_currency === "USD");
+                    const hkdRate = rates.find(r => r.to_currency === "HKD");
+                    usdEl.textContent = usdRate ? usdRate.rate.toFixed(3) : "--";
+                    hkdEl.textContent = hkdRate ? hkdRate.rate.toFixed(3) : "--";
+                } else {
+                    usdEl.textContent = "--";
+                    hkdEl.textContent = "--";
+                }
+            } catch (e) {
+                console.error("加載匯率失敗：", e);
+                document.getElementById("rateCnyUsd").textContent = "--";
+                document.getElementById("rateCnyHkd").textContent = "--";
             }
         }
 

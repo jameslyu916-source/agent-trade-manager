@@ -1,7 +1,7 @@
 # backend/database.py --- Database models and connection setup for Telegram Bot Backend
 import os
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime, timezone, timedelta
@@ -70,6 +70,23 @@ class SystemSetting(Base):
     key = Column(String, primary_key=True)
     value = Column(String, nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class ExchangeRate(Base):
+    """每日匯率表"""
+    __tablename__ = "exchange_rates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    date = Column(String, nullable=False, index=True)  # YYYY-MM-DD
+    from_currency = Column(String, nullable=False)  # CNY
+    to_currency = Column(String, nullable=False)    # USD / HKD
+    rate = Column(Float, nullable=False)
+    source = Column(String, default="POBO-MSO")
+    recorded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        UniqueConstraint("date", "from_currency", "to_currency", "source", name="uq_exchange_rate"),
+    )
 
 # Create all tables in the database (if they don't exist)
 Base.metadata.create_all(bind=engine)

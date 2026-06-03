@@ -66,29 +66,44 @@ const FIELD_PATTERNS = {
   swift: [
     /(?:收款銀行\s*)?SWIFT\s*(?:代[號号碼码]|代碼|コード|Code|CODE|code|編號|编号)/i,
     /(?:收款銀行\s*)?BIC\s*(?:代[號号碼码]|Code|CODE|code|編號|编号)?/i,
+    /Beneficiary\s*BIC/i,
     /SWIFT\s*/i,
     /BIC\s*/i,
   ],
   bank_name: [
+    /Beneficiary\s*Bank/i,
     /收款銀行\s*(?:名稱|名称|名)\s*/i,
     /銀行\s*(?:名稱|名称|名)\s*/i,
+    /^(?:銀行\s*)?名稱\s*/i,
+    /^(?:银行\s*)?名称\s*/i,
     /(?:Bank|BANK)\s*(?:Name|NAME|name)\s*/i,
     /收款銀行\s*/i,
-    /(?:Bank|BANK)\s*/i,
+    /^(?:Bank|BANK)\s*$/i,
   ],
   bank_address: [
     /收款銀行\s*(?:地址|位址)\s*/i,
     /銀行\s*(?:地址|位址)\s*/i,
     /(?:Bank|BANK)\s*(?:Address|ADDRESS|address|Addr|ADDR)\s*/i,
+    /Bank\s*Add/i,
+    /Branch\s*Address/i,
+    /開戶行\s*地址/i,
   ],
   bank_code: [
     /銀行\s*(?:代[碼码號号]|Code|CODE|code)\s*/i,
     /(?:Bank|BANK)\s*(?:Code|CODE|code)\s*/i,
+    /金融機構\s*(?:代[碼码號号]|Code)/i,
+  ],
+  routing_number: [
+    /Routing\s*Number/i,
+    /ABA\s*Routing/i,
   ],
   account_number: [
     /(?:綜合|综合)?\s*(?:戶口|户口|帳戶|账户|帳號|账号|賬戶|账户)\s*(?:號碼|号码|號|号|編號|编号|Number|No|NO|num)/i,
+    /美金\s*(?:賬戶|账户|帳戶|账户)/i,
+    /\$?\s*USD\s*Account/i,
+    /收款\s*(?:戶口|户口)\s*(?:號碼|号码)/i,
     /(?:Account|ACCOUNT|account)\s*(?:Number|No|NO|num|Nbr)\s*/i,
-      /收款人\s*(?:帳號|账号)\s*(?:\([A-Za-z]{3}\))?/i,
+    /收款人\s*(?:帳號|账号)\s*(?:\([A-Za-z]{3}\))?/i,
     /A\/C\s*(?:No|Number|num)?\s*/i,
   ],
   account_name: [
@@ -96,6 +111,8 @@ const FIELD_PATTERNS = {
     /(?:Account|ACCOUNT|account)\s*(?:Name|NAME|name|Holder|HOLDER)/i,
     /(?:Beneficiary|BENEFICIARY)\s*(?:Name|NAME|name)/i,
     /收款人\s*(?:名稱|名称|姓名|全名|名字)/i,
+    /^Beneficiary\s*$/i,
+    /^收款人\s*$/i,
   ],
   amount: [
     /Mso[- ]?Pobo/i,
@@ -118,30 +135,33 @@ const FIELD_PATTERNS = {
 // ═══════════════════════════════════════════
 
 function matchField(line) {
+  // 預處理：去除行首尾 * 標記
+  let cleanLine = line.trim().replace(/^\*+|\*+$/g, "").trim();
   let keyPart, valuePart;
 
   // 找分隔符
   const colonIdx = Math.min(
-    ...["：", ":", "="].map(s => line.indexOf(s)).filter(i => i > 0),
+    ...["：", ":", "="].map(s => cleanLine.indexOf(s)).filter(i => i > 0),
     Infinity
   );
 
   if (colonIdx < Infinity) {
-    keyPart = line.substring(0, colonIdx);
-    valuePart = line.substring(colonIdx + 1).trim();
+    keyPart = cleanLine.substring(0, colonIdx);
+    valuePart = cleanLine.substring(colonIdx + 1).trim();
   } else {
-    const spaceIdx = line.indexOf(" ");
+    const spaceIdx = cleanLine.indexOf(" ");
     if (spaceIdx < 0) return [null, null];
-    keyPart = line.substring(0, spaceIdx);
-    valuePart = line.substring(spaceIdx + 1).trim();
+    keyPart = cleanLine.substring(0, spaceIdx);
+    valuePart = cleanLine.substring(spaceIdx + 1).trim();
   }
 
+  // 去除值中的 * 包裹（如 *CHASUS33XXX*）
+  valuePart = valuePart.replace(/^\*+|\*+$/g, "").trim();
   const keyPartClean = keyPart.trim().replace(/[:：= ]+$/, "");
 
   for (const [fieldKey, patterns] of Object.entries(FIELD_PATTERNS)) {
     for (const pattern of patterns) {
-      const m = keyPartClean.match(pattern);
-      if (m && m[0].length === keyPartClean.length) {
+      if (pattern.test(keyPartClean)) {
         return [fieldKey, valuePart];
       }
     }
@@ -150,10 +170,25 @@ function matchField(line) {
   return [null, null];
 }
 
+const CN_CURRENCY_MAP = {
+  "美金": "USD", "美元": "USD",
+  "港幣": "HKD", "港元": "HKD", "港币": "HKD",
+  "人民幣": "CNY", "人民币": "CNY",
+};
+const CN_CURRENCY_RE = new RegExp(Object.keys(CN_CURRENCY_MAP).join("|"));
+
 function parseAmountWithCurrency(rawValue) {
   const v = rawValue.trim().replace(/,/g, "");
 
-  // 帶貨幣後綴: 222456USD
+  // 中文貨幣後綴: 194,525 美金
+  const mCN = v.match(new RegExp(`([\\d,]+(?:\\.\\d+)?)\\s*(${CN_CURRENCY_RE.source})\\s*$`));
+  if (mCN) {
+    const amount = parseInt(mCN[1], 10);
+    const currency = CN_CURRENCY_MAP[mCN[2]] || "USD";
+    return [isNaN(amount) ? null : amount, currency];
+  }
+
+  // 字母貨幣後綴: 222456USD
   const m1 = v.match(/([\d,]+(?:\.\d+)?)\s*([A-Za-z]{2,4})\s*$/);
   if (m1) {
     const amount = parseInt(m1[1], 10);
@@ -258,7 +293,7 @@ function parsePaymentInfo(messageText) {
   }
 
   // 判斷是否為付款資訊
-  const bankingFields = new Set(["swift", "bank_name", "bank_code", "account_number", "account_name"]);
+  const bankingFields = new Set(["swift", "bank_name", "bank_code", "account_number", "account_name", "routing_number"]);
   let foundBanking = 0;
   for (const k of bankingFields) {
     if (k in extracted) foundBanking++;
@@ -281,6 +316,25 @@ function parsePaymentInfo(messageText) {
     delete extracted["amount"];
   }
 
+  // 備用金額提取：掃描未匹配的行末尾找「數字 + 貨幣」
+  if (amount === null) {
+    const matchedKeys = new Set(Object.keys(extracted));
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const [fk] = matchField(lines[i]);
+      if (fk && matchedKeys.has(fk)) continue; // 已是已知欄位
+      const cleaned = lines[i].trim().replace(/^\*+|\*+$/g, "").trim();
+      const hasCurrency = /[A-Za-z]{2,4}\s*$/.test(cleaned) || CN_CURRENCY_RE.test(cleaned);
+      if (/\d/.test(cleaned) && hasCurrency && !fk) {
+        const [fallbackAmt, fallbackCur] = parseAmountWithCurrency(cleaned);
+        if (fallbackAmt !== null) {
+          amount = fallbackAmt;
+          currency = fallbackCur;
+          break;
+        }
+      }
+    }
+  }
+
   // 匹配銀行資料
   let matchedBank = null;
   if ("swift" in extracted) {
@@ -297,8 +351,6 @@ function parsePaymentInfo(messageText) {
             warnings.push(`⚠️ SWIFT 代碼與銀行名稱不一致：SWIFT 對應「${matchedBank.name}」，名稱給出「${extracted["bank_name"]}」`);
           }
         }
-      } else if (currency !== "CNY") {
-        warnings.push(`⚠️ 無法識別的 SWIFT 代碼：${swiftVal}`);
       }
     } else if (currency !== "CNY") {
       // CNY 交易通常無 SWIFT 代碼，不報錯
@@ -325,7 +377,7 @@ function parsePaymentInfo(messageText) {
 
   // ── 驗證銀行地址 ──
   if (!(extracted["bank_address"] || "").trim()) {
-    warnings.push("❌ 缺少銀行地址");
+    warnings.push("⚠️ 缺少銀行地址");
   }
 
   // 驗證必填欄位
@@ -345,6 +397,7 @@ function parsePaymentInfo(messageText) {
     bank_name: extracted["bank_name"] || "",
     bank_address: extracted["bank_address"] || "",
     bank_code: extracted["bank_code"] || "",
+    routing_number: extracted["routing_number"] || "",
     account_number: extracted["account_number"] || "",
     account_name: agentName,
     remarks: extracted["remarks"] || "",

@@ -26,11 +26,19 @@ async function refreshSettings() {
       settingsCache = res.data;
       const tg = res.data.telegram_enabled !== false ? "啟用" : "停用";
       const wa = res.data.whatsapp_enabled !== false ? "啟用" : "停用";
-      console.log(`🔄 系統設置已刷新（TG: ${tg} | WA: ${wa}）`);
+      const groups = (res.data.whatsapp_group_names || []).join(", ") || "無";
+      console.log(`🔄 系統設置已刷新（TG: ${tg} | WA: ${wa} | 群組: ${groups}）`);
       return true;
     }
     return false;
   } catch (err) {
+    if (err.response?.status === 401) {
+      console.log("🔄 設置刷新時 token 過期，重新登錄...");
+      await login();
+      if (authToken) {
+        return refreshSettings();
+      }
+    }
     console.log("⚠️ 系統設置刷新失敗：", err.message);
     return false;
   }
@@ -497,8 +505,8 @@ client.on("message", async (msg) => {
     return;
   }
 
-  // ── 匯率訊息檢測（不限群組，在群組過濾之前）──
-  if (msg.from.endsWith("@g.us")) {
+  // ── 匯率訊息檢測（需 Bot 啟用，不限群組）──
+  if (msg.from.endsWith("@g.us") && getSetting("whatsapp_enabled", true) !== false) {
     const exchangeRates = parseExchangeRates(msgText);
     if (exchangeRates) {
       console.log(`💱 檢測到匯率訊息：${exchangeRates.date}，${exchangeRates.rates.length} 組匯率`);
@@ -689,31 +697,8 @@ client.on("message", async (msg) => {
     return;
   }
 
-  // ── 解析交易 ──
-  const parsed = parseTransaction(text);
-  if (!parsed) {
-    console.log("   ⚪ 消息格式無法解析");
-    return;
-  }
-
-  const parsedCustomerName = parsed.customer_name || parsed.agent_name || "Unknown";
-  console.log(`   📨 解析成功：客戶=${parsedCustomerName} ${parsed.amount} HKD（代理: ${senderDisplayName}）`);
-
-  // 不再檢查白名單，直接記錄交易
-  const success = await createTransaction({
-    agent_name: senderDisplayName,
-    customer_name: parsedCustomerName,
-    amount: parsed.amount,
-    currency: "HKD",
-    raw_message: parsed.raw_message,
-    source: "whatsapp"
-  });
-  if (success) {
-    console.log(`   ✅ 交易已記錄！`);
-    if (WA_SEND_REPLY) {
-      await msg.reply(`✅ 已紀錄交易：${senderDisplayName} 回報 ${parsedCustomerName} 成交 ${parsed.amount.toLocaleString()} HKD`);
-    }
-  }
+  // ── 簡易交易解析已停用，僅接受結構化付款資訊 ──
+  console.log("   ⚪ 訊息非結構化付款格式，已略過");
 });
 
 // 處理斷線重連

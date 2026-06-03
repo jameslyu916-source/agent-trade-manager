@@ -74,29 +74,44 @@ FIELD_PATTERNS = {
     "swift": [
         r"(?:收款銀行\s*)?SWIFT\s*(?:代[號号碼码]|代碼|コード|Code|CODE|code|編號|编号)",
         r"(?:收款銀行\s*)?BIC\s*(?:代[號号碼码]|Code|CODE|code|編號|编号)?",
+        r"Beneficiary\s*BIC",
         r"SWIFT\s*",
         r"BIC\s*",
     ],
     "bank_name": [
+        r"Beneficiary\s*Bank",
         r"收款銀行\s*(?:名稱|名称|名)\s*",
         r"銀行\s*(?:名稱|名称|名)\s*",
+        r"^(?:銀行\s*)?名稱\s*",
+        r"^(?:银行\s*)?名称\s*",
         r"(?:Bank|BANK)\s*(?:Name|NAME|name)\s*",
         r"收款銀行\s*",
-        r"(?:Bank|BANK)\s*",
+        r"^(?:Bank|BANK)\s*$",
     ],
     "bank_address": [
         r"收款銀行\s*(?:地址|位址)\s*",
         r"銀行\s*(?:地址|位址)\s*",
         r"(?:Bank|BANK)\s*(?:Address|ADDRESS|address|Addr|ADDR)\s*",
+        r"Bank\s*Add",
+        r"Branch\s*Address",
+        r"開戶行\s*地址",
     ],
     "bank_code": [
         r"銀行\s*(?:代[碼码號号]|Code|CODE|code)\s*",
         r"(?:Bank|BANK)\s*(?:Code|CODE|code)\s*",
+        r"金融機構\s*(?:代[碼码號号]|Code)",
+    ],
+    "routing_number": [
+        r"Routing\s*Number",
+        r"ABA\s*Routing",
     ],
     "account_number": [
         r"(?:綜合|综合)?\s*(?:戶口|户口|帳戶|账户|帳號|账号|賬戶|账户)\s*(?:號碼|号码|號|号|編號|编号|Number|No|NO|num)",
-        r"收款人\s*(?:帳號|账号)\s*(?:\([A-Za-z]{3}\))?",
+        r"美金\s*(?:賬戶|账户|帳戶|账户)",
+        r"\$?\s*USD\s*Account",
+        r"收款\s*(?:戶口|户口)\s*(?:號碼|号码)",
         r"(?:Account|ACCOUNT|account)\s*(?:Number|No|NO|num|Nbr)\s*",
+        r"收款人\s*(?:帳號|账号)\s*(?:\([A-Za-z]{3}\))?",
         r"A/C\s*(?:No|Number|num)?\s*",
     ],
     "account_name": [
@@ -104,6 +119,8 @@ FIELD_PATTERNS = {
         r"(?:Account|ACCOUNT|account)\s*(?:Name|NAME|name|Holder|HOLDER)",
         r"(?:Beneficiary|BENEFICIARY)\s*(?:Name|NAME|name)",
         r"收款人\s*(?:名稱|名称|姓名|全名|名字)",
+        r"^Beneficiary\s*$",
+        r"^收款人\s*$",
     ],
     "amount": [
         r"Mso[- ]?Pobo",
@@ -121,6 +138,14 @@ FIELD_PATTERNS = {
     ],
 }
 
+
+# 中文貨幣詞 → ISO 代碼
+_CN_CURRENCY_MAP = {
+    "美金": "USD", "美元": "USD",
+    "港幣": "HKD", "港元": "HKD", "港币": "HKD",
+    "人民幣": "CNY", "人民币": "CNY",
+}
+_CN_CURRENCY_RE = re.compile("|".join(re.escape(k) for k in _CN_CURRENCY_MAP))
 
 # 支援的貨幣單位
 _CURRENCY_PATTERN = re.compile(
@@ -143,6 +168,9 @@ def _match_field(line: str):
     嘗試將一行文字匹配到一個已知欄位，返回 (field_key, raw_value)
     或 (None, None)。
     """
+    # 預處理：去除行首尾 * 標記
+    line = line.strip().strip("*").strip()
+
     # 先處理分隔符：找到第一個冒號或等號的位置
     for sep in [":", "：", "="]:
         idx = line.find(sep)
@@ -157,12 +185,14 @@ def _match_field(line: str):
             return None, None
         key_part, value_part = parts[0], parts[1].strip()
 
+    # 去除值中的 * 包裹（如 *CHASUS33XXX*）
+    value_part = value_part.strip("*").strip()
     key_part_clean = key_part.strip().rstrip(":：= ")
 
-    # 按優先級嘗試匹配每個欄位類型
+    # 按優先級嘗試匹配每個欄位類型（使用 search 而非 fullmatch 以兼容複合標籤）
     for field_key, patterns in FIELD_PATTERNS.items():
         for pattern in patterns:
-            if re.fullmatch(pattern, key_part_clean, re.IGNORECASE):
+            if re.search(pattern, key_part_clean, re.IGNORECASE):
                 return field_key, value_part
 
     return None, None
@@ -171,6 +201,16 @@ def _match_field(line: str):
 def _parse_amount_with_currency(raw_value: str) -> tuple[int | None, str]:
     """從金額字串中分離數字和貨幣單位，例如 '222,456USD' → (222456, 'USD')"""
     v = raw_value.strip().replace(",", "")
+
+    # 中文貨幣後綴: 194,525 美金
+    m_cn = re.search(rf"([\d,]+(?:\.\d+)?)\s*({_CN_CURRENCY_RE.pattern})\s*$", v)
+    if m_cn:
+        try:
+            amount = int(float(m_cn.group(1)))
+        except (ValueError, TypeError):
+            amount = None
+        currency = _CN_CURRENCY_MAP.get(m_cn.group(2), "USD")
+        return amount, currency
 
     m = _AMOUNT_WITH_CURRENCY.search(v)
     if m:
@@ -325,7 +365,7 @@ def parse_payment_info(message_text: str) -> dict | None:
 
     # ── 判斷是否為付款資訊 ──
     # 至少需要有銀行相關欄位 + 金額 才算付款資訊
-    banking_fields = {"swift", "bank_name", "bank_code", "account_number", "account_name"}
+    banking_fields = {"swift", "bank_name", "bank_code", "account_number", "account_name", "routing_number"}
     found_banking = banking_fields & set(extracted.keys())
     has_amount = "amount" in extracted
 
@@ -342,6 +382,22 @@ def parse_payment_info(message_text: str) -> dict | None:
         if amount is None:
             warnings.append(f"⚠️ 無法解析金額：{extracted['amount']}")
         del extracted["amount"]
+
+    # ── 備用金額提取：掃描未匹配的行末尾找「數字 + 貨幣」 ──
+    if amount is None:
+        matched_keys = set(extracted.keys())
+        for line in reversed(lines):
+            fk, _ = _match_field(line)
+            if fk and fk in matched_keys:
+                continue  # 已是已知欄位
+            cleaned = line.strip().strip("*").strip()
+            has_currency = bool(re.search(r'[A-Za-z]{2,4}\s*$', cleaned)) or bool(_CN_CURRENCY_RE.search(cleaned))
+            if re.search(r'\d', cleaned) and has_currency and not fk:
+                fallback_amt, fallback_cur = _parse_amount_with_currency(cleaned)
+                if fallback_amt is not None:
+                    amount = fallback_amt
+                    currency = fallback_cur
+                    break
 
     # ── 匹配銀行資料 ──
     matched_bank = None
@@ -360,7 +416,7 @@ def parse_payment_info(message_text: str) -> dict | None:
                     if bank_by_name and bank_by_name["name"] != matched_bank["name"]:
                         warnings.append(f"⚠️ SWIFT 代碼與銀行名稱不一致：SWIFT 對應「{matched_bank['name']}」，名稱給出「{extracted['bank_name']}」")
             elif currency != "CNY":
-                warnings.append(f"⚠️ 無法識別的 SWIFT 代碼：{swift_val}")
+                pass  # 格式有效的國際 SWIFT 無需在 HK 列表中
         elif currency != "CNY":
             # CNY 交易通常無 SWIFT 代碼，不報錯
             if looks_broken:
@@ -381,7 +437,7 @@ def parse_payment_info(message_text: str) -> dict | None:
 
     # ── 驗證銀行地址 ──
     if not extracted.get("bank_address", "").strip():
-        warnings.append("❌ 缺少銀行地址")
+        warnings.append("⚠️ 缺少銀行地址")
 
     # ── 驗證必填欄位 ──
     if "account_number" not in extracted:
@@ -403,6 +459,7 @@ def parse_payment_info(message_text: str) -> dict | None:
         "bank_name": extracted.get("bank_name", ""),
         "bank_address": extracted.get("bank_address", ""),
         "bank_code": extracted.get("bank_code", ""),
+        "routing_number": extracted.get("routing_number", ""),
         "account_number": extracted.get("account_number", ""),
         "account_name": agent_name,
         "remarks": extracted.get("remarks", ""),

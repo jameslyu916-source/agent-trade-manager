@@ -14,7 +14,7 @@ from telegram.ext import (
 )
 from telegram.request import HTTPXRequest
 # Import the transaction parser
-from .parser import parse_transaction, parse_cancellation
+from .parser import parse_cancellation
 from .payment_parser import parse_payment_info
 
 # Import the API client
@@ -423,25 +423,9 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
             await update.message.reply_text(f"❌ 取消失敗：{e}")
         return
 
-    transaction = parse_transaction(message.text)
-    if transaction:
-        customer_name = transaction.get("customer_name", "Unknown")
-        print(f"✅ 檢測到有效交易: 客戶={customer_name} - {transaction['amount']}HKD（代理: {agent_display_name}）")
-        api_client.create_transaction(
-            agent_name=agent_display_name,
-            customer_name=customer_name,
-            amount=transaction['amount'],
-            timestamp=transaction['timestamp'],
-            raw_message=transaction['raw_message'],
-            currency="HKD"
-        )
-        print("💾 交易紀錄已保存")
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=f"已紀錄交易：{agent_display_name} 回報 {customer_name} 成交 {transaction['amount']:,}HKD"
-        )
-        return
-        
+    # ── 簡易交易解析已停用，僅接受結構化付款資訊 ──
+    # 保留 parse_transaction() 供 parse_cancellation() 內部使用
+
     # 自然語言查詢檢測：關鍵詞擴展覆蓋更多問法
     query_keywords = [
         "多少", "統計", "總額", "成交", "统计", "总额", "排名", "最近",  # 繁+簡

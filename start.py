@@ -71,6 +71,24 @@ def cleanup(signum=None, frame=None):
         except subprocess.TimeoutExpired:
             p.kill()
             print(f"  \033[31m✗\033[0m {name} 強制關閉")
+
+    # 清理 WhatsApp Bot 殘留的 Chromium 子程序
+    try:
+        subprocess.run(
+            ["pkill", "-f", "chrome.*wwebjs_auth/session-wa-bot"],
+            capture_output=True, timeout=5
+        )
+    except Exception:
+        pass
+    # 確保沒有殘留的 wa_bot 程序
+    try:
+        subprocess.run(
+            ["pkill", "-f", "node.*wa_bot\\.js"],
+            capture_output=True, timeout=5
+        )
+    except Exception:
+        pass
+
     print("\033[38;5;214m  TradeManager Pro 已停止\033[0m")
     sys.exit(0)
 

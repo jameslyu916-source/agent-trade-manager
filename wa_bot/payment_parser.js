@@ -77,7 +77,7 @@ const FIELD_PATTERNS = {
     /^(?:銀行\s*)?名稱\s*/i,
     /^(?:银行\s*)?名称\s*/i,
     /(?:Bank|BANK)\s*(?:Name|NAME|name)\s*/i,
-    /收款銀行\s*/i,
+    /^收款銀行\s*$/i,
     /^(?:Bank|BANK)\s*$/i,
   ],
   bank_address: [
@@ -87,6 +87,8 @@ const FIELD_PATTERNS = {
     /Bank\s*Add/i,
     /Branch\s*Address/i,
     /開戶行\s*地址/i,
+    /开户行\s*地址/i,
+    /银行\s*(?:地址|位址)/i,
   ],
   bank_code: [
     /銀行\s*(?:代[碼码號号]|Code|CODE|code)\s*/i,

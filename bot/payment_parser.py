@@ -85,7 +85,7 @@ FIELD_PATTERNS = {
         r"^(?:銀行\s*)?名稱\s*",
         r"^(?:银行\s*)?名称\s*",
         r"(?:Bank|BANK)\s*(?:Name|NAME|name)\s*",
-        r"收款銀行\s*",
+        r"^收款銀行\s*$",
         r"^(?:Bank|BANK)\s*$",
     ],
     "bank_address": [
@@ -95,6 +95,8 @@ FIELD_PATTERNS = {
         r"Bank\s*Add",
         r"Branch\s*Address",
         r"開戶行\s*地址",
+        r"开户行\s*地址",
+        r"银行\s*(?:地址|位址)",
     ],
     "bank_code": [
         r"銀行\s*(?:代[碼码號号]|Code|CODE|code)\s*",

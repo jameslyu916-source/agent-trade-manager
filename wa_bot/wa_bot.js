@@ -665,6 +665,40 @@ client.on("message", async (msg) => {
   const prevText = lastMessages.get(msg.from) || null;
   lastMessages.set(msg.from, text);
 
+  // ── 換匯公式後發匹配：若當前消息是換匯公式，檢查是否有待處理的兌換 ──
+  const trailingConv = parseConversionLine(text);
+  if (trailingConv) {
+    const pendingByFormula = pendingExchanges.get(senderId);
+    if (pendingByFormula && amountsMatch(trailingConv.result_amount, pendingByFormula.paymentInfo.amount)) {
+      const conversionResult = await resolveConversion(pendingByFormula.paymentInfo, text, pendingByFormula.toCurrency);
+      if (conversionResult && conversionResult.auto_inferred) {
+        pendingExchanges.delete(senderId);
+        const pd = pendingByFormula.paymentInfo.payment_details_dict || {};
+        if (conversionResult.conversion) {
+          pd.conversion = conversionResult.conversion;
+          pendingByFormula.paymentInfo.payment_details = JSON.stringify(pd);
+        }
+        let replyMsg = `✅ 已檢測付款：${pendingByFormula.customerName}\n金額：${pendingByFormula.paymentInfo.amount.toLocaleString()} ${pendingByFormula.toCurrency}`;
+        if (pd.bank_name) replyMsg += `\n銀行：${pd.bank_name}`;
+        if (pd.account_number) replyMsg += `\n戶口：${pd.account_number}`;
+        replyMsg += `\n${conversionResult.note}`;
+        if (WA_SEND_REPLY) { await msg.reply(replyMsg); }
+        await createTransaction({
+          agent_name: pendingByFormula.agentName, customer_name: pendingByFormula.customerName,
+          amount: pendingByFormula.paymentInfo.amount, currency: pendingByFormula.paymentInfo.currency,
+          raw_message: pendingByFormula.paymentInfo.raw_message, source: "whatsapp",
+          payment_details: pendingByFormula.paymentInfo.payment_details,
+          from_currency: "CNY",
+          to_currency: pendingByFormula.toCurrency,
+          remarks: pendingByFormula.paymentInfo.remarks || "",
+          insured_person: pendingByFormula.paymentInfo.insured_person || ""
+        });
+        console.log(`💾 付款資訊已記錄（公式後發自動推斷 CNY→${pendingByFormula.toCurrency}，代理: ${pendingByFormula.agentName}, 客戶: ${pendingByFormula.customerName}）`);
+        return;
+      }
+    }
+  }
+
   // ── 檢查是否有待處理的兌換方式選擇 ──
   const pending = pendingExchanges.get(senderId);
   if (pending) {

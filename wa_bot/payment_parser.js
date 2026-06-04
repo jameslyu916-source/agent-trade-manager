@@ -107,6 +107,7 @@ const FIELD_PATTERNS = {
     /(?:Account|ACCOUNT|account)\s*(?:Number|No|NO|num|Nbr)\s*/i,
     /收款人\s*(?:帳號|账号)\s*(?:\([A-Za-z]{3}\))?/i,
     /A\/C\s*(?:No|Number|num)?\s*/i,
+    /收款\s*(?:账号|帳號)/i,
   ],
   account_name: [
     /(?:戶口|户口|帳戶|账户|賬戶)\s*(?:全名|名稱|名称|姓名|戶名|户名)/i,
@@ -115,6 +116,7 @@ const FIELD_PATTERNS = {
     /收款人\s*(?:名稱|名称|姓名|全名|名字)/i,
     /^Beneficiary\s*$/i,
     /^收款人\s*$/i,
+    /收款\s*(?:账户名|帳戶名|戶口名)/i,
   ],
   amount: [
     /Mso[- ]?Pobo/i,

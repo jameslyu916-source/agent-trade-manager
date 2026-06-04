@@ -81,6 +81,8 @@ _EXCHANGE_OPTIONS = {
 
 # 暫存等待代理選擇兌換方式的付款資訊: message_id -> {payment_info, agent_name, ...}
 _pending_exchanges = {}
+# 快速查找 pending exchange: (chat_id, user_id) -> message_id
+_pending_by_user = {}
 # 每個聊天的最新消息文本: chat_id -> 上一條消息文本
 _last_messages = {}
 
@@ -400,6 +402,46 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
     print(f"收到群消息 [{message.chat.title}] {user_name}: {message.text}")
 
+    # ── 換匯公式後發匹配：若當前消息是換匯公式，檢查是否有待處理的兌換 ──
+    trailing_conv = parse_conversion_line(message.text)
+    if trailing_conv:
+        pending_msg_id = _pending_by_user.get((chat_id, message.from_user.id))
+        if pending_msg_id:
+            pending_ex = _pending_exchanges.get(pending_msg_id)
+            if pending_ex and _amounts_match(trailing_conv["result_amount"], pending_ex["payment_info"]["amount"]):
+                conv_result = await _resolve_conversion(pending_ex["payment_info"], message.text, pending_ex["to_currency"])
+                if conv_result and conv_result["auto_inferred"]:
+                    _pending_exchanges.pop(pending_msg_id, None)
+                    _pending_by_user.pop((chat_id, message.from_user.id), None)
+                    pd = pending_ex["payment_info"].get("payment_details_dict", {})
+                    if conv_result["conversion"]:
+                        pd["conversion"] = conv_result["conversion"]
+                        pending_ex["payment_info"]["payment_details"] = json.dumps(pd, ensure_ascii=False)
+                    await api_client.create_transaction(
+                        agent_name=pending_ex["agent_name"],
+                        customer_name=pending_ex["customer_name"],
+                        amount=pending_ex["payment_info"]["amount"],
+                        currency=pending_ex["payment_info"]["currency"],
+                        timestamp=None,
+                        raw_message=pending_ex["payment_info"]["raw_message"],
+                        source="telegram",
+                        payment_details=pending_ex["payment_info"].get("payment_details"),
+                        from_currency="CNY",
+                        to_currency=pending_ex["to_currency"],
+                        remarks=pending_ex["payment_info"].get("remarks", ""),
+                        insured_person=pending_ex["payment_info"].get("insured_person", ""),
+                    )
+                    reply_parts = [f"✅ 已檢測付款：{pending_ex['customer_name']}"]
+                    reply_parts.append(f"金額：{pending_ex['payment_info']['amount']:,} {pending_ex['to_currency']}")
+                    if pd.get("bank_name"):
+                        reply_parts.append(f"銀行：{pd['bank_name']}")
+                    if pd.get("account_number"):
+                        reply_parts.append(f"戶口：{pd['account_number']}")
+                    reply_parts.append(conv_result["note"])
+                    await update.message.reply_text("\n".join(reply_parts))
+                    print(f"💾 付款資訊已記錄（公式後發自動推斷 CNY→{pending_ex['to_currency']}，代理: {pending_ex['agent_name']}, 客戶: {pending_ex['customer_name']}）")
+                    return
+
     # ── 優先檢查是否為結構化付款資訊 ──
     payment_info = parse_payment_info(message.text)
     if payment_info:
@@ -477,6 +519,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                     "to_currency": to_currency,
                     "conversion_info": conversion_result["conversion"] if conversion_result else None,
                 }
+                _pending_by_user[(chat_id, message.from_user.id)] = sent_msg.message_id
             else:
                 # 無法生成鍵盤（未知貨幣），直接記錄
                 if conversion_result and conversion_result["note"]:
@@ -689,6 +732,8 @@ async def handle_exchange_callback(update: Update, context: ContextTypes.DEFAULT
 
     msg_id = query.message.message_id
     pending = _pending_exchanges.pop(msg_id, None)
+    # 清理 user 索引
+    _pending_by_user.pop((query.message.chat.id, query.from_user.id), None)
 
     if not pending:
         await query.edit_message_text("⚠️ 該選擇已過期，請重新發送付款資訊")

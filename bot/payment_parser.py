@@ -115,6 +115,7 @@ FIELD_PATTERNS = {
         r"(?:Account|ACCOUNT|account)\s*(?:Number|No|NO|num|Nbr)\s*",
         r"收款人\s*(?:帳號|账号)\s*(?:\([A-Za-z]{3}\))?",
         r"A/C\s*(?:No|Number|num)?\s*",
+        r"收款\s*(?:账号|帳號)",
     ],
     "account_name": [
         r"(?:戶口|户口|帳戶|账户|賬戶)\s*(?:全名|名稱|名称|姓名|戶名|户名)",
@@ -123,6 +124,7 @@ FIELD_PATTERNS = {
         r"收款人\s*(?:名稱|名称|姓名|全名|名字)",
         r"^Beneficiary\s*$",
         r"^收款人\s*$",
+        r"收款\s*(?:账户名|帳戶名|戶口名)",
     ],
     "amount": [
         r"Mso[- ]?Pobo",

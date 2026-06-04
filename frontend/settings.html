@@ -309,8 +309,28 @@
                     </div>
                 </div>
 
+                <!-- 日誌查看器 -->
+                <div class="bg-slate-900 rounded-xl border border-slate-800 p-6 animate-fade-in-up" style="animation-delay: 0.25s;">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                            <svg class="w-5 h-5 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                            運行日誌
+                        </h3>
+                        <button onclick="refreshLog()" id="logRefreshBtn" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition-colors text-xs font-medium flex items-center gap-1.5">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                            重整
+                        </button>
+                    </div>
+                    <div class="flex gap-2 mb-3">
+                        <button onclick="switchLog('backend')" id="tab-backend" class="log-tab px-3 py-1.5 rounded-lg text-xs font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/30 transition-colors">後端</button>
+                        <button onclick="switchLog('telegram')" id="tab-telegram" class="log-tab px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 border border-slate-700 hover:border-slate-600 transition-colors">Telegram</button>
+                        <button onclick="switchLog('whatsapp')" id="tab-whatsapp" class="log-tab px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 border border-slate-700 hover:border-slate-600 transition-colors">WhatsApp</button>
+                    </div>
+                    <pre id="logContent" class="bg-black/50 rounded-lg p-4 text-xs font-mono text-slate-300 overflow-auto whitespace-pre-wrap break-all" style="max-height: 360px; min-height: 120px; line-height: 1.6;">載入中...</pre>
+                </div>
+
                 <!-- 儲存按鈕 -->
-                <div class="flex justify-end animate-fade-in-up" style="animation-delay: 0.25s;">
+                <div class="flex justify-end animate-fade-in-up" style="animation-delay: 0.3s;">
                     <button onclick="saveSettings()" id="saveBtn" class="bg-gradient-to-r from-amber-500 to-amber-600 text-white px-8 py-2.5 rounded-xl hover:from-amber-600 hover:to-amber-700 transition-all font-semibold text-sm shadow-md shadow-amber-500/20 active:scale-[0.98] flex items-center gap-2">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
                         儲存設置
@@ -412,6 +432,44 @@
                 btn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg> 儲存設置';
             }
         }
+
+        // ==================== 日誌查看器 ====================
+        let currentLog = "backend";
+
+        async function loadLog(logName) {
+            const pre = document.getElementById("logContent");
+            const btn = document.getElementById("logRefreshBtn");
+            pre.textContent = "載入中...";
+            btn.disabled = true;
+            try {
+                const data = await apiRequest(`/settings/logs/${logName}?lines=200`);
+                pre.textContent = data.content || "(無內容)";
+                pre.scrollTop = pre.scrollHeight;
+            } catch (e) {
+                pre.textContent = "載入失敗：" + e.message;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        function switchLog(logName) {
+            currentLog = logName;
+            document.querySelectorAll(".log-tab").forEach(tab => {
+                if (tab.id === `tab-${logName}`) {
+                    tab.className = "log-tab px-3 py-1.5 rounded-lg text-xs font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/30 transition-colors";
+                } else {
+                    tab.className = "log-tab px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 text-slate-400 border border-slate-700 hover:border-slate-600 transition-colors";
+                }
+            });
+            loadLog(logName);
+        }
+
+        function refreshLog() {
+            loadLog(currentLog);
+        }
+
+        // 頁面載入後自動載入後端日誌
+        setTimeout(() => loadLog("backend"), 600);
     </script>
 </body>
 </html>

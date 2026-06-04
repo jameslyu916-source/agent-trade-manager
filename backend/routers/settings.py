@@ -84,6 +84,31 @@ async def update_settings(
 
 # 專案根目錄（backend/routers/ → 上兩層）
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_ALLOWED_LOGS = {"backend", "telegram", "whatsapp"}
+
+
+@router.get("/logs/{log_name}")
+async def get_log_content(
+    log_name: str,
+    lines: int = 200,
+    current_user=Depends(get_current_user)
+):
+    """讀取指定日誌檔案的最後 N 行"""
+    if log_name not in _ALLOWED_LOGS:
+        raise HTTPException(status_code=400, detail=f"無效的日誌名稱，可用：{', '.join(sorted(_ALLOWED_LOGS))}")
+
+    log_path = os.path.join(_PROJECT_ROOT, "logs", f"{log_name}.log")
+    if not os.path.exists(log_path):
+        return {"log_name": log_name, "lines": 0, "content": ""}
+
+    try:
+        with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+            all_lines = f.readlines()
+        tail_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
+        content = "".join(tail_lines)
+        return {"log_name": log_name, "lines": len(tail_lines), "content": content}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"讀取日誌失敗：{str(e)}")
 
 
 @router.post("/restart-whatsapp")

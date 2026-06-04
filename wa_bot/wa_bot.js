@@ -185,7 +185,11 @@ const FORMAT_TEMPLATE = `📋 交易信息格式（請複製並填寫）：
 備註：
 投保人：`;
 
-const FORMAT_FULL = FORMAT_EXAMPLE + "\n\n" + FORMAT_TEMPLATE;
+const FORMAT_CONVERSION_HINT = `💡 發送提示：
+請先發送換匯公式（如：50w / 7.01 = 71,023 USD），
+再發送上述交易信息。兩條消息請分開發送。`;
+
+const FORMAT_FULL = FORMAT_CONVERSION_HINT + "\n\n" + FORMAT_EXAMPLE + "\n\n" + FORMAT_TEMPLATE;
 
 // ==================== API 客戶端 ====================
 let authToken = null;

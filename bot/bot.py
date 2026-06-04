@@ -209,7 +209,11 @@ _FORMAT_TEMPLATE = """📋 交易信息格式（請複製並填寫）：
 備註：
 投保人："""
 
-_FORMAT_FULL = _FORMAT_EXAMPLE + "\n\n" + _FORMAT_TEMPLATE
+_FORMAT_CONVERSION_HINT = """💡 發送提示：
+請先發送換匯公式（如：50w / 7.01 = 71,023 USD），
+再發送上述交易信息。兩條消息請分開發送。"""
+
+_FORMAT_FULL = _FORMAT_CONVERSION_HINT + "\n\n" + _FORMAT_EXAMPLE + "\n\n" + _FORMAT_TEMPLATE
 
 
 # Load environment variables from .env file

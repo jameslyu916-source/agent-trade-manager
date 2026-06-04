@@ -3,107 +3,219 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>客戶訂單管理 - TradeManager Pro</title>
+    <title>客戶訂單 - TradeManager Pro</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','system-ui','-apple-system','sans-serif']}}}}</script>
-    <script src="utils.js"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+          }
+        }
+      }
+    </script>
+    <script src="utils.js?v=3"></script>
     <style>
-        .toggle-switch{position:relative;display:inline-block;width:44px;height:24px}.toggle-switch input{opacity:0;width:0;height:0}.toggle-slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background-color:#334155;transition:.2s;border-radius:24px}.toggle-slider:before{position:absolute;content:"";height:18px;width:18px;left:3px;bottom:3px;background-color:#94a3b8;transition:.2s;border-radius:50%}input:checked+.toggle-slider{background-color:#f59e0b}input:checked+.toggle-slider:before{transform:translateX(20px);background-color:#fff}
-        .skeleton{background:linear-gradient(90deg,#1e293b 25%,#334155 50%,#1e293b 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:6px}@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
-        .animate-fade-in-up{animation:fadeInUp .4s ease-out both}@keyframes fadeInUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-        .table-row{transition:background-color .15s}.table-row:hover{background-color:rgba(30,41,59,.5)}
-        .sidebar-link{transition:all .15s}.sidebar-link:hover{background-color:rgba(30,41,59,.8)}
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(16px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes shimmer {
+            0%   { background-position: -400px 0; }
+            100% { background-position: 400px 0; }
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to   { opacity: 1; }
+        }
+        .animate-fade-in-up { animation: fadeInUp 0.5s ease-out both; }
+        .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+        .skeleton {
+            background: linear-gradient(90deg, #334155 25%, #475569 50%, #334155 75%);
+            background-size: 800px 100%;
+            animation: shimmer 1.8s infinite;
+            border-radius: 6px;
+        }
+        .sidebar-link {
+            transition: background-color 0.2s ease, padding-left 0.2s ease, color 0.2s ease;
+        }
+        .sidebar-link:hover {
+            background-color: rgba(245,158,11,0.08);
+            padding-left: 16px;
+        }
+        .table-row {
+            transition: background-color 0.12s ease;
+        }
+        .table-row:hover {
+            background-color: rgba(30,41,59,0.5);
+        }
+        input[type="date"] {
+            color-scheme: dark;
+            color: #e2e8f0;
+        }
     </style>
 </head>
-<body class="bg-slate-950 text-slate-200 font-sans min-h-screen">
-    <!-- 頂部導航 -->
-    <nav class="sticky top-0 z-50 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800">
-        <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <div class="w-8 h-8 bg-gradient-to-br from-amber-400 to-amber-600 rounded-lg flex items-center justify-center">
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+<body class="bg-slate-950 min-h-screen font-sans antialiased">
+
+    <!-- 頂部導航欄 -->
+    <nav class="bg-slate-900/80 backdrop-blur-xl border-b border-slate-800 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-6 py-3 flex justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <div class="w-9 h-9 bg-gradient-to-br from-amber-500 to-amber-600 rounded-lg flex items-center justify-center shadow-md shadow-amber-500/20">
+                    <svg class="w-5 h-5 text-slate-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
+                    </svg>
                 </div>
-                <span class="text-lg font-bold text-slate-100">TradeManager <span class="text-amber-400">Pro</span></span>
+                <h1 class="text-lg font-bold text-slate-100 tracking-tight">TradeManager <span class="text-amber-400">Pro</span></h1>
             </div>
-            <div class="flex items-center gap-3">
-                <div class="w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center text-xs font-bold text-slate-300">A</div>
-                <span class="text-sm text-slate-400">Admin</span>
-                <button onclick="logout()" class="text-red-400 hover:text-red-300 text-xs font-medium transition-colors ml-2">登出</button>
+            <div class="flex items-center space-x-3">
+                <div class="w-8 h-8 bg-gradient-to-br from-amber-400 to-amber-500 rounded-full flex items-center justify-center text-slate-900 text-xs font-bold shadow-sm">A</div>
+                <span class="text-sm text-slate-400 font-medium">管理員</span>
+                <button onclick="logout()" class="text-sm bg-slate-800 border border-slate-700 text-slate-300 px-3.5 py-1.5 rounded-lg hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 transition-all duration-200 font-medium">登出</button>
             </div>
         </div>
     </nav>
 
+    <!-- 側邊欄和主內容 -->
     <div class="max-w-7xl mx-auto px-6 py-6 flex gap-6">
         <!-- 側邊欄 -->
         <aside class="w-52 shrink-0">
-            <ul class="space-y-1 sticky top-20">
-                <li><a href="dashboard.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg><span>儀表盤</span></a></li>
-                <li><a href="transactions.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg><span>交易記錄</span></a></li>
-                <li><a href="orders.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg bg-amber-500/10 text-amber-400 font-semibold text-sm"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg><span>客戶訂單</span></a></li>
-                <li><a href="agents.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg><span>代理管理</span></a></li>
-                <li><a href="reports.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg><span>報表下載</span></a></li>
-                <li><a href="risk.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg><span>風險監控</span></a></li>
-                <li><a href="settings.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg><span>系統設置</span></a></li>
-            </ul>
+            <div class="bg-slate-900 rounded-xl shadow-sm border border-slate-800 p-3 sticky top-24">
+                <ul class="space-y-1">
+                    <li>
+                        <a href="dashboard.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+                            <span>儀表盤</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="transactions.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+                            <span>交易記錄</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="orders.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg bg-amber-500/10 text-amber-400 font-semibold text-sm">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                            <span>客戶訂單</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="agents.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                            <span>代理管理</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="reports.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                            <span>報表下載</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="risk.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                            <span>風險監控</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="settings.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                            <span>系統設置</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
         </aside>
 
-        <!-- 主內容 -->
+        <!-- 主內容區 -->
         <main class="flex-1 min-w-0">
-            <div class="mb-6 animate-fade-in-up">
-                <h2 class="text-2xl font-bold text-slate-100">客戶訂單</h2>
-                <p class="text-sm text-slate-400 mt-1">查看與管理從 WhatsApp 群組中記錄的客戶訂單</p>
+
+            <!-- 頁面標題區 -->
+            <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6 animate-fade-in-up">
+                <div>
+                    <h2 class="text-2xl font-bold text-slate-100">客戶訂單</h2>
+                    <p id="orderCount" class="text-sm text-slate-500 mt-1">查看與管理客戶訂單記錄</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                            <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                        </div>
+                        <input
+                            type="date"
+                            id="dateFilter"
+                            class="pl-10 pr-4 py-2.5 border border-slate-700 rounded-xl text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500/50 transition-all bg-slate-800 shadow-sm"
+                        >
+                    </div>
+                    <button
+                        onclick="loadOrders()"
+                        class="bg-gradient-to-r from-amber-500 to-amber-600 text-white px-5 py-2.5 rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all text-sm font-semibold shadow-md shadow-amber-500/20 hover:shadow-lg hover:shadow-blue-500/30 active:scale-[0.98] flex items-center gap-1.5"
+                    >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                        查詢
+                    </button>
+                </div>
             </div>
 
-            <!-- 日期篩選 -->
-            <div class="flex items-center gap-3 mb-5 animate-fade-in-up" style="animation-delay:0.05s">
-                <input type="date" id="dateFilter" class="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/40">
-                <button onclick="loadOrders()" class="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-4 py-2 rounded-lg hover:bg-amber-500/20 transition-all text-sm font-semibold">查詢</button>
-                <span id="orderCount" class="text-sm text-slate-500 ml-2"></span>
-            </div>
-
-            <!-- 摘要卡片 -->
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 animate-fade-in-up" style="animation-delay:0.08s">
-                <div class="bg-slate-900 rounded-xl border border-slate-800 p-4">
-                    <p class="text-xs text-slate-500 mb-1">訂單總數</p>
-                    <p class="text-2xl font-bold text-slate-100" id="summaryCount">-</p>
+            <!-- 摘要統計卡片 -->
+            <div id="summaryCards" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 animate-fade-in-up" style="animation-delay: 0.05s;">
+                <div class="bg-slate-900 rounded-xl shadow-sm border border-slate-800 p-5 flex items-center gap-4">
+                    <div class="w-10 h-10 bg-sky-500/10 rounded-xl flex items-center justify-center shrink-0">
+                        <svg class="w-5 h-5 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                    </div>
+                    <div>
+                        <p class="text-xs font-medium text-slate-500">訂單總數</p>
+                        <p id="summaryCount" class="text-xl font-bold text-slate-200">-</p>
+                    </div>
                 </div>
-                <div class="bg-slate-900 rounded-xl border border-slate-800 p-4">
-                    <p class="text-xs text-slate-500 mb-1">總金額（CNY）</p>
-                    <p class="text-2xl font-bold text-amber-400" id="summaryAmount">-</p>
+                <div class="bg-slate-900 rounded-xl shadow-sm border border-slate-800 p-5 flex items-center gap-4">
+                    <div class="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center shrink-0">
+                        <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    </div>
+                    <div>
+                        <p class="text-xs font-medium text-slate-500">總金額（CNY）</p>
+                        <p id="summaryAmount" class="text-xl font-bold text-slate-200">-</p>
+                    </div>
                 </div>
-                <div class="bg-slate-900 rounded-xl border border-slate-800 p-4">
-                    <p class="text-xs text-slate-500 mb-1">已匹配</p>
-                    <p class="text-2xl font-bold text-emerald-400" id="summaryMatched">-</p>
+                <div class="bg-slate-900 rounded-xl shadow-sm border border-slate-800 p-5 flex items-center gap-4">
+                    <div class="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center shrink-0">
+                        <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                    </div>
+                    <div>
+                        <p class="text-xs font-medium text-slate-500">已匹配</p>
+                        <p id="summaryMatched" class="text-xl font-bold text-slate-200">-</p>
+                    </div>
                 </div>
             </div>
 
             <!-- 訂單表格 -->
-            <div class="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden animate-fade-in-up" style="animation-delay:0.1s">
+            <div class="bg-slate-900 rounded-xl shadow-sm border border-slate-800 overflow-hidden animate-fade-in-up" style="animation-delay: 0.1s;">
                 <div class="overflow-x-auto">
                     <table class="w-full">
                         <thead>
                             <tr class="bg-slate-800/80">
-                                <th class="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">時間</th>
-                                <th class="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">客戶名稱</th>
-                                <th class="px-5 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">金額</th>
-                                <th class="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">匹配狀態</th>
-                                <th class="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">提醒狀態</th>
-                                <th class="px-5 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">操作</th>
+                                <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">時間</th>
+                                <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">客戶名稱</th>
+                                <th class="px-6 py-3.5 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">金額</th>
+                                <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">匹配狀態</th>
+                                <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">提醒狀態</th>
+                                <th class="px-6 py-3.5 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">操作</th>
                             </tr>
                         </thead>
                         <tbody id="orderTable" class="divide-y divide-slate-800">
-                            <tr class="skeleton-row"><td class="px-5 py-3.5"><div class="skeleton h-4 w-36"></div></td><td class="px-5 py-3.5"><div class="skeleton h-4 w-20"></div></td><td class="px-5 py-3.5"><div class="skeleton h-4 w-24 ml-auto"></div></td><td class="px-5 py-3.5"><div class="skeleton h-4 w-24"></div></td><td class="px-5 py-3.5"><div class="skeleton h-4 w-16"></div></td><td class="px-5 py-3.5"><div class="skeleton h-4 w-16 mx-auto"></div></td></tr>
-                            <tr class="skeleton-row"><td class="px-5 py-3.5"><div class="skeleton h-4 w-36"></div></td><td class="px-5 py-3.5"><div class="skeleton h-4 w-16"></div></td><td class="px-5 py-3.5"><div class="skeleton h-4 w-20 ml-auto"></div></td><td class="px-5 py-3.5"><div class="skeleton h-4 w-20"></div></td><td class="px-5 py-3.5"><div class="skeleton h-4 w-14"></div></td><td class="px-5 py-3.5"><div class="skeleton h-4 w-16 mx-auto"></div></td></tr>
+                            <tr class="skeleton-row"><td class="px-6 py-3.5"><div class="skeleton h-4 w-36"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-20"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-24 ml-auto"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-28"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-16"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-16 mx-auto"></div></td></tr>
+                            <tr class="skeleton-row"><td class="px-6 py-3.5"><div class="skeleton h-4 w-36"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-16"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-20 ml-auto"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-24"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-14"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-16 mx-auto"></div></td></tr>
                         </tbody>
                     </table>
                 </div>
             </div>
 
             <!-- 分頁 -->
-            <div id="pagination" class="flex items-center justify-between mt-5 hidden">
+            <div id="pagination" class="flex items-center justify-between mt-5 animate-fade-in-up hidden" style="animation-delay: 0.15s;">
                 <p id="pageInfo" class="text-sm text-slate-500"></p>
                 <div class="flex gap-2">
                     <button id="prevPage" class="px-4 py-2 border border-slate-700 rounded-xl text-sm font-medium text-slate-400 hover:bg-slate-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">上一頁</button>
@@ -114,8 +226,8 @@
     </div>
 
     <!-- 編輯 Modal -->
-    <div id="editModal" class="fixed inset-0 z-[9999] hidden items-center justify-center" style="background:rgba(0,0,0,0.4);backdrop-filter:blur(2px)">
-        <div class="bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md mx-4 animate-fade-in-up">
+    <div id="editModal" class="fixed inset-0 z-[9999] hidden items-center justify-center" style="background: rgba(0,0,0,0.4); backdrop-filter: blur(2px);">
+        <div class="bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto animate-fade-in-up">
             <div class="flex items-center justify-between px-6 py-4 border-b border-slate-800">
                 <h3 class="text-lg font-bold text-slate-100">編輯客戶訂單</h3>
                 <button onclick="closeEditModal()" class="text-slate-500 hover:text-slate-400 transition-colors">
@@ -126,11 +238,11 @@
                 <input type="hidden" id="editOrderId">
                 <div>
                     <label class="block text-xs font-semibold text-slate-400 mb-1">客戶名稱</label>
-                    <input type="text" id="editCustomerName" required class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/40">
+                    <input type="text" id="editCustomerName" required class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400">
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-400 mb-1">金額（CNY）</label>
-                    <input type="number" id="editAmount" min="1" required class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/40">
+                    <input type="number" id="editAmount" min="1" required class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400">
                 </div>
                 <div class="flex gap-3 pt-2">
                     <button type="button" onclick="closeEditModal()" class="flex-1 px-4 py-2.5 border border-slate-700 rounded-xl text-sm font-medium text-slate-400 hover:bg-slate-800 transition-colors">取消</button>
@@ -161,13 +273,13 @@
             document.getElementById("summaryCount").textContent = "-";
             document.getElementById("summaryAmount").textContent = "-";
             document.getElementById("summaryMatched").textContent = "-";
+            document.getElementById("orderCount").textContent = "查詢客戶訂單記錄";
 
             try {
                 const url = date ? `/orders/daily?date=${date}` : "/orders/daily";
                 allOrders = await apiRequest(url);
                 document.getElementById("orderCount").textContent = `共 ${allOrders.length} 筆訂單`;
 
-                // 摘要
                 document.getElementById("summaryCount").textContent = allOrders.length;
                 const totalAmount = allOrders.reduce((s, o) => s + o.amount, 0);
                 document.getElementById("summaryAmount").textContent = `¥${totalAmount.toLocaleString('zh-HK')}`;
@@ -175,13 +287,13 @@
                 document.getElementById("summaryMatched").textContent = `${matchedCount} / ${allOrders.length}`;
 
                 if (allOrders.length === 0) {
-                    tableBody.innerHTML = `<tr><td colspan="6" class="px-5 py-14">${renderEmptyState("暫無訂單記錄", date ? `於 ${date} 沒有找到客戶訂單` : "今日尚無訂單")}</td></tr>`;
+                    tableBody.innerHTML = `<tr><td colspan="6" class="px-6 py-14">${renderEmptyState("暫無訂單記錄", date ? `於 ${date} 沒有找到客戶訂單` : "今日尚無訂單")}</td></tr>`;
                     return;
                 }
 
                 renderPage(0);
             } catch (e) {
-                tableBody.innerHTML = `<tr><td colspan="6" class="px-5 py-14 text-center text-red-400 text-sm">載入失敗：${e.message || e}</td></tr>`;
+                tableBody.innerHTML = `<tr><td colspan="6" class="px-6 py-14 text-center text-red-400 text-sm">載入失敗：${e.message || e}</td></tr>`;
             }
         }
 
@@ -208,17 +320,22 @@
                 const statusColor = o.status ? statusColorMap[o.status] || "text-slate-400" : "text-slate-500";
 
                 row.innerHTML = `
-                    <td class="px-5 py-3 whitespace-nowrap text-sm text-slate-400">${timeStr}</td>
-                    <td class="px-5 py-3 whitespace-nowrap text-sm font-semibold text-slate-200">${escapeHtml(o.customer_name)}</td>
-                    <td class="px-5 py-3 whitespace-nowrap text-sm font-bold text-amber-400 text-right">¥${o.amount.toLocaleString('zh-HK')}</td>
-                    <td class="px-5 py-3 text-sm">${matchHtml}</td>
-                    <td class="px-5 py-3 whitespace-nowrap text-sm ${statusColor}">${statusText}</td>
-                    <td class="px-5 py-3 whitespace-nowrap text-sm text-center">
+                    <td class="px-6 py-3.5 whitespace-nowrap text-sm text-slate-400">
+                        <div class="flex items-center gap-2">
+                            <div class="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0"></div>
+                            ${timeStr}
+                        </div>
+                    </td>
+                    <td class="px-6 py-3.5 whitespace-nowrap text-sm font-semibold text-slate-200">${escapeHtml(o.customer_name)}</td>
+                    <td class="px-6 py-3.5 whitespace-nowrap text-sm font-bold text-amber-400 text-right">¥${o.amount.toLocaleString('zh-HK')}</td>
+                    <td class="px-6 py-3.5 text-sm">${matchHtml}</td>
+                    <td class="px-6 py-3.5 whitespace-nowrap text-sm ${statusColor}">${statusText}</td>
+                    <td class="px-6 py-3.5 whitespace-nowrap text-sm text-center">
                         <div class="flex items-center justify-center gap-1">
-                            <button onclick="editOrder(${o.id})" class="text-blue-400 hover:text-amber-400 hover:bg-amber-500/10 px-2 py-1 rounded-lg transition-colors" title="編輯">
+                            <button onclick="editOrder(${o.id})" class="text-blue-400 hover:text-amber-400 hover:bg-amber-500/10 px-2 py-1 rounded-lg transition-colors" title="編輯此訂單">
                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                             </button>
-                            <button onclick="deleteOrder(${o.id})" class="text-red-400 hover:text-red-400 hover:bg-red-500/10 px-2 py-1 rounded-lg transition-colors" title="刪除">
+                            <button onclick="deleteOrder(${o.id})" class="text-red-400 hover:text-red-400 hover:bg-red-500/10 px-2 py-1 rounded-lg transition-colors" title="刪除此訂單">
                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                             </button>
                         </div>
@@ -227,7 +344,6 @@
                 tableBody.appendChild(row);
             });
 
-            // 分頁
             const totalPages = Math.ceil(allOrders.length / PAGE_SIZE);
             const pagination = document.getElementById("pagination");
             const pageInfo = document.getElementById("pageInfo");
@@ -247,7 +363,6 @@
             currentPage = page;
         }
 
-        // ── 編輯 ──
         function editOrder(id) {
             const o = allOrders.find(o => o.id === id);
             if (!o) return showToast("找不到該訂單", "error");
@@ -291,7 +406,6 @@
             }
         });
 
-        // ── 刪除 ──
         async function deleteOrder(id) {
             const o = allOrders.find(o => o.id === id);
             const name = o ? o.customer_name : `#${id}`;

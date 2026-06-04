@@ -618,23 +618,23 @@ async function sendReminderIfTime() {
     console.log(`⏰ 觸發漏單提醒（${todayStr} ${hour}:${String(minute).padStart(2, "0")} HKT）`);
     lastReminderDate = todayStr;
 
-    const orders = await getUnmatchedOrders();
-    if (!orders || orders.length === 0) {
-      console.log("   ✅ 今日無漏單");
-      return;
-    }
-
     const reminderGroupName = getSetting("reminder_group_name", null);
     if (!reminderGroupName) {
       console.log("   ⚠️ 未設定提醒群組名稱");
       return;
     }
 
-    // 尋找提醒群組
     const chats = await client.getChats();
     const reminderChat = chats.find(c => c.name === reminderGroupName && c.isGroup);
     if (!reminderChat) {
       console.log(`   ⚠️ 找不到提醒群組「${reminderGroupName}」`);
+      return;
+    }
+
+    const orders = await getUnmatchedOrders();
+    if (!orders || orders.length === 0) {
+      console.log("   ✅ 今日無漏單");
+      await reminderChat.sendMessage("✅ 今日無漏單 🎉（定時消息）");
       return;
     }
 
@@ -738,9 +738,9 @@ client.on("message", async (msg) => {
   // ── @mention 客戶訂單檢測（群組消息）──
   // WhatsApp body 中 @mention 顯示為 @phone_number，需用 mentionedIds 判斷
   if (msg.from.endsWith("@g.us") && msg.mentionedIds && msg.mentionedIds.length > 0) {
-    // 移除開頭的 @mention（格式為 @phone_number），再匹配訂單格式
-    const afterMention = msgText.replace(/^@\S+\s*/, "");
-    const orderMatch = afterMention.match(/^(.+?)\s+(\d[\d,]*(?:w|万|萬)?)\s*$/i);
+    // 移除所有 @mention（格式為 @phone_number），再匹配訂單格式
+    const afterMention = msgText.replace(/@\S+/g, "").trim();
+    const orderMatch = afterMention.match(/^(.+?)\s+(?:需要|需|要)?\s*(?:[￥¥$€£])?(\d[\d,]*(?:w|万|萬)?)\s*$/i);
     if (orderMatch) {
       const customerName = orderMatch[1].trim();
       const amountStr = orderMatch[2];

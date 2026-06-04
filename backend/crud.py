@@ -11,14 +11,23 @@ import json
 def _calculate_profit(db: Session, payment_details, currency: str, timestamp: str) -> int | None:
     """從 payment_details 中的 conversion 資訊 + 當日匯率計算盈利"""
     if not payment_details:
+        print("🔍 [profit] payment_details 為空")
         return None
     try:
         pd_obj = json.loads(payment_details) if isinstance(payment_details, str) else payment_details
-    except (json.JSONDecodeError, TypeError):
+    except (json.JSONDecodeError, TypeError) as e:
+        print(f"🔍 [profit] JSON 解析失敗：{e} | raw={repr(payment_details)[:200]}")
         return None
 
     conv = pd_obj.get("conversion") if pd_obj else None
-    if not conv or not conv.get("source_amount") or not conv.get("rate"):
+    if not conv:
+        print(f"🔍 [profit] payment_details 中沒有 conversion 欄位 | keys={list(pd_obj.keys()) if pd_obj else 'None'}")
+        return None
+    if not conv.get("source_amount"):
+        print(f"🔍 [profit] conversion 中沒有 source_amount | conv={conv}")
+        return None
+    if not conv.get("rate"):
+        print(f"🔍 [profit] conversion 中沒有 rate | conv={conv}")
         return None
 
     source_amount = conv["source_amount"]
@@ -29,10 +38,12 @@ def _calculate_profit(db: Session, payment_details, currency: str, timestamp: st
     buy_rate = None
     if conv.get("matched") and conv.get("daily_rate"):
         buy_rate = conv["daily_rate"]
+        print(f"🔍 [profit] 使用 conversion.daily_rate: {buy_rate}")
     else:
         try:
             tx_date = datetime.fromisoformat(timestamp).date()
         except (ValueError, TypeError):
+            print(f"🔍 [profit] timestamp 解析失敗：{timestamp}")
             return None
         rate_record = db.query(ExchangeRate).filter(
             ExchangeRate.date == tx_date.isoformat(),
@@ -41,11 +52,15 @@ def _calculate_profit(db: Session, payment_details, currency: str, timestamp: st
         ).first()
         if rate_record:
             buy_rate = rate_record.rate
+        print(f"🔍 [profit] DB 查詢 buy_rate: {buy_rate} | date={tx_date} | {source_currency}→{to_currency}")
 
     if not buy_rate or buy_rate <= 0:
+        print(f"🔍 [profit] buy_rate 無效：{buy_rate}")
         return None
 
-    return round(source_amount / buy_rate - source_amount / sell_rate)
+    result = round(source_amount / buy_rate - source_amount / sell_rate)
+    print(f"🔍 [profit] 計算成功：{source_amount} / {buy_rate} - {source_amount} / {sell_rate} = {result} {to_currency}")
+    return result
 
 
 def _parse_earnings(agent) -> dict:

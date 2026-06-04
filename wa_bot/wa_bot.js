@@ -140,7 +140,7 @@ async function resolveConversion(paymentInfo, prevText, toCurrency) {
       auto_inferred: true,
       from_currency: "CNY",
       conversion: conversionInfo,
-      note: `📐 從換匯公式自動推斷：${conv.result_currency} ${conv.rate} (≈今日 CNY→${conv.result_currency} ${dailyRate.toFixed(3)})${wanNote}`,
+      note: `📐 從換匯公式 ${conv.result_currency} ${conv.rate} 自動推斷為 CNY${wanNote}`,
     };
   } else {
     const dailyStr = dailyRate ? dailyRate.toFixed(3) : "無今日數據";

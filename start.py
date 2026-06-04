@@ -9,6 +9,8 @@ import webbrowser
 import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_DIR = os.path.join(BASE_DIR, "logs")
+os.makedirs(LOG_DIR, exist_ok=True)
 processes = []
 
 
@@ -22,49 +24,59 @@ def print_banner():
 
 def start_backend():
     print("  [1/3] 啟動後端 API 伺服器...", end=" ", flush=True)
+    log_file = open(os.path.join(LOG_DIR, "backend.log"), "a")
     p = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"],
         cwd=BASE_DIR,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=log_file,
+        stderr=log_file,
     )
-    processes.append(("後端 API", p))
+    processes.append(("後端 API", p, log_file))
     time.sleep(2)
     print("\033[32m✓\033[0m (port 8000)")
 
 
 def start_telegram_bot():
     print("  [2/3] 啟動 Telegram Bot...", end=" ", flush=True)
+    log_file = open(os.path.join(LOG_DIR, "telegram.log"), "a")
     p = subprocess.Popen(
         [sys.executable, "-m", "bot.bot"],
         cwd=BASE_DIR,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=log_file,
+        stderr=log_file,
     )
-    processes.append(("Telegram Bot", p))
+    processes.append(("Telegram Bot", p, log_file))
     time.sleep(1.5)
     print("\033[32m✓\033[0m")
 
 
 def start_whatsapp_bot():
     print("  [3/3] 啟動 WhatsApp Bot...", end=" ", flush=True)
+    log_file = open(os.path.join(LOG_DIR, "whatsapp.log"), "a")
     wa_dir = os.path.join(BASE_DIR, "wa_bot")
     p = subprocess.Popen(
         ["node", "wa_bot.js"],
         cwd=wa_dir,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=log_file,
+        stderr=log_file,
     )
-    processes.append(("WhatsApp Bot", p))
+    processes.append(("WhatsApp Bot", p, log_file))
     time.sleep(1)
     print("\033[32m✓\033[0m")
 
 
 def cleanup(signum=None, frame=None):
     print("\n\033[33m  正在關閉所有服務...\033[0m")
-    for name, p in processes:
+    for item in processes:
+        name = item[0]
+        p = item[1]
+        log_file = item[2] if len(item) > 2 else None
         p.terminate()
-    for name, p in processes:
+        if log_file:
+            log_file.close()
+    for item in processes:
+        name = item[0]
+        p = item[1]
         try:
             p.wait(timeout=5)
             print(f"  \033[32m✓\033[0m {name} 已關閉")
@@ -111,6 +123,7 @@ def main():
     print()
     print("  \033[38;5;214m所有服務已啟動 ✓\033[0m")
     print("  前端頁面：\033[36mhttp://localhost:8000\033[0m")
+    print(f"  日誌目錄：\033[36m{LOG_DIR}\033[0m")
     print("  按 \033[33mCtrl+C\033[0m 停止所有服務")
     print()
 

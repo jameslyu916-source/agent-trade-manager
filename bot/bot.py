@@ -153,7 +153,7 @@ async def _resolve_conversion(payment_info: dict, prev_text: str | None, to_curr
             "auto_inferred": True,
             "from_currency": "CNY",
             "conversion": conversion_info,
-            "note": f"📐 從換匯公式自動推斷：{conv['result_currency']} {conv['rate']} (≈今日 CNY→{conv['result_currency']} {daily_rate:.3f}){wan_note}",
+            "note": f"📐 從換匯公式 {conv['result_currency']} {conv['rate']} 自動推斷為 CNY{wan_note}",
         }
     else:
         daily_str = f"{daily_rate:.3f}" if daily_rate else "無今日數據"

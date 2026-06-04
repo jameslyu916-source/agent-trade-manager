@@ -24,7 +24,7 @@ def print_banner():
 
 def start_backend():
     print("  [1/3] 啟動後端 API 伺服器...", end=" ", flush=True)
-    log_file = open(os.path.join(LOG_DIR, "backend.log"), "a")
+    log_file = open(os.path.join(LOG_DIR, "backend.log"), "w")
     p = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"],
         cwd=BASE_DIR,
@@ -38,7 +38,7 @@ def start_backend():
 
 def start_telegram_bot():
     print("  [2/3] 啟動 Telegram Bot...", end=" ", flush=True)
-    log_file = open(os.path.join(LOG_DIR, "telegram.log"), "a")
+    log_file = open(os.path.join(LOG_DIR, "telegram.log"), "w")
     p = subprocess.Popen(
         [sys.executable, "-m", "bot.bot"],
         cwd=BASE_DIR,
@@ -52,7 +52,7 @@ def start_telegram_bot():
 
 def start_whatsapp_bot():
     print("  [3/3] 啟動 WhatsApp Bot...", end=" ", flush=True)
-    log_file = open(os.path.join(LOG_DIR, "whatsapp.log"), "a")
+    log_file = open(os.path.join(LOG_DIR, "whatsapp.log"), "w")
     wa_dir = os.path.join(BASE_DIR, "wa_bot")
     p = subprocess.Popen(
         ["node", "wa_bot.js"],

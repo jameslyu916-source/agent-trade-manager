@@ -38,13 +38,33 @@ async def generate_daily_report(
         from_cur = getattr(tx, 'from_currency', '') or ''
         to_cur = getattr(tx, 'to_currency', '') or ''
         pair = f"{from_cur} → {to_cur}" if from_cur and to_cur else ""
+
+        # 從 payment_details 提取換匯信息
+        source_amount = ""
+        conversion_rate = ""
+        source_currency = ""
+        if pd_str:
+            try:
+                import json as _json
+                pd_obj = _json.loads(pd_str) if isinstance(pd_str, str) else pd_str
+                conv = pd_obj.get("conversion")
+                if conv and conv.get("source_amount"):
+                    source_amount = f"{conv['source_amount']:,.0f}"
+                    conversion_rate = str(conv.get("rate", ""))
+                    source_currency = conv.get("source_currency", "CNY")
+            except Exception:
+                pass
+
         tx_rows.append({
             "代理名稱": tx.agent_name,
             "客戶名稱": getattr(tx, 'customer_name', '') or '',
             "兌換": pair,
+            "兌換前金額": source_amount,
+            "換匯匯率": conversion_rate,
+            "來源幣種": source_currency,
             "交易金額": tx.amount,
             "貨幣": cur,
-            "手續費": tx.commission,
+            "盈利": tx.profit if tx.profit is not None else "",
             "備註": getattr(tx, 'remarks', '') or '',
             "投保人": getattr(tx, 'insured_person', '') or '',
             "交易時間(香港)": datetime.fromisoformat(tx.timestamp).replace(tzinfo=timezone.utc).astimezone(HK_TZ).strftime("%Y-%m-%d %H:%M:%S"),
@@ -71,13 +91,14 @@ async def generate_daily_report(
         # Sheet per currency: 代理統計
         for cur in currency_order:
             cur_rows = currency_groups[cur]
-            agent_stats = defaultdict(lambda: {"amount": 0, "commission": 0})
+            agent_stats = defaultdict(lambda: {"amount": 0, "profit": 0})
             for r in cur_rows:
                 agent_stats[r["代理名稱"]]["amount"] += r["交易金額"]
-                agent_stats[r["代理名稱"]]["commission"] += r["手續費"]
+                p = r["盈利"] if isinstance(r["盈利"], (int, float)) else 0
+                agent_stats[r["代理名稱"]]["profit"] += p
 
             stats_rows = [
-                {"代理名稱": name, f"{cur}總成交額": s["amount"], f"{cur}總手續費": s["commission"]}
+                {"代理名稱": name, f"{cur}總成交額": s["amount"], f"{cur}總盈利": s["profit"]}
                 for name, s in sorted(agent_stats.items(), key=lambda x: x[1]["amount"], reverse=True)
             ]
             pd.DataFrame(stats_rows).to_excel(

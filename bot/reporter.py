@@ -1,5 +1,6 @@
 # bot/reporter.py
 import pandas as pd
+import json
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 from .api_client import api_client
@@ -32,6 +33,23 @@ def generate_daily_report(date=None):
     for tx in daily_transactions:
         tx["currency"] = tx.get("currency") or "USD"
 
+    # ── 從 payment_details 提取換匯信息 ──
+    for tx in daily_transactions:
+        tx["source_amount"] = ""
+        tx["conversion_rate"] = ""
+        tx["source_currency"] = ""
+        pd_raw = tx.get("payment_details")
+        if pd_raw:
+            try:
+                pd_obj = json.loads(pd_raw) if isinstance(pd_raw, str) else pd_raw
+                conv = pd_obj.get("conversion")
+                if conv and conv.get("source_amount"):
+                    tx["source_amount"] = f"{conv['source_amount']:,.0f}"
+                    tx["conversion_rate"] = str(conv.get("rate", ""))
+                    tx["source_currency"] = conv.get("source_currency", "CNY")
+            except Exception:
+                pass
+
     # ── 按貨幣分組統計 ──
     currency_groups = defaultdict(list)
     for tx in daily_transactions:
@@ -40,8 +58,8 @@ def generate_daily_report(date=None):
     # 創建 DataFrame（含貨幣欄位）
     df = pd.DataFrame(daily_transactions)
     if "currency" in df.columns:
-        cols = ["agent_name", "amount", "currency", "timestamp", "commission"]
-        cols_display = ["代理名稱", "交易金額", "貨幣", "交易時間", "手續費"]
+        cols = ["agent_name", "amount", "currency", "timestamp", "profit"]
+        cols_display = ["代理名稱", "交易金額", "貨幣", "交易時間", "盈利"]
         if "customer_name" in df.columns:
             cols.insert(1, "customer_name")
             cols_display.insert(1, "客戶名稱")
@@ -53,6 +71,16 @@ def generate_daily_report(date=None):
             )
             cols.insert(-2, "兌換")
             cols_display.insert(-2, "兌換")
+        # 換匯信息（兌換前金額 / 匯率 / 來源幣種）
+        if "source_amount" in df.columns:
+            cols.insert(-2, "source_amount")
+            cols_display.insert(-2, "兌換前金額")
+        if "conversion_rate" in df.columns:
+            cols.insert(-2, "conversion_rate")
+            cols_display.insert(-2, "換匯匯率")
+        if "source_currency" in df.columns:
+            cols.insert(-2, "source_currency")
+            cols_display.insert(-2, "來源幣種")
         if "remarks" in df.columns:
             cols.insert(-2, "remarks")
             cols_display.insert(-2, "備註")
@@ -62,8 +90,8 @@ def generate_daily_report(date=None):
         df = df[cols]
         df.columns = cols_display
     else:
-        df = df[["agent_name", "amount", "timestamp", "commission"]]
-        df.columns = ["代理名稱", "交易金額", "交易時間", "手續費"]
+        df = df[["agent_name", "amount", "timestamp", "profit"]]
+        df.columns = ["代理名稱", "交易金額", "交易時間", "盈利"]
 
     # 轉換時間為香港時間
     df["交易時間"] = df["交易時間"].apply(
@@ -82,28 +110,28 @@ def generate_daily_report(date=None):
     for cur in currency_order:
         txs = currency_groups[cur]
         total_amount = sum(t["amount"] for t in txs)
-        total_commission = sum(t["commission"] for t in txs)
+        total_profit = sum(t["profit"] for t in txs)
         grand_total_txs += len(txs)
 
         report_text += f"\n{'─' * 30}\n"
         report_text += f"💱 {cur}\n"
         report_text += f"   交易筆數：{len(txs)} 筆\n"
         report_text += f"   總成交額：{total_amount:,} {cur}\n"
-        report_text += f"   總手續費：{total_commission:,} {cur}\n"
+        report_text += f"   總盈利：{total_profit:,} {cur}\n"
 
         # 按代理排名
-        agent_amounts = defaultdict(lambda: {"amount": 0, "commission": 0})
+        agent_amounts = defaultdict(lambda: {"amount": 0, "profit": 0})
         for t in txs:
             a = t["agent_name"]
             agent_amounts[a]["amount"] += t["amount"]
-            agent_amounts[a]["commission"] += t["commission"]
+            agent_amounts[a]["profit"] += t["profit"]
 
         sorted_agents = sorted(agent_amounts.items(),
                               key=lambda x: x[1]["amount"], reverse=True)
         for i, (name, stats) in enumerate(sorted_agents, 1):
             report_text += f"   {i}. {name}：{stats['amount']:,} {cur}"
-            if stats["commission"] > 0:
-                report_text += f"（手續費：{stats['commission']:,} {cur}）"
+            if stats["profit"] > 0:
+                report_text += f"（盈利：{stats['profit']:,} {cur}）"
             report_text += "\n"
 
     report_text += f"\n{'─' * 30}\n"
@@ -119,13 +147,13 @@ def generate_daily_report(date=None):
             cur_df = df[df["貨幣"] == cur] if "貨幣" in df.columns else df
             # 代理統計
             cur_txs = currency_groups[cur]
-            agent_stats_data = defaultdict(lambda: {"amount": 0, "commission": 0})
+            agent_stats_data = defaultdict(lambda: {"amount": 0, "profit": 0})
             for t in cur_txs:
                 agent_stats_data[t["agent_name"]]["amount"] += t["amount"]
-                agent_stats_data[t["agent_name"]]["commission"] += t["commission"]
+                agent_stats_data[t["agent_name"]]["profit"] += t["profit"]
 
             agent_rows = [
-                {"代理名稱": name, f"{cur}總成交額": s["amount"], f"{cur}總手續費": s["commission"]}
+                {"代理名稱": name, f"{cur}總成交額": s["amount"], f"{cur}總盈利": s["profit"]}
                 for name, s in sorted(agent_stats_data.items(),
                                      key=lambda x: x[1]["amount"], reverse=True)
             ]

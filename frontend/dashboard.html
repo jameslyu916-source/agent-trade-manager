@@ -166,12 +166,12 @@
                     </div>
                 </div>
 
-                <!-- Card 2: 總手續費 -->
+                <!-- Card 2: 總盈利 -->
                 <div class="stat-card bg-slate-900 rounded-xl border border-slate-800 p-6 animate-fade-in-up" style="animation-delay: 0.2s;">
                     <div class="flex items-start justify-between">
                         <div>
-                            <p class="text-sm font-medium text-slate-400 mb-1">今日總手續費</p>
-                            <p id="totalCommission" class="text-3xl font-bold text-slate-100 mt-1">
+                            <p class="text-sm font-medium text-slate-400 mb-1">今日總盈利</p>
+                            <p id="totalProfit" class="text-3xl font-bold text-slate-100 mt-1">
                                 <span class="skeleton inline-block w-28 h-8 align-middle"></span>
                             </p>
                         </div>
@@ -335,7 +335,7 @@
 
                 // 更新統計卡片 — 總成交額按貨幣分類顯示
                 document.getElementById("totalAmount").innerHTML = formatCurrencyBreakdown(dailyStats.currency_breakdown);
-                document.getElementById("totalCommission").innerHTML = formatCurrencyBreakdown(dailyStats.currency_breakdown, 'commission');
+                document.getElementById("totalProfit").innerHTML = formatCurrencyBreakdown(dailyStats.currency_breakdown, 'profit');
                 document.getElementById("transactionCount").textContent = dailyStats.transaction_count;
 
                 // 代理排名 - 排序（按各貨幣加總，主要用於排序）

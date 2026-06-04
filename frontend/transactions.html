@@ -180,8 +180,8 @@
                         <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
                     </div>
                     <div>
-                        <p class="text-xs font-medium text-slate-500">總手續費</p>
-                        <p id="summaryCommission" class="text-xl font-bold text-slate-200">-</p>
+                        <p class="text-xs font-medium text-slate-500">總盈利</p>
+                        <p id="summaryProfit" class="text-xl font-bold text-slate-200">-</p>
                     </div>
                 </div>
             </div>
@@ -197,7 +197,7 @@
                                 <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">客戶名稱</th>
                                 <th class="px-6 py-3.5 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">兌換</th>
                                 <th class="px-6 py-3.5 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">交易金額</th>
-                                <th class="px-6 py-3.5 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">手續費</th>
+                                <th class="px-6 py-3.5 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">盈利</th>
                                 <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">備註</th>
                                 <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">投保人</th>
                                 <th class="px-6 py-3.5 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">數據來源</th>
@@ -465,7 +465,7 @@
             document.getElementById("pagination").classList.add("hidden");
             document.getElementById("summaryCount").textContent = "-";
             document.getElementById("summaryAmount").textContent = "-";
-            document.getElementById("summaryCommission").textContent = "-";
+            document.getElementById("summaryProfit").textContent = "-";
 
             try {
                 let url = "/transactions/list";
@@ -478,22 +478,22 @@
                 document.getElementById("summaryCount").textContent = allTransactions.length;
 
                 const currencyTotals = {};
-                const currencyCommissions = {};
+                const currencyProfits = {};
                 for (const tx of allTransactions) {
                     const cur = tx.currency || "USD";
-                    if (!currencyTotals[cur]) { currencyTotals[cur] = 0; currencyCommissions[cur] = 0; }
+                    if (!currencyTotals[cur]) { currencyTotals[cur] = 0; currencyProfits[cur] = 0; }
                     currencyTotals[cur] += tx.amount;
-                    currencyCommissions[cur] += (tx.commission || 0);
+                    currencyProfits[cur] += (tx.profit || 0);
                 }
                 const sortedCurrencies = Object.keys(currencyTotals).sort((a, b) => (a !== "USD" ? 1 : -1));
                 const amountHtml = sortedCurrencies
                     .map(cur => `<span class="text-xs font-medium text-slate-500">${cur}</span> <span class="text-lg font-bold text-slate-200">${currencyTotals[cur].toLocaleString('zh-HK')}</span>`)
                     .join('<span class="mx-2 text-slate-600 text-sm">|</span>') || '<span class="text-slate-500">-</span>';
                 document.getElementById("summaryAmount").innerHTML = amountHtml;
-                const commissionHtml = sortedCurrencies
-                    .map(cur => `<span class="text-xs font-medium text-slate-500">${cur}</span> <span class="text-lg font-bold text-slate-200">${currencyCommissions[cur].toLocaleString('zh-HK')}</span>`)
+                const profitHtml = sortedCurrencies
+                    .map(cur => `<span class="text-xs font-medium text-slate-500">${cur}</span> <span class="text-lg font-bold text-slate-200">${currencyProfits[cur].toLocaleString('zh-HK')}</span>`)
                     .join('<span class="mx-2 text-slate-600 text-sm">|</span>') || '<span class="text-slate-500">-</span>';
-                document.getElementById("summaryCommission").innerHTML = commissionHtml;
+                document.getElementById("summaryProfit").innerHTML = profitHtml;
 
                 if (allTransactions.length === 0) {
                     tableBody.innerHTML = `<tr><td colspan="10" class="px-6 py-14">${renderEmptyState("暫無交易記錄", date ? `於 ${date} 沒有找到交易數據` : "今日尚無交易")}</td></tr>`;
@@ -532,7 +532,7 @@
                     <td class="px-6 py-3.5 whitespace-nowrap text-sm font-bold text-amber-400 text-right">
                         ${formatCurrency(tx.amount, tx.currency || 'USD')}
                     </td>
-                    <td class="px-6 py-3.5 whitespace-nowrap text-sm font-semibold text-emerald-400 text-right">${formatCurrency(tx.commission, tx.currency || 'USD')}</td>
+                    <td class="px-6 py-3.5 whitespace-nowrap text-sm font-semibold text-amber-400 text-right">${tx.profit != null ? formatCurrency(tx.profit, tx.currency || 'USD') : '<span class="text-slate-600">未計算</span>'}</td>
                     <td class="px-6 py-3.5 text-sm text-slate-400 max-w-[120px] truncate" title="${escapeHtml(tx.remarks || '')}">${tx.remarks || "-"}</td>
                     <td class="px-6 py-3.5 whitespace-nowrap text-sm text-slate-300">${tx.insured_person || "-"}</td>
                     <td class="px-6 py-3.5 text-sm text-center" style="min-width:100px">

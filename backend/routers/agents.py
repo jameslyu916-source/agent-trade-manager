@@ -41,21 +41,6 @@ async def read_agent(
         raise HTTPException(status_code=404, detail="代理不存在")
     return db_agent
 
-@router.put("/{agent_name}/commission", response_model=schemas.AgentResponse)
-async def update_agent_commission(
-    agent_name: str,
-    commission_rate: float,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
-):
-    """更新代理手續費率"""
-    if commission_rate < 0 or commission_rate > 1:
-        raise HTTPException(status_code=400, detail="手續費率必須在0到1之間")
-    db_agent = crud.update_agent_commission(db=db, agent_name=agent_name, commission_rate=commission_rate)
-    if db_agent is None:
-        raise HTTPException(status_code=404, detail="代理不存在")
-    return db_agent
-
 @router.delete("/{agent_name}")
 async def delete_agent(
     agent_name: str,

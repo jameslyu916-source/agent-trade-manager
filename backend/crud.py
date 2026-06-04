@@ -8,6 +8,46 @@ from .database import HK_TZ
 import json
 
 
+def _calculate_profit(db: Session, payment_details, currency: str, timestamp: str) -> int | None:
+    """從 payment_details 中的 conversion 資訊 + 當日匯率計算盈利"""
+    if not payment_details:
+        return None
+    try:
+        pd_obj = json.loads(payment_details) if isinstance(payment_details, str) else payment_details
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+    conv = pd_obj.get("conversion") if pd_obj else None
+    if not conv or not conv.get("source_amount") or not conv.get("rate"):
+        return None
+
+    source_amount = conv["source_amount"]
+    sell_rate = conv["rate"]
+    source_currency = conv.get("source_currency", "CNY")
+    to_currency = (currency or "USD").upper()
+
+    buy_rate = None
+    if conv.get("matched") and conv.get("daily_rate"):
+        buy_rate = conv["daily_rate"]
+    else:
+        try:
+            tx_date = datetime.fromisoformat(timestamp).date()
+        except (ValueError, TypeError):
+            return None
+        rate_record = db.query(ExchangeRate).filter(
+            ExchangeRate.date == tx_date.isoformat(),
+            ExchangeRate.from_currency == source_currency,
+            ExchangeRate.to_currency == to_currency
+        ).first()
+        if rate_record:
+            buy_rate = rate_record.rate
+
+    if not buy_rate or buy_rate <= 0:
+        return None
+
+    return round(source_amount / buy_rate - source_amount / sell_rate)
+
+
 def _parse_earnings(agent) -> dict:
     """解析代理的 total_earnings JSON 字串為 dict"""
     val = getattr(agent, 'total_earnings', '{}')
@@ -48,14 +88,14 @@ def _subtract_earnings(agent, currency: str, amount: int):
 
 
 def _currency_breakdown(transactions) -> dict:
-    """將交易列表按貨幣分組統計，回傳 {"USD": {"amount": ..., "commission": ..., "count": ...}, ...}"""
+    """將交易列表按貨幣分組統計，回傳 {"USD": {"amount": ..., "profit": ..., "count": ...}, ...}"""
     breakdown = {}
     for tx in transactions:
         cur = getattr(tx, 'currency', None) or "HKD"
         if cur not in breakdown:
-            breakdown[cur] = {"amount": 0, "commission": 0, "count": 0}
+            breakdown[cur] = {"amount": 0, "profit": 0, "count": 0}
         breakdown[cur]["amount"] += tx.amount
-        breakdown[cur]["commission"] += (tx.commission or 0)
+        breakdown[cur]["profit"] += (tx.profit or 0)
         breakdown[cur]["count"] += 1
     # USD 優先顯示
     return dict(sorted(breakdown.items(), key=lambda x: (x[0] != "USD", x[0] != "HKD", x[0])))
@@ -91,7 +131,6 @@ def create_agent(db: Session, agent: schemas.AgentCreate):
     """創建新代理"""
     db_agent = Agent(
         agent_name=agent.agent_name,
-        commission_rate=agent.commission_rate
     )
     db.add(db_agent)
     db.commit()
@@ -109,16 +148,6 @@ def get_all_agents(db: Session, active_only: bool = True):
         query = query.filter(Agent.is_active == True)
     return query.order_by(Agent.agent_name).all()
 
-def update_agent_commission(db: Session, agent_name: str, commission_rate: float):
-    """更新代理手續費率"""
-    db_agent = get_agent_by_name(db, agent_name)
-    if db_agent:
-        db_agent.commission_rate = commission_rate
-        db.commit()
-        db.refresh(db_agent)
-        return db_agent
-    return None
-
 def delete_agent(db: Session, agent_name: str):
     """刪除代理"""
     db_agent = get_agent_by_name(db, agent_name)
@@ -131,44 +160,42 @@ def delete_agent(db: Session, agent_name: str):
 # ==================== Transaction ====================
 def create_transaction(db: Session, transaction: schemas.TransactionCreate):
     """創建新交易記錄"""
-    # 獲取代理手續費率，若代理不存在則自動註冊
+    # 確保代理存在（不自動建立，只驗證）
     agent = get_agent_by_name(db, transaction.agent_name)
     if not agent:
-        agent = Agent(agent_name=transaction.agent_name, commission_rate=0.05)
+        agent = Agent(agent_name=transaction.agent_name)
         db.add(agent)
         db.flush()
-    commission_rate = agent.commission_rate
-    
-    # 計算手續費（四捨五入到整數HKD）
-    commission = int(round(transaction.amount * commission_rate))
-    
+
     # 設置時間戳（默認當前UTC時間）
     if not transaction.timestamp:
         timestamp = datetime.now(timezone.utc).isoformat()
     else:
         timestamp = transaction.timestamp
-    
+
+    currency = transaction.currency if hasattr(transaction, 'currency') and transaction.currency else "USD"
+    payment_details = transaction.payment_details if hasattr(transaction, 'payment_details') and transaction.payment_details else None
+
+    # 計算匯率差價盈利
+    profit = _calculate_profit(db, payment_details, currency, timestamp)
+
     db_transaction = Transaction(
         agent_name=transaction.agent_name,
         customer_name=getattr(transaction, 'customer_name', None) or "",
         amount=transaction.amount,
-        currency=transaction.currency if hasattr(transaction, 'currency') and transaction.currency else "USD",
+        currency=currency,
         from_currency=getattr(transaction, 'from_currency', None) or "",
         to_currency=getattr(transaction, 'to_currency', None) or "",
         remarks=getattr(transaction, 'remarks', None) or "",
         insured_person=getattr(transaction, 'insured_person', None) or "",
-        commission=commission,
+        commission=0,
+        profit=profit,
         timestamp=timestamp,
         raw_message=transaction.raw_message,
         source=transaction.source,
-        payment_details=transaction.payment_details if hasattr(transaction, 'payment_details') and transaction.payment_details else None
+        payment_details=payment_details
     )
-    
-    # 更新代理累計收益（按貨幣）
-    if agent:
-        cur = transaction.currency if hasattr(transaction, 'currency') and transaction.currency else "USD"
-        _add_earnings(agent, cur, commission)
-    
+
     db.add(db_transaction)
     db.commit()
     db.refresh(db_transaction)
@@ -187,15 +214,15 @@ def get_daily_total(db: Session, date: str = None):
     ).all()
 
     if not txs:
-        return {"date": date, "total_amount": 0, "total_commission": 0, "transaction_count": 0, "currency_breakdown": {}}
+        return {"date": date, "total_amount": 0, "total_profit": 0, "transaction_count": 0, "currency_breakdown": {}}
 
     breakdown = _currency_breakdown(txs)
     total_amount = sum(tx.amount for tx in txs)
-    total_commission = sum(tx.commission or 0 for tx in txs)
+    total_profit = sum(tx.profit or 0 for tx in txs)
     return {
         "date": date,
         "total_amount": total_amount,
-        "total_commission": total_commission,
+        "total_profit": total_profit,
         "transaction_count": len(txs),
         "currency_breakdown": breakdown
     }
@@ -214,15 +241,15 @@ def get_agent_daily_total(db: Session, agent_name: str, date: str = None):
     ).all()
 
     if not txs:
-        return {"agent_name": agent_name, "total_amount": 0, "total_commission": 0, "transaction_count": 0, "currency_breakdown": {}}
+        return {"agent_name": agent_name, "total_amount": 0, "total_profit": 0, "transaction_count": 0, "currency_breakdown": {}}
 
     breakdown = _currency_breakdown(txs)
     total_amount = sum(tx.amount for tx in txs)
-    total_commission = sum(tx.commission or 0 for tx in txs)
+    total_profit = sum(tx.profit or 0 for tx in txs)
     return {
         "agent_name": agent_name,
         "total_amount": total_amount,
-        "total_commission": total_commission,
+        "total_profit": total_profit,
         "transaction_count": len(txs),
         "currency_breakdown": breakdown
     }
@@ -237,15 +264,15 @@ def get_agent_period_total(db: Session, agent_name: str, days: int = 7):
     ).all()
 
     if not txs:
-        return {"agent_name": agent_name, "total_amount": 0, "total_commission": 0, "transaction_count": 0, "currency_breakdown": {}}
+        return {"agent_name": agent_name, "total_amount": 0, "total_profit": 0, "transaction_count": 0, "currency_breakdown": {}}
 
     breakdown = _currency_breakdown(txs)
     total_amount = sum(tx.amount for tx in txs)
-    total_commission = sum(tx.commission or 0 for tx in txs)
+    total_profit = sum(tx.profit or 0 for tx in txs)
     return {
         "agent_name": agent_name,
         "total_amount": total_amount,
-        "total_commission": total_commission,
+        "total_profit": total_profit,
         "transaction_count": len(txs),
         "currency_breakdown": breakdown
     }
@@ -273,15 +300,15 @@ def get_period_total(db: Session, days: int = 7):
     ).all()
 
     if not txs:
-        return {"date": date_str, "total_amount": 0, "total_commission": 0, "transaction_count": 0, "currency_breakdown": {}}
+        return {"date": date_str, "total_amount": 0, "total_profit": 0, "transaction_count": 0, "currency_breakdown": {}}
 
     breakdown = _currency_breakdown(txs)
     total_amount = sum(tx.amount for tx in txs)
-    total_commission = sum(tx.commission or 0 for tx in txs)
+    total_profit = sum(tx.profit or 0 for tx in txs)
     return {
         "date": date_str,
         "total_amount": total_amount,
-        "total_commission": total_commission,
+        "total_profit": total_profit,
         "transaction_count": len(txs),
         "currency_breakdown": breakdown
     }
@@ -306,7 +333,7 @@ def get_all_transactions_for_period(db: Session, days: int = 30):
             "to_currency": getattr(tx, 'to_currency', '') or '',
             "remarks": getattr(tx, 'remarks', '') or '',
             "insured_person": getattr(tx, 'insured_person', '') or '',
-            "commission": tx.commission,
+            "profit": tx.profit,
             "timestamp": tx.timestamp,
             "source": tx.source,
             "payment_details": getattr(tx, 'payment_details', None)
@@ -328,29 +355,20 @@ def get_last_transaction(db: Session, agent_name: str = None, source: str = None
     return query.order_by(Transaction.timestamp.desc()).first()
 
 def delete_transaction(db: Session, transaction_id: int):
-    """刪除交易並退回代理累計收益"""
+    """刪除交易"""
     tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
     if not tx:
         return None
-    agent = get_agent_by_name(db, tx.agent_name)
-    if agent:
-        cur = getattr(tx, 'currency', None) or "USD"
-        _subtract_earnings(agent, cur, tx.commission)
     agent_name = tx.agent_name
     db.delete(tx)
     db.commit()
     return agent_name
 
 def update_transaction(db: Session, transaction_id: int, updates: dict):
-    """更新交易記錄，自動重新計算手續費並調整代理收益"""
+    """更新交易記錄，自動重新計算盈利"""
     tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
     if not tx:
         return None
-
-    old_agent_name = tx.agent_name
-    old_commission = tx.commission
-    old_amount = tx.amount
-    old_currency = tx.currency
 
     # 更新基本欄位
     if "agent_name" in updates:
@@ -372,22 +390,9 @@ def update_transaction(db: Session, transaction_id: int, updates: dict):
     if "payment_details" in updates:
         tx.payment_details = updates["payment_details"]
 
-    # 重新計算手續費（如果金額或代理變更）
-    new_agent_name = tx.agent_name
-    new_amount = tx.amount
-    agent = get_agent_by_name(db, new_agent_name)
-    commission_rate = agent.commission_rate if agent else 0.05
-    tx.commission = int(round(new_amount * commission_rate))
-
-    # 調整代理收益（按貨幣）
-    # 先退回舊代理的舊貨幣收益
-    old_agent = get_agent_by_name(db, old_agent_name)
-    if old_agent:
-        _subtract_earnings(old_agent, old_currency or "USD", old_commission)
-    # 加上新代理的新貨幣收益
-    new_agent = get_agent_by_name(db, new_agent_name)
-    if new_agent:
-        _add_earnings(new_agent, tx.currency or "USD", tx.commission)
+    # 重新計算盈利
+    tx.profit = _calculate_profit(db, tx.payment_details, tx.currency or "USD", tx.timestamp)
+    tx.commission = 0
 
     db.commit()
     db.refresh(tx)

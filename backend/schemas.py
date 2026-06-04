@@ -15,7 +15,6 @@ class Token(BaseModel):
 # ==================== Agent ====================
 class AgentBase(BaseModel):
     agent_name: str
-    commission_rate: float = Field(0.05, ge=0, le=1)  # 手續費率0-100%
 
 class AgentCreate(AgentBase):
     pass
@@ -72,7 +71,7 @@ class TransactionUpdate(BaseModel):
 
 class TransactionResponse(TransactionBase):
     id: int
-    commission: int
+    profit: Optional[int] = None
     timestamp: str
 
     class Config:
@@ -82,16 +81,16 @@ class TransactionResponse(TransactionBase):
 class DailyStats(BaseModel):
     date: str
     total_amount: int
-    total_commission: int
+    total_profit: int
     transaction_count: int
-    currency_breakdown: dict = {}  # {"USD": {"amount": 1000, "commission": 50, "count": 2}, ...}
+    currency_breakdown: dict = {}  # {"USD": {"amount": 1000, "profit": 50, "count": 2}, ...}
 
 class AgentDailyStats(BaseModel):
     agent_name: str
     total_amount: int
-    total_commission: int
+    total_profit: int
     transaction_count: int
-    currency_breakdown: dict = {}  # {"USD": {"amount": 1000, "commission": 50, "count": 1}, ...}
+    currency_breakdown: dict = {}  # {"USD": {"amount": 1000, "profit": 50, "count": 1}, ...}
     
 # ==================== Anomaly Detection ====================
 class AnomalyTransaction(BaseModel):

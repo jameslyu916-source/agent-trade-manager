@@ -85,10 +85,10 @@ class APIClient:
             elif response.status_code == 401:
                 if self.login():
                     return self.get_daily_total(date)
-            return {"total_amount": 0, "total_commission": 0, "transaction_count": 0, "currency_breakdown": {}}
+            return {"total_amount": 0, "total_profit": 0, "transaction_count": 0, "currency_breakdown": {}}
         except Exception as e:
             print(f"❌ 獲取每日總額失敗：{e}")
-            return {"total_amount": 0, "total_commission": 0, "transaction_count": 0, "currency_breakdown": {}}
+            return {"total_amount": 0, "total_profit": 0, "transaction_count": 0, "currency_breakdown": {}}
 
     def get_agent_daily_total(self, agent_name, date=None):
         """獲取指定代理每日總成交額（返回完整統計 dict，含 currency_breakdown）"""
@@ -107,10 +107,10 @@ class APIClient:
             elif response.status_code == 401:
                 if self.login():
                     return self.get_agent_daily_total(agent_name, date)
-            return {"total_amount": 0, "total_commission": 0, "transaction_count": 0, "currency_breakdown": {}}
+            return {"total_amount": 0, "total_profit": 0, "transaction_count": 0, "currency_breakdown": {}}
         except Exception as e:
             print(f"❌ 獲取代理每日總額失敗：{e}")
-            return {"total_amount": 0, "total_commission": 0, "transaction_count": 0, "currency_breakdown": {}}
+            return {"total_amount": 0, "total_profit": 0, "transaction_count": 0, "currency_breakdown": {}}
 
     def get_period_total(self, days=7):
         """獲取最近N天總成交額（返回完整統計 dict，含 currency_breakdown）"""
@@ -124,10 +124,10 @@ class APIClient:
             elif response.status_code == 401:
                 if self.login():
                     return self.get_period_total(days)
-            return {"total_amount": 0, "total_commission": 0, "transaction_count": 0, "currency_breakdown": {}}
+            return {"total_amount": 0, "total_profit": 0, "transaction_count": 0, "currency_breakdown": {}}
         except Exception as e:
             print(f"❌ 獲取周期總額失敗：{e}")
-            return {"total_amount": 0, "total_commission": 0, "transaction_count": 0, "currency_breakdown": {}}
+            return {"total_amount": 0, "total_profit": 0, "transaction_count": 0, "currency_breakdown": {}}
 
     def get_agent_period_total(self, agent_name: str, days: int = 7):
         """獲取指定代理最近N天總成交額（返回完整統計 dict，含 currency_breakdown）"""
@@ -141,10 +141,10 @@ class APIClient:
             elif response.status_code == 401:
                 if self.login():
                     return self.get_agent_period_total(agent_name, days)
-            return {"total_amount": 0, "total_commission": 0, "transaction_count": 0, "currency_breakdown": {}}
+            return {"total_amount": 0, "total_profit": 0, "transaction_count": 0, "currency_breakdown": {}}
         except Exception as e:
             print(f"❌ 獲取代理周期總額失敗：{e}")
-            return {"total_amount": 0, "total_commission": 0, "transaction_count": 0, "currency_breakdown": {}}
+            return {"total_amount": 0, "total_profit": 0, "transaction_count": 0, "currency_breakdown": {}}
 
     @staticmethod
     def _format_breakdown(breakdown: dict) -> str:
@@ -191,11 +191,10 @@ class APIClient:
             print(f"❌ 檢查代理權限失敗：{e}")
             return False
         
-    def add_allowed_agent(self, agent_name, commission_rate=0.05):
-        """添加代理到白名單（默認5%手續費率）"""
+    def add_allowed_agent(self, agent_name):
+        """添加代理到白名單"""
         data = {
             "agent_name": agent_name,
-            "commission_rate": commission_rate
         }
         try:
             response = requests.post(
@@ -211,7 +210,7 @@ class APIClient:
             elif response.status_code == 401:
                 # 令牌過期重新登錄
                 if self.login():
-                    return self.add_allowed_agent(agent_name, commission_rate)
+                    return self.add_allowed_agent(agent_name)
             print(f"❌ 添加代理失敗：{response.text}")
             return False
         except Exception as e:

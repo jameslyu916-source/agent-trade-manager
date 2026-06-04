@@ -39,7 +39,7 @@ class Agent(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     agent_name = Column(String, unique=True, index=True, nullable=False)
-    commission_rate = Column(Float, default=0.05)  # 手續費率（預設5%）
+    # commission_rate 已廢棄，改用匯率差價計算盈利
     total_earnings = Column(String, default='{}')    # 累計收益（JSON: {"USD": 1000, "HKD": 500}）
     is_active = Column(Boolean, default=True)      # 是否啟用
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -57,7 +57,8 @@ class Transaction(Base):
     to_currency = Column(String, default="")    # 兌換目標貨幣
     remarks = Column(String, default="")         # 備註
     insured_person = Column(String, default="")  # 投保人
-    commission = Column(Integer, default=0)   # 手續費
+    commission = Column(Integer, default=0)   # 已廢棄，改用 profit
+    profit = Column(Integer, nullable=True, default=None)  # 匯率差價盈利
     timestamp = Column(String, nullable=False)  # UTC時間ISO格式
     raw_message = Column(String)
     source = Column(String, default="telegram")  # 數據來源：telegram/crawler/manual

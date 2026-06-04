@@ -541,6 +541,128 @@ async function deleteTransactionById(txId) {
   }
 }
 
+// ── 客戶訂單 API ──
+async function createCustomerOrder(data) {
+  try {
+    const res = await axios.post(`${API_BASE_URL}/orders/`, data, { headers: getHeaders() });
+    return res.data;
+  } catch (err) {
+    if (err.response?.status === 401) { await login(); return createCustomerOrder(data); }
+    console.error("❌ 創建客戶訂單失敗：", err.response?.data || err.message);
+    return null;
+  }
+}
+
+async function getUnmatchedOrders() {
+  try {
+    const res = await axios.get(`${API_BASE_URL}/orders/unmatched`, { headers: getHeaders() });
+    return res.data;
+  } catch (err) {
+    if (err.response?.status === 401) { await login(); return getUnmatchedOrders(); }
+    console.error("❌ 獲取未匹配訂單失敗：", err.response?.data || err.message);
+    return [];
+  }
+}
+
+async function getOrderByReminderMessage(messageId) {
+  try {
+    const res = await axios.get(`${API_BASE_URL}/orders/by-reminder/${encodeURIComponent(messageId)}`, { headers: getHeaders() });
+    return res.data;
+  } catch (err) {
+    if (err.response?.status === 404) return null;
+    if (err.response?.status === 401) { await login(); return getOrderByReminderMessage(messageId); }
+    return null;
+  }
+}
+
+async function updateOrderStatus(orderId, status) {
+  try {
+    await axios.put(`${API_BASE_URL}/orders/${orderId}/status`, { status }, { headers: getHeaders() });
+    return true;
+  } catch (err) {
+    if (err.response?.status === 401) { await login(); return updateOrderStatus(orderId, status); }
+    return false;
+  }
+}
+
+async function updateOrderReminderSent(orderId, reminderMessageId) {
+  try {
+    await axios.put(`${API_BASE_URL}/orders/${orderId}/reminder-sent`, { reminder_message_id: reminderMessageId }, { headers: getHeaders() });
+    return true;
+  } catch (err) {
+    if (err.response?.status === 401) { await login(); return updateOrderReminderSent(orderId, reminderMessageId); }
+    return false;
+  }
+}
+
+// ── 漏單提醒排程 ──
+let lastReminderDate = null;
+
+function parseHKTime(timeObj) {
+  // timeObj: {hour: 17, minute: 30} 為 HKT
+  return { hour: timeObj.hour || 17, minute: timeObj.minute || 30 };
+}
+
+async function sendReminderIfTime() {
+  try {
+    const reminderTime = getSetting("reminder_time", { hour: 17, minute: 30 });
+    const { hour, minute } = parseHKTime(reminderTime);
+
+    const now = new Date();
+    const hkNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Hong_Kong" }));
+    const todayStr = `${hkNow.getFullYear()}-${String(hkNow.getMonth() + 1).padStart(2, "0")}-${String(hkNow.getDate()).padStart(2, "0")}`;
+
+    if (hkNow.getHours() !== hour || hkNow.getMinutes() !== minute) return;
+    if (lastReminderDate === todayStr) return;
+
+    console.log(`⏰ 觸發漏單提醒（${todayStr} ${hour}:${String(minute).padStart(2, "0")} HKT）`);
+    lastReminderDate = todayStr;
+
+    const orders = await getUnmatchedOrders();
+    if (!orders || orders.length === 0) {
+      console.log("   ✅ 今日無漏單");
+      return;
+    }
+
+    const reminderGroupName = getSetting("reminder_group_name", null);
+    if (!reminderGroupName) {
+      console.log("   ⚠️ 未設定提醒群組名稱");
+      return;
+    }
+
+    // 尋找提醒群組
+    const chats = await client.getChats();
+    const reminderChat = chats.find(c => c.name === reminderGroupName && c.isGroup);
+    if (!reminderChat) {
+      console.log(`   ⚠️ 找不到提醒群組「${reminderGroupName}」`);
+      return;
+    }
+
+    console.log(`   📋 發送 ${orders.length} 筆漏單提醒到「${reminderGroupName}」`);
+
+    for (const order of orders) {
+      try {
+        const orderDate = order.created_at
+          ? new Date(order.created_at).toLocaleDateString("zh-HK", { timeZone: "Asia/Hong_Kong" })
+          : "未知日期";
+        const msg = await reminderChat.sendMessage(
+          `📋 漏單提醒：${order.customer_name} ¥${order.amount.toLocaleString()}（${orderDate}）\n` +
+          `請回覆處理狀態（直接回覆此消息）：\n` +
+          `1=已處理  2=未處理  3=忽略`
+        );
+        await updateOrderReminderSent(order.id, msg.id._serialized);
+        console.log(`      ✅ 已發送：${order.customer_name}（order #${order.id}, msg ${msg.id._serialized}）`);
+        // 短暫延遲避免發送過快
+        await new Promise(r => setTimeout(r, 1500));
+      } catch (e) {
+        console.error(`      ❌ 發送失敗：${order.customer_name}`, e.message);
+      }
+    }
+  } catch (err) {
+    console.error("❌ 漏單提醒檢查失敗：", err.message);
+  }
+}
+
 // ==================== WhatsApp 客戶端 ====================
 const fs = require("fs");
 const path = require("path");
@@ -581,6 +703,8 @@ client.on("ready", async () => {
   await initSettings(); // 載入系統設置（含重試）
   // 每 60 秒刷新設置
   setInterval(refreshSettings, 60 * 1000);
+  // 每 60 秒檢查漏單提醒
+  setInterval(sendReminderIfTime, 60 * 1000);
 });
 
 // 監聽所有消息
@@ -609,6 +733,42 @@ client.on("message", async (msg) => {
   if (msgText === "/format" || msgText === "/Format") {
     if (WA_SEND_REPLY) { await msg.reply(FORMAT_FULL); }
     return;
+  }
+
+  // ── @mention 客戶訂單檢測（群組消息）──
+  // WhatsApp body 中 @mention 顯示為 @phone_number，需用 mentionedIds 判斷
+  if (msg.from.endsWith("@g.us") && msg.mentionedIds && msg.mentionedIds.length > 0) {
+    // 移除開頭的 @mention（格式為 @phone_number），再匹配訂單格式
+    const afterMention = msgText.replace(/^@\S+\s*/, "");
+    const orderMatch = afterMention.match(/^(.+?)\s+(\d[\d,]*(?:w|万|萬)?)\s*$/i);
+    if (orderMatch) {
+      const customerName = orderMatch[1].trim();
+      const amountStr = orderMatch[2];
+      // 解析金額：去逗號，處理 w/万/萬 後綴
+      let amount = parseInt(amountStr.replace(/,/g, ""), 10);
+      if (/[w万萬]$/i.test(amountStr)) {
+        amount = amount * 10000;
+      }
+      if (amount > 0 && customerName.length >= 1) {
+        console.log(`📋 檢測到客戶訂單：${customerName} ¥${amount.toLocaleString()}`);
+        try {
+          const order = await createCustomerOrder({
+            customer_name: customerName,
+            amount: amount,
+            currency: "CNY",
+            group_id: msg.from,
+            message_timestamp: new Date().toISOString(),
+            raw_message: msgText
+          });
+          if (order && WA_SEND_REPLY) {
+            await msg.reply(`✅ 已記錄客戶訂單：${customerName} ¥${amount.toLocaleString()}`);
+          }
+        } catch (e) {
+          console.error("   ❌ 記錄客戶訂單失敗：", e.message);
+        }
+      }
+      return;
+    }
   }
 
   // ── 匯率訊息檢測（需 Bot 啟用，不限群組）──
@@ -696,6 +856,34 @@ client.on("message", async (msg) => {
         console.log(`💾 付款資訊已記錄（公式後發自動推斷 CNY→${pendingByFormula.toCurrency}，代理: ${pendingByFormula.agentName}, 客戶: ${pendingByFormula.customerName}）`);
         return;
       }
+    }
+  }
+
+  // ── 漏單提醒回覆處理 ──
+  if (msg.from.endsWith("@g.us") && msg.hasQuotedMsg) {
+    try {
+      const quotedMsg = await msg.getQuotedMessage();
+      if (quotedMsg && quotedMsg.id && quotedMsg.id._serialized) {
+        const order = await getOrderByReminderMessage(quotedMsg.id._serialized);
+        if (order) {
+          const num = parseInt(text.trim());
+          const statusMap = { 1: "processed", 2: "unprocessed", 3: "ignored" };
+          const status = statusMap[num];
+          if (status) {
+            const ok = await updateOrderStatus(order.id, status);
+            if (ok) {
+              const statusText = { processed: "已處理", unprocessed: "未處理", ignored: "忽略" };
+              console.log(`📋 漏單回覆：${order.customer_name} → ${statusText[status]}`);
+              if (WA_SEND_REPLY) {
+                await msg.reply(`✅ 已更新：${order.customer_name} - ${statusText[status]}`);
+              }
+            }
+          }
+          return;
+        }
+      }
+    } catch (e) {
+      // hasQuotedMsg 但無法獲取引用消息，忽略
     }
   }
 

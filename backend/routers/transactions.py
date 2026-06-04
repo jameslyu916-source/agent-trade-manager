@@ -9,15 +9,15 @@ from .auth import get_current_user
 
 router = APIRouter(prefix="/transactions", tags=["交易管理"])
 
-@router.post("/", response_model=schemas.TransactionResponse)
+@router.post("/")
 async def create_transaction(
     transaction: schemas.TransactionCreate,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
     """創建新交易記錄"""
-    # 不再檢查代理是否存在/啟用（代理和客戶都不需要白名單）
-    return crud.create_transaction(db=db, transaction=transaction)
+    tx = crud.create_transaction(db=db, transaction=transaction)
+    return _tx_to_response(tx, db)
 
 @router.get("/daily", response_model=schemas.DailyStats)
 async def get_daily_stats(
@@ -39,14 +39,15 @@ async def get_agent_daily_stats(
     """獲取指定代理每日統計數據"""
     return crud.get_agent_daily_total(db=db, agent_name=agent_name, date=date)
 
-@router.get("/list", response_model=List[schemas.TransactionResponse])
+@router.get("/list")
 async def list_transactions(
     date: str = None,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
     """獲取指定日期所有交易記錄"""
-    return crud.get_all_daily_transactions(db=db, date=date)
+    txs = crud.get_all_daily_transactions(db=db, date=date)
+    return [_tx_to_response(tx, db) for tx in txs]
 
 @router.get("/period/{days}", response_model=schemas.DailyStats)
 async def get_period_stats(
@@ -88,22 +89,7 @@ async def get_last_transaction(
     tx = crud.get_last_transaction(db, agent_name, source)
     if not tx:
         raise HTTPException(status_code=404, detail="沒有找到交易記錄")
-    return {
-        "id": tx.id,
-        "agent_name": tx.agent_name,
-        "customer_name": getattr(tx, 'customer_name', '') or '',
-        "amount": tx.amount,
-        "currency": getattr(tx, 'currency', 'USD') or 'USD',
-        "from_currency": getattr(tx, 'from_currency', '') or '',
-        "to_currency": getattr(tx, 'to_currency', '') or '',
-        "remarks": getattr(tx, 'remarks', '') or '',
-        "insured_person": getattr(tx, 'insured_person', '') or '',
-        "profit": tx.profit,
-        "timestamp": tx.timestamp,
-        "raw_message": tx.raw_message,
-        "source": tx.source,
-        "payment_details": getattr(tx, 'payment_details', None)
-    }
+    return _tx_to_response(tx, db)
 
 @router.delete("/{transaction_id}")
 async def delete_transaction(
@@ -128,6 +114,11 @@ async def update_transaction(
     tx = crud.update_transaction(db, transaction_id, updates.model_dump(exclude_unset=True))
     if tx is None:
         raise HTTPException(status_code=404, detail="交易不存在")
+    return _tx_to_response(tx, db)
+
+
+def _tx_to_response(tx, db: Session):
+    """構建包含 matched_order 的交易回應"""
     return {
         "id": tx.id,
         "agent_name": tx.agent_name,
@@ -142,5 +133,6 @@ async def update_transaction(
         "timestamp": tx.timestamp,
         "raw_message": tx.raw_message,
         "source": tx.source,
-        "payment_details": getattr(tx, 'payment_details', None)
+        "payment_details": getattr(tx, 'payment_details', None),
+        "matched_order": crud._build_matched_order_summary(db, tx.id)
     }

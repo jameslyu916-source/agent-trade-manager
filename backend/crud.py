@@ -1,7 +1,7 @@
 # backend/crud.py --- IGNORE ---
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from .database import User, Agent, Transaction, SystemSetting, ExchangeRate  # 從database.py導入所有模型
+from .database import User, Agent, Transaction, SystemSetting, ExchangeRate, CustomerOrder  # 從database.py導入所有模型
 from . import schemas
 from datetime import datetime, timezone, timedelta
 from .database import HK_TZ
@@ -214,6 +214,10 @@ def create_transaction(db: Session, transaction: schemas.TransactionCreate):
     db.add(db_transaction)
     db.commit()
     db.refresh(db_transaction)
+
+    # 自動嘗試匹配客戶訂單
+    _auto_match_order(db, db_transaction)
+
     return db_transaction
 
 def get_daily_total(db: Session, date: str = None):
@@ -476,3 +480,209 @@ def upsert_exchange_rate(db: Session, date: str, from_currency: str, to_currency
 def get_exchange_rates_by_date(db: Session, date: str):
     """查詢指定日期的所有匯率"""
     return db.query(ExchangeRate).filter(ExchangeRate.date == date).all()
+
+
+# ═══════════════════════════════════════════
+#  客戶訂單 CRUD
+# ═══════════════════════════════════════════
+
+def create_customer_order(
+    db: Session, customer_name: str, amount: int, currency: str,
+    group_id: str, message_timestamp: str, raw_message: str = None
+):
+    """創建客戶訂單"""
+    order = CustomerOrder(
+        customer_name=customer_name,
+        amount=amount,
+        currency=currency or "CNY",
+        group_id=group_id or "",
+        message_timestamp=message_timestamp,
+        raw_message=raw_message
+    )
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+def get_orders_by_date(db: Session, date_str: str):
+    """獲取指定日期的所有客戶訂單（香港時間）"""
+    start_utc, end_utc = _get_utc_range_for_hk_date(date_str)
+    return db.query(CustomerOrder).filter(
+        CustomerOrder.created_at >= start_utc,
+        CustomerOrder.created_at < end_utc
+    ).order_by(CustomerOrder.created_at.desc()).all()
+
+
+def get_unmatched_orders(db: Session):
+    """獲取所有未匹配且未完成處理的訂單（跨天累積）"""
+    from sqlalchemy import or_
+    return db.query(CustomerOrder).filter(
+        CustomerOrder.matched_transaction_id.is_(None),
+        or_(
+            CustomerOrder.status.is_(None),
+            CustomerOrder.status == "unprocessed"
+        )
+    ).order_by(CustomerOrder.created_at.desc()).all()
+
+
+def get_order_by_reminder_message(db: Session, message_id: str):
+    """根據提醒消息 ID 查詢訂單"""
+    return db.query(CustomerOrder).filter(
+        CustomerOrder.reminder_message_id == message_id
+    ).first()
+
+
+def get_order_by_id(db: Session, order_id: int):
+    """按 ID 查詢訂單"""
+    return db.query(CustomerOrder).filter(CustomerOrder.id == order_id).first()
+
+
+def update_order_status(db: Session, order_id: int, status: str):
+    """更新訂單處理狀態"""
+    order = db.query(CustomerOrder).filter(CustomerOrder.id == order_id).first()
+    if not order:
+        return None
+    order.status = status
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+def update_order_reminder_sent(db: Session, order_id: int, reminder_message_id: str):
+    """記錄提醒消息已發送"""
+    order = db.query(CustomerOrder).filter(CustomerOrder.id == order_id).first()
+    if not order:
+        return None
+    order.reminder_message_id = reminder_message_id
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+def match_order(db: Session, order_id: int, transaction_id: int):
+    """手動匹配訂單到交易"""
+    order = db.query(CustomerOrder).filter(CustomerOrder.id == order_id).first()
+    if not order:
+        return None
+    tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    if not tx:
+        return None
+    order.matched_transaction_id = transaction_id
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+def unmatch_order(db: Session, order_id: int):
+    """取消訂單匹配"""
+    order = db.query(CustomerOrder).filter(CustomerOrder.id == order_id).first()
+    if not order:
+        return None
+    order.matched_transaction_id = None
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+def delete_order(db: Session, order_id: int):
+    """刪除客戶訂單"""
+    order = db.query(CustomerOrder).filter(CustomerOrder.id == order_id).first()
+    if not order:
+        return None
+    db.delete(order)
+    db.commit()
+    return order
+
+
+def update_order(db: Session, order_id: int, updates: dict):
+    """更新客戶訂單"""
+    order = db.query(CustomerOrder).filter(CustomerOrder.id == order_id).first()
+    if not order:
+        return None
+    if "customer_name" in updates and updates["customer_name"] is not None:
+        order.customer_name = updates["customer_name"]
+    if "amount" in updates and updates["amount"] is not None:
+        order.amount = updates["amount"]
+    if "currency" in updates and updates["currency"] is not None:
+        order.currency = updates["currency"]
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+def _auto_match_order(db: Session, transaction: Transaction):
+    """交易建立後自動嘗試匹配當天未匹配的客戶訂單"""
+    import re
+    tx_customer_name = (transaction.customer_name or "").strip()
+    if not tx_customer_name:
+        return
+
+    # 從 payment_details 中提取 account_name（可能含有更完整的名稱）
+    account_name = tx_customer_name
+    if transaction.payment_details:
+        try:
+            pd_obj = json.loads(transaction.payment_details) if isinstance(transaction.payment_details, str) else transaction.payment_details
+            an = (pd_obj.get("account_name") or "").strip()
+            if an:
+                account_name = an
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    # 提取中文名稱（用於更精確的匹配）
+    def extract_chinese(s):
+        return "".join(re.findall(r"[一-鿿]+", s))
+
+    tx_chinese = extract_chinese(tx_customer_name)
+    tx_chinese_full = extract_chinese(account_name)
+
+    # 查詢當天未匹配的訂單
+    today_str = datetime.now(HK_TZ).strftime("%Y-%m-%d")
+    today_orders = get_orders_by_date(db, today_str)
+    unmatched = [o for o in today_orders if o.matched_transaction_id is None]
+
+    candidates = []
+    for order in unmatched:
+        order_chinese = extract_chinese(order.customer_name)
+        if not order_chinese:
+            continue
+        # 雙向包含檢查
+        if order_chinese in tx_chinese_full or tx_chinese_full in order_chinese or order_chinese in tx_chinese or tx_chinese in order_chinese:
+            candidates.append(order)
+
+    if len(candidates) == 1:
+        candidates[0].matched_transaction_id = transaction.id
+        db.commit()
+        print(f"🔗 自動匹配訂單 #{candidates[0].id}「{candidates[0].customer_name}」→ 交易 #{transaction.id}")
+
+
+def _build_matched_order_summary(db: Session, transaction_id: int) -> dict | None:
+    """為交易查找匹配的訂單摘要"""
+    order = db.query(CustomerOrder).filter(
+        CustomerOrder.matched_transaction_id == transaction_id
+    ).first()
+    if not order:
+        return None
+    return {
+        "id": order.id,
+        "customer_name": order.customer_name,
+        "amount": order.amount,
+        "currency": order.currency,
+        "status": order.status
+    }
+
+
+def _build_matched_transaction_summary(db: Session, order: CustomerOrder) -> dict | None:
+    """為訂單查找匹配的交易摘要"""
+    if not order.matched_transaction_id:
+        return None
+    tx = db.query(Transaction).filter(Transaction.id == order.matched_transaction_id).first()
+    if not tx:
+        return None
+    return {
+        "id": tx.id,
+        "agent_name": tx.agent_name,
+        "customer_name": tx.customer_name,
+        "amount": tx.amount,
+        "currency": tx.currency
+    }

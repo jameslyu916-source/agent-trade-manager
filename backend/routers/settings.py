@@ -28,9 +28,14 @@ async def get_settings(
                 result[key] = json.loads(value)
             except (json.JSONDecodeError, TypeError):
                 result[key] = value
+        elif key == "reminder_group_name":
+            try:
+                result[key] = json.loads(value)
+            except (json.JSONDecodeError, TypeError):
+                result[key] = value
         elif key in ("telegram_enabled", "whatsapp_enabled"):
             result[key] = value.lower() == "true"
-        elif key == "report_time":
+        elif key in ("report_time", "reminder_time"):
             try:
                 result[key] = json.loads(value)
             except (json.JSONDecodeError, TypeError):
@@ -63,6 +68,7 @@ async def update_settings(
         "report_time",
         "abnormal_single_transaction", "abnormal_daily_total",
         "abnormal_no_transaction_hours", "check_interval_minutes",
+        "reminder_time", "reminder_group_name",
     }
     sanitized = {}
     for key, value in updates.items():

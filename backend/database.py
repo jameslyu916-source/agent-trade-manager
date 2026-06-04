@@ -73,6 +73,22 @@ class SystemSetting(Base):
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
+class CustomerOrder(Base):
+    """客戶訂單表（從 WhatsApp @mention 中紀錄）"""
+    __tablename__ = "customer_orders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    customer_name = Column(String, nullable=False)
+    amount = Column(Integer, nullable=False)
+    currency = Column(String, default="CNY")
+    group_id = Column(String, default="")
+    message_timestamp = Column(String, nullable=False)  # UTC ISO
+    matched_transaction_id = Column(Integer, nullable=True)
+    status = Column(String, nullable=True)  # processed / unprocessed / ignored
+    reminder_message_id = Column(String, nullable=True)
+    raw_message = Column(String)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
 class ExchangeRate(Base):
     """每日匯率表"""
     __tablename__ = "exchange_rates"
@@ -103,6 +119,8 @@ DEFAULT_SETTINGS = {
     "abnormal_daily_total": "50000000",
     "abnormal_no_transaction_hours": "12",
     "check_interval_minutes": "60",
+    "reminder_time": '{"hour": 17, "minute": 30}',
+    "reminder_group_name": '"Lb x Ryan chan \\ud83d\\udc0e\\u99ac\\u5230\\u6210\\u529f\\ud83c\\udfc6\\u606d\\u559c\\u767c\\u8ca1"',
 }
 
 # ── Migration: add new columns if missing (SQLite doesn't auto-migrate) ──
@@ -150,6 +168,28 @@ def _migrate():
                         (agent_name,)
                     )
             print("✅ Agent total_earnings 已遷移至多貨幣 JSON 格式")
+
+        # ── 新建 customer_orders 表（若不存在）──
+        result = conn.exec_driver_sql(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='customer_orders'"
+        ).fetchone()
+        if not result:
+            conn.exec_driver_sql("""
+                CREATE TABLE customer_orders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    customer_name VARCHAR NOT NULL,
+                    amount INTEGER NOT NULL,
+                    currency VARCHAR DEFAULT 'CNY',
+                    group_id VARCHAR DEFAULT '',
+                    message_timestamp VARCHAR NOT NULL,
+                    matched_transaction_id INTEGER,
+                    status VARCHAR,
+                    reminder_message_id VARCHAR,
+                    raw_message TEXT,
+                    created_at TIMESTAMP
+                )
+            """)
+            print("✅ customer_orders 表已建立")
 
         # ── 初始化預設設置 ──
         try:

@@ -73,6 +73,7 @@ class TransactionResponse(TransactionBase):
     id: int
     profit: Optional[int] = None
     timestamp: str
+    matched_order: Optional[dict] = None  # 匹配到的客戶訂單摘要
 
     class Config:
         from_attributes = True
@@ -128,6 +129,34 @@ class ExchangeRateResponse(BaseModel):
     rate: float
     source: str
     recorded_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ==================== Customer Order ====================
+class CustomerOrderCreate(BaseModel):
+    customer_name: str
+    amount: int = Field(gt=0)
+    currency: str = "CNY"
+    group_id: str = ""
+    message_timestamp: str
+    raw_message: Optional[str] = None
+
+
+class CustomerOrderResponse(BaseModel):
+    id: int
+    customer_name: str
+    amount: int
+    currency: str
+    group_id: str
+    message_timestamp: str
+    matched_transaction_id: Optional[int] = None
+    status: Optional[str] = None
+    reminder_message_id: Optional[str] = None
+    raw_message: Optional[str] = None
+    created_at: datetime
+    matched_transaction: Optional[dict] = None  # 匹配的交易摘要 {id, agent_name, customer_name, amount, currency}
 
     class Config:
         from_attributes = True

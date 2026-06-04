@@ -98,6 +98,12 @@
                         </a>
                     </li>
                     <li>
+                        <a href="orders.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                            <span>客戶訂單</span>
+                        </a>
+                    </li>
+                    <li>
                         <a href="agents.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                             <span>代理管理</span>
@@ -195,6 +201,7 @@
                                 <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">時間</th>
                                 <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">代理名稱</th>
                                 <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">客戶名稱</th>
+                                <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">匹配訂單</th>
                                 <th class="px-6 py-3.5 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">兌換</th>
                                 <th class="px-6 py-3.5 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">交易金額</th>
                                 <th class="px-6 py-3.5 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">盈利</th>
@@ -210,6 +217,7 @@
                                 <td class="px-6 py-3.5"><div class="skeleton h-4 w-36"></div></td>
                                 <td class="px-6 py-3.5"><div class="skeleton h-4 w-20"></div></td>
                                 <td class="px-6 py-3.5"><div class="skeleton h-4 w-16"></div></td>
+                                <td class="px-6 py-3.5"><div class="skeleton h-4 w-20"></div></td>
                                 <td class="px-6 py-3.5"><div class="skeleton h-4 w-14 mx-auto"></div></td>
                                 <td class="px-6 py-3.5"><div class="skeleton h-4 w-24 ml-auto"></div></td>
                                 <td class="px-6 py-3.5"><div class="skeleton h-4 w-20 ml-auto"></div></td>
@@ -371,6 +379,20 @@
                                 </div>
                             </div>
                         </details>
+                        <!-- 訂單匹配 -->
+                        <details class="group" open>
+                            <summary class="text-xs font-semibold text-emerald-500 cursor-pointer hover:text-emerald-300 select-none">訂單匹配</summary>
+                            <div class="mt-3 space-y-2" id="orderMatchSection">
+                                <p class="text-xs text-slate-500" id="orderMatchStatus">載入中...</p>
+                                <div class="flex gap-2" id="orderMatchActions" style="display:none">
+                                    <select id="orderMatchSelect" class="flex-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/40">
+                                        <option value="">選擇訂單...</option>
+                                    </select>
+                                    <button type="button" onclick="matchOrderToTx()" class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-2 rounded-lg hover:bg-emerald-500/20 transition-all text-sm font-semibold whitespace-nowrap">匹配</button>
+                                </div>
+                                <button type="button" onclick="unmatchOrderFromTx()" id="unmatchOrderBtn" class="text-red-400 hover:text-red-300 text-xs font-medium hidden">取消匹配</button>
+                            </div>
+                        </details>
                         <div id="editValidationErrors" class="hidden text-xs text-red-500 space-y-1 bg-red-50 rounded-lg p-3"></div>
                         <div class="flex gap-3 pt-2">
                             <button type="button" onclick="closeEditModal()" class="flex-1 px-4 py-2.5 border border-slate-700 rounded-xl text-sm font-medium text-slate-400 hover:bg-slate-800 transition-colors">取消</button>
@@ -394,6 +416,7 @@
     <script>
         const PAGE_SIZE = 20;
         let allTransactions = [];
+        let currentOrders = [];
 
         function renderCurrencyIcon(cur) {
             const icons = {
@@ -449,6 +472,17 @@
             return '<span class="text-slate-600">-</span>';
         }
 
+        function renderMatchedOrder(tx) {
+            if (tx.matched_order) {
+                const mo = tx.matched_order;
+                return `<span class="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded text-xs font-medium" title="已匹配訂單 #${mo.id}">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                    ${escapeHtml(mo.customer_name)} ¥${mo.amount.toLocaleString()}
+                </span>`;
+            }
+            return '<span class="text-slate-600">-</span>';
+        }
+
         document.addEventListener("DOMContentLoaded", async () => {
             checkAuth();
             const today = new Date().toISOString().split('T')[0];
@@ -472,6 +506,11 @@
                 if (date) url += `?date=${date}`;
 
                 allTransactions = await apiRequest(url);
+                // 同時加載當天訂單
+                try {
+                    const orderUrl = `/orders/daily?date=${date}`;
+                    currentOrders = await apiRequest(orderUrl);
+                } catch (_) { currentOrders = []; }
                 document.getElementById("txCount").textContent = `共 ${allTransactions.length} 筆交易`;
 
                 // 更新摘要卡片 — 按貨幣分類
@@ -496,7 +535,7 @@
                 document.getElementById("summaryProfit").innerHTML = profitHtml;
 
                 if (allTransactions.length === 0) {
-                    tableBody.innerHTML = `<tr><td colspan="10" class="px-6 py-14">${renderEmptyState("暫無交易記錄", date ? `於 ${date} 沒有找到交易數據` : "今日尚無交易")}</td></tr>`;
+                    tableBody.innerHTML = `<tr><td colspan="11" class="px-6 py-14">${renderEmptyState("暫無交易記錄", date ? `於 ${date} 沒有找到交易數據` : "今日尚無交易")}</td></tr>`;
                     return;
                 }
 
@@ -528,6 +567,7 @@
                     </td>
                     <td class="px-6 py-3.5 whitespace-nowrap text-sm text-slate-400">${tx.agent_name}</td>
                     <td class="px-6 py-3.5 whitespace-nowrap text-sm font-semibold text-slate-200">${tx.customer_name || "-"}</td>
+                    <td class="px-6 py-3.5 whitespace-nowrap text-sm">${renderMatchedOrder(tx)}</td>
                     <td class="px-6 py-3.5 text-sm text-center" style="min-width:140px">${renderExchangeWithConversion(tx)}</td>
                     <td class="px-6 py-3.5 whitespace-nowrap text-sm font-bold text-amber-400 text-right">
                         ${formatCurrency(tx.amount, tx.currency || 'USD')}
@@ -636,6 +676,9 @@
                 document.getElementById("editConversionSourceCurrency").value = "";
             }
 
+            // 訂單匹配區塊
+            updateOrderMatchSection(tx);
+
             // 即時驗證 SWIFT / 銀行代碼
             updateSwiftStatus();
             updateBankCodeStatus();
@@ -649,6 +692,60 @@
         function closeEditModal() {
             document.getElementById("editModal").classList.add("hidden");
             document.getElementById("editModal").classList.remove("flex");
+        }
+
+        function updateOrderMatchSection(tx) {
+            const statusEl = document.getElementById("orderMatchStatus");
+            const actionsEl = document.getElementById("orderMatchActions");
+            const selectEl = document.getElementById("orderMatchSelect");
+            const unmatchBtn = document.getElementById("unmatchOrderBtn");
+
+            if (tx.matched_order) {
+                const mo = tx.matched_order;
+                statusEl.innerHTML = `<span class="text-emerald-400">已匹配：</span><span class="text-slate-200">${escapeHtml(mo.customer_name)} ¥${mo.amount.toLocaleString()}</span>`;
+                actionsEl.style.display = "none";
+                unmatchBtn.style.display = "inline-block";
+                unmatchBtn.setAttribute("data-order-id", mo.id);
+            } else {
+                statusEl.textContent = "尚未匹配訂單";
+                unmatchBtn.style.display = "none";
+                // 填充未匹配的訂單選項
+                const unmatched = currentOrders.filter(o => !o.matched_transaction_id);
+                if (unmatched.length > 0) {
+                    actionsEl.style.display = "flex";
+                    selectEl.innerHTML = '<option value="">選擇訂單...</option>' +
+                        unmatched.map(o => `<option value="${o.id}">${escapeHtml(o.customer_name)} ¥${o.amount.toLocaleString()}</option>`).join("");
+                } else {
+                    actionsEl.style.display = "none";
+                }
+            }
+        }
+
+        async function matchOrderToTx() {
+            const txId = parseInt(document.getElementById("editTxId").value);
+            const orderId = parseInt(document.getElementById("orderMatchSelect").value);
+            if (!orderId) return showToast("請選擇一個訂單", "error");
+            try {
+                await apiRequest(`/orders/${orderId}/match`, "PUT", { transaction_id: txId });
+                showToast("訂單匹配成功", "success");
+                closeEditModal();
+                await loadTransactions();
+            } catch (e) {
+                showToast("匹配失敗：" + (e.message || e), "error");
+            }
+        }
+
+        async function unmatchOrderFromTx() {
+            const orderId = parseInt(document.getElementById("unmatchOrderBtn").getAttribute("data-order-id"));
+            if (!orderId) return;
+            try {
+                await apiRequest(`/orders/${orderId}/unmatch`, "PUT");
+                showToast("已取消匹配", "success");
+                closeEditModal();
+                await loadTransactions();
+            } catch (e) {
+                showToast("取消匹配失敗：" + (e.message || e), "error");
+            }
         }
 
         function updateSwiftStatus() {

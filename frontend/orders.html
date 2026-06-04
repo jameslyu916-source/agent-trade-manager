@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>客戶訂單管理 - TradeManager Pro</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','system-ui','-apple-system','sans-serif']}}}}</script>
+    <script src="utils.js"></script>
+    <style>
+        .toggle-switch{position:relative;display:inline-block;width:44px;height:24px}.toggle-switch input{opacity:0;width:0;height:0}.toggle-slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background-color:#334155;transition:.2s;border-radius:24px}.toggle-slider:before{position:absolute;content:"";height:18px;width:18px;left:3px;bottom:3px;background-color:#94a3b8;transition:.2s;border-radius:50%}input:checked+.toggle-slider{background-color:#f59e0b}input:checked+.toggle-slider:before{transform:translateX(20px);background-color:#fff}
+        .skeleton{background:linear-gradient(90deg,#1e293b 25%,#334155 50%,#1e293b 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:6px}@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+        .animate-fade-in-up{animation:fadeInUp .4s ease-out both}@keyframes fadeInUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+        .table-row{transition:background-color .15s}.table-row:hover{background-color:rgba(30,41,59,.5)}
+        .sidebar-link{transition:all .15s}.sidebar-link:hover{background-color:rgba(30,41,59,.8)}
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-200 font-sans min-h-screen">
+    <!-- 頂部導航 -->
+    <nav class="sticky top-0 z-50 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800">
+        <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-gradient-to-br from-amber-400 to-amber-600 rounded-lg flex items-center justify-center">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+                </div>
+                <span class="text-lg font-bold text-slate-100">TradeManager <span class="text-amber-400">Pro</span></span>
+            </div>
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center text-xs font-bold text-slate-300">A</div>
+                <span class="text-sm text-slate-400">Admin</span>
+                <button onclick="logout()" class="text-red-400 hover:text-red-300 text-xs font-medium transition-colors ml-2">登出</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto px-6 py-6 flex gap-6">
+        <!-- 側邊欄 -->
+        <aside class="w-52 shrink-0">
+            <ul class="space-y-1 sticky top-20">
+                <li><a href="dashboard.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg><span>儀表盤</span></a></li>
+                <li><a href="transactions.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg><span>交易記錄</span></a></li>
+                <li><a href="orders.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg bg-amber-500/10 text-amber-400 font-semibold text-sm"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg><span>客戶訂單</span></a></li>
+                <li><a href="agents.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg><span>代理管理</span></a></li>
+                <li><a href="reports.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg><span>報表下載</span></a></li>
+                <li><a href="risk.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg><span>風險監控</span></a></li>
+                <li><a href="settings.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg><span>系統設置</span></a></li>
+            </ul>
+        </aside>
+
+        <!-- 主內容 -->
+        <main class="flex-1 min-w-0">
+            <div class="mb-6 animate-fade-in-up">
+                <h2 class="text-2xl font-bold text-slate-100">客戶訂單</h2>
+                <p class="text-sm text-slate-400 mt-1">查看與管理從 WhatsApp 群組中記錄的客戶訂單</p>
+            </div>
+
+            <!-- 日期篩選 -->
+            <div class="flex items-center gap-3 mb-5 animate-fade-in-up" style="animation-delay:0.05s">
+                <input type="date" id="dateFilter" class="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/40">
+                <button onclick="loadOrders()" class="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-4 py-2 rounded-lg hover:bg-amber-500/20 transition-all text-sm font-semibold">查詢</button>
+                <span id="orderCount" class="text-sm text-slate-500 ml-2"></span>
+            </div>
+
+            <!-- 摘要卡片 -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 animate-fade-in-up" style="animation-delay:0.08s">
+                <div class="bg-slate-900 rounded-xl border border-slate-800 p-4">
+                    <p class="text-xs text-slate-500 mb-1">訂單總數</p>
+                    <p class="text-2xl font-bold text-slate-100" id="summaryCount">-</p>
+                </div>
+                <div class="bg-slate-900 rounded-xl border border-slate-800 p-4">
+                    <p class="text-xs text-slate-500 mb-1">總金額（CNY）</p>
+                    <p class="text-2xl font-bold text-amber-400" id="summaryAmount">-</p>
+                </div>
+                <div class="bg-slate-900 rounded-xl border border-slate-800 p-4">
+                    <p class="text-xs text-slate-500 mb-1">已匹配</p>
+                    <p class="text-2xl font-bold text-emerald-400" id="summaryMatched">-</p>
+                </div>
+            </div>
+
+            <!-- 訂單表格 -->
+            <div class="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden animate-fade-in-up" style="animation-delay:0.1s">
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead>
+                            <tr class="bg-slate-800/80">
+                                <th class="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">時間</th>
+                                <th class="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">客戶名稱</th>
+                                <th class="px-5 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">金額</th>
+                                <th class="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">匹配狀態</th>
+                                <th class="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">提醒狀態</th>
+                                <th class="px-5 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="orderTable" class="divide-y divide-slate-800">
+                            <tr class="skeleton-row"><td class="px-5 py-3.5"><div class="skeleton h-4 w-36"></div></td><td class="px-5 py-3.5"><div class="skeleton h-4 w-20"></div></td><td class="px-5 py-3.5"><div class="skeleton h-4 w-24 ml-auto"></div></td><td class="px-5 py-3.5"><div class="skeleton h-4 w-24"></div></td><td class="px-5 py-3.5"><div class="skeleton h-4 w-16"></div></td><td class="px-5 py-3.5"><div class="skeleton h-4 w-16 mx-auto"></div></td></tr>
+                            <tr class="skeleton-row"><td class="px-5 py-3.5"><div class="skeleton h-4 w-36"></div></td><td class="px-5 py-3.5"><div class="skeleton h-4 w-16"></div></td><td class="px-5 py-3.5"><div class="skeleton h-4 w-20 ml-auto"></div></td><td class="px-5 py-3.5"><div class="skeleton h-4 w-20"></div></td><td class="px-5 py-3.5"><div class="skeleton h-4 w-14"></div></td><td class="px-5 py-3.5"><div class="skeleton h-4 w-16 mx-auto"></div></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 分頁 -->
+            <div id="pagination" class="flex items-center justify-between mt-5 hidden">
+                <p id="pageInfo" class="text-sm text-slate-500"></p>
+                <div class="flex gap-2">
+                    <button id="prevPage" class="px-4 py-2 border border-slate-700 rounded-xl text-sm font-medium text-slate-400 hover:bg-slate-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">上一頁</button>
+                    <button id="nextPage" class="px-4 py-2 border border-slate-700 rounded-xl text-sm font-medium text-slate-400 hover:bg-slate-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">下一頁</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 編輯 Modal -->
+    <div id="editModal" class="fixed inset-0 z-[9999] hidden items-center justify-center" style="background:rgba(0,0,0,0.4);backdrop-filter:blur(2px)">
+        <div class="bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md mx-4 animate-fade-in-up">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-slate-800">
+                <h3 class="text-lg font-bold text-slate-100">編輯客戶訂單</h3>
+                <button onclick="closeEditModal()" class="text-slate-500 hover:text-slate-400 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <form id="editForm" class="px-6 py-4 space-y-4">
+                <input type="hidden" id="editOrderId">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">客戶名稱</label>
+                    <input type="text" id="editCustomerName" required class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/40">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">金額（CNY）</label>
+                    <input type="number" id="editAmount" min="1" required class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/40">
+                </div>
+                <div class="flex gap-3 pt-2">
+                    <button type="button" onclick="closeEditModal()" class="flex-1 px-4 py-2.5 border border-slate-700 rounded-xl text-sm font-medium text-slate-400 hover:bg-slate-800 transition-colors">取消</button>
+                    <button type="submit" id="saveEditBtn" class="flex-1 bg-gradient-to-r from-amber-500 to-amber-600 text-white py-2.5 rounded-xl hover:from-amber-600 hover:to-amber-700 transition-all font-semibold text-sm shadow-md shadow-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed">保存修改</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const PAGE_SIZE = 20;
+        let allOrders = [];
+        let currentPage = 0;
+
+        document.addEventListener("DOMContentLoaded", async () => {
+            checkAuth();
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById("dateFilter").value = today;
+            await loadOrders();
+        });
+
+        async function loadOrders() {
+            const date = document.getElementById("dateFilter").value;
+            const tableBody = document.getElementById("orderTable");
+
+            document.querySelectorAll(".skeleton-row").forEach(r => r.style.display = "");
+            document.getElementById("pagination").classList.add("hidden");
+            document.getElementById("summaryCount").textContent = "-";
+            document.getElementById("summaryAmount").textContent = "-";
+            document.getElementById("summaryMatched").textContent = "-";
+
+            try {
+                const url = date ? `/orders/daily?date=${date}` : "/orders/daily";
+                allOrders = await apiRequest(url);
+                document.getElementById("orderCount").textContent = `共 ${allOrders.length} 筆訂單`;
+
+                // 摘要
+                document.getElementById("summaryCount").textContent = allOrders.length;
+                const totalAmount = allOrders.reduce((s, o) => s + o.amount, 0);
+                document.getElementById("summaryAmount").textContent = `¥${totalAmount.toLocaleString('zh-HK')}`;
+                const matchedCount = allOrders.filter(o => o.matched_transaction_id).length;
+                document.getElementById("summaryMatched").textContent = `${matchedCount} / ${allOrders.length}`;
+
+                if (allOrders.length === 0) {
+                    tableBody.innerHTML = `<tr><td colspan="6" class="px-5 py-14">${renderEmptyState("暫無訂單記錄", date ? `於 ${date} 沒有找到客戶訂單` : "今日尚無訂單")}</td></tr>`;
+                    return;
+                }
+
+                renderPage(0);
+            } catch (e) {
+                tableBody.innerHTML = `<tr><td colspan="6" class="px-5 py-14 text-center text-red-400 text-sm">載入失敗：${e.message || e}</td></tr>`;
+            }
+        }
+
+        function renderPage(page) {
+            const tableBody = document.getElementById("orderTable");
+            const start = page * PAGE_SIZE;
+            const end = Math.min(start + PAGE_SIZE, allOrders.length);
+            const pageOrders = allOrders.slice(start, end);
+
+            tableBody.innerHTML = "";
+            pageOrders.forEach((o, i) => {
+                const row = document.createElement("tr");
+                row.className = "table-row animate-fade-in";
+                row.style.animationDelay = `${i * 0.03}s`;
+
+                const timeStr = o.message_timestamp ? utcToHKTime(o.message_timestamp) : "-";
+                const matchHtml = o.matched_transaction
+                    ? `<span class="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded text-xs font-medium" title="交易 #${o.matched_transaction.id} — ${escapeHtml(o.matched_transaction.agent_name)}">✓ ${escapeHtml(o.matched_transaction.customer_name || '')} ${o.matched_transaction.currency} ${(o.matched_transaction.amount || 0).toLocaleString()}</span>`
+                    : '<span class="text-slate-600">-</span>';
+
+                const statusMap = { processed: "已處理", unprocessed: "未處理", ignored: "忽略" };
+                const statusColorMap = { processed: "text-emerald-400", unprocessed: "text-red-400", ignored: "text-slate-500" };
+                const statusText = o.status ? statusMap[o.status] || o.status : "未提醒";
+                const statusColor = o.status ? statusColorMap[o.status] || "text-slate-400" : "text-slate-500";
+
+                row.innerHTML = `
+                    <td class="px-5 py-3 whitespace-nowrap text-sm text-slate-400">${timeStr}</td>
+                    <td class="px-5 py-3 whitespace-nowrap text-sm font-semibold text-slate-200">${escapeHtml(o.customer_name)}</td>
+                    <td class="px-5 py-3 whitespace-nowrap text-sm font-bold text-amber-400 text-right">¥${o.amount.toLocaleString('zh-HK')}</td>
+                    <td class="px-5 py-3 text-sm">${matchHtml}</td>
+                    <td class="px-5 py-3 whitespace-nowrap text-sm ${statusColor}">${statusText}</td>
+                    <td class="px-5 py-3 whitespace-nowrap text-sm text-center">
+                        <div class="flex items-center justify-center gap-1">
+                            <button onclick="editOrder(${o.id})" class="text-blue-400 hover:text-amber-400 hover:bg-amber-500/10 px-2 py-1 rounded-lg transition-colors" title="編輯">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                            </button>
+                            <button onclick="deleteOrder(${o.id})" class="text-red-400 hover:text-red-400 hover:bg-red-500/10 px-2 py-1 rounded-lg transition-colors" title="刪除">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                            </button>
+                        </div>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+
+            // 分頁
+            const totalPages = Math.ceil(allOrders.length / PAGE_SIZE);
+            const pagination = document.getElementById("pagination");
+            const pageInfo = document.getElementById("pageInfo");
+            const prevBtn = document.getElementById("prevPage");
+            const nextBtn = document.getElementById("nextPage");
+
+            if (totalPages > 1) {
+                pagination.classList.remove("hidden");
+                pageInfo.textContent = `第 ${page + 1} 頁，共 ${totalPages} 頁（${allOrders.length} 筆）`;
+                prevBtn.disabled = page === 0;
+                nextBtn.disabled = page >= totalPages - 1;
+                prevBtn.onclick = () => { if (page > 0) renderPage(page - 1); };
+                nextBtn.onclick = () => { if (page < totalPages - 1) renderPage(page + 1); };
+            } else {
+                pagination.classList.add("hidden");
+            }
+            currentPage = page;
+        }
+
+        // ── 編輯 ──
+        function editOrder(id) {
+            const o = allOrders.find(o => o.id === id);
+            if (!o) return showToast("找不到該訂單", "error");
+            document.getElementById("editOrderId").value = o.id;
+            document.getElementById("editCustomerName").value = o.customer_name;
+            document.getElementById("editAmount").value = o.amount;
+            document.getElementById("editModal").classList.add("flex");
+            document.getElementById("editModal").classList.remove("hidden");
+        }
+
+        function closeEditModal() {
+            document.getElementById("editModal").classList.add("hidden");
+            document.getElementById("editModal").classList.remove("flex");
+        }
+
+        document.getElementById("editModal").addEventListener("click", function(e) {
+            if (e.target === this) closeEditModal();
+        });
+
+        document.getElementById("editForm").addEventListener("submit", async function(e) {
+            e.preventDefault();
+            const id = document.getElementById("editOrderId").value;
+            const customerName = document.getElementById("editCustomerName").value.trim();
+            const amount = parseInt(document.getElementById("editAmount").value);
+            if (!customerName) return showToast("客戶名稱不能為空", "error");
+            if (!amount || amount <= 0) return showToast("金額必須大於 0", "error");
+
+            const btn = document.getElementById("saveEditBtn");
+            btn.disabled = true;
+            btn.textContent = "儲存中...";
+            try {
+                await apiRequest(`/orders/${id}`, "PUT", { customer_name: customerName, amount: amount });
+                showToast("訂單已更新", "success");
+                closeEditModal();
+                await loadOrders();
+            } catch (e) {
+                showToast("儲存失敗：" + (e.message || e), "error");
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "保存修改";
+            }
+        });
+
+        // ── 刪除 ──
+        async function deleteOrder(id) {
+            const o = allOrders.find(o => o.id === id);
+            const name = o ? o.customer_name : `#${id}`;
+            if (!confirm(`確定要刪除訂單「${name}」嗎？此操作無法復原。`)) return;
+            try {
+                await apiRequest(`/orders/${id}`, "DELETE");
+                showToast(`已刪除訂單：${name}`, "success");
+                await loadOrders();
+            } catch (e) {
+                showToast("刪除失敗：" + (e.message || e), "error");
+            }
+        }
+    </script>
+</body>
+</html>

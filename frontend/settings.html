@@ -118,6 +118,12 @@
                         </a>
                     </li>
                     <li>
+                        <a href="orders.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                            <span>客戶訂單</span>
+                        </a>
+                    </li>
+                    <li>
                         <a href="agents.html" class="sidebar-link flex items-center space-x-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-slate-200 text-sm font-medium">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                             <span>代理管理</span>
@@ -186,6 +192,8 @@
             const tgGroups = settings.telegram_group_ids || [];
             const waGroups = settings.whatsapp_group_names || [];
             const reportTime = settings.report_time || { hour: 12, minute: 0 };
+            const reminderTime = settings.reminder_time || { hour: 17, minute: 30 };
+            const reminderGroupName = settings.reminder_group_name || "";
             const singleTx = settings.abnormal_single_transaction || 10000000;
             const dailyTotal = settings.abnormal_daily_total || 50000000;
             const noTxHours = settings.abnormal_no_transaction_hours || 12;
@@ -309,6 +317,24 @@
                     </div>
                 </div>
 
+                <!-- 漏單提醒 -->
+                <div class="bg-slate-900 rounded-xl border border-slate-800 p-6 animate-fade-in-up" style="animation-delay: 0.22s;">
+                    <h3 class="text-base font-bold text-slate-100 mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+                        漏單提醒
+                    </h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">每日提醒時間（香港時間）</label>
+                            <input type="time" id="reminderTime" value="${String(reminderTime.hour).padStart(2, '0')}:${String(reminderTime.minute).padStart(2, '0')}" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/40">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">提醒群組名稱</label>
+                            <input type="text" id="reminderGroupName" value="${escapeHtml(reminderGroupName)}" placeholder="WhatsApp 群組名稱" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500/40">
+                        </div>
+                    </div>
+                </div>
+
                 <!-- 日誌查看器 -->
                 <div class="bg-slate-900 rounded-xl border border-slate-800 p-6 animate-fade-in-up" style="animation-delay: 0.25s;">
                     <div class="flex items-center justify-between mb-4">
@@ -404,6 +430,8 @@
             const tgEnabled = document.getElementById("toggleTelegram").checked;
             const waEnabled = document.getElementById("toggleWhatsApp").checked;
             const [hour, minute] = document.getElementById("reportTime").value.split(":").map(Number);
+            const [remHour, remMinute] = document.getElementById("reminderTime").value.split(":").map(Number);
+            const reminderGroupName = document.getElementById("reminderGroupName").value.trim();
 
             const updates = {
                 telegram_enabled: tgEnabled,
@@ -411,6 +439,8 @@
                 telegram_group_ids: settings.telegram_group_ids || [],
                 whatsapp_group_names: settings.whatsapp_group_names || [],
                 report_time: { hour, minute },
+                reminder_time: { hour: remHour, minute: remMinute },
+                reminder_group_name: reminderGroupName,
                 abnormal_single_transaction: parseInt(document.getElementById("abnormalSingleTx").value) || 10000000,
                 abnormal_daily_total: parseInt(document.getElementById("abnormalDailyTotal").value) || 50000000,
                 abnormal_no_transaction_hours: parseInt(document.getElementById("abnormalNoTxHours").value) || 12,

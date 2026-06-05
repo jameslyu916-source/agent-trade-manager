@@ -40,6 +40,7 @@ logs/
 # Temporary files
 *.tmp
 *.temp
+*.pid
 
 # Node.js
 node_modules/
@@ -50,3 +51,4 @@ node_modules/
 
 # Claude Code
 .claude/
+.agents/

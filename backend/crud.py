@@ -687,10 +687,8 @@ def _auto_match_order(db: Session, transaction: Transaction):
     tx_chinese = extract_chinese(tx_customer_name)
     tx_chinese_full = extract_chinese(account_name)
 
-    # 查詢當天未匹配的訂單
-    today_str = datetime.now(HK_TZ).strftime("%Y-%m-%d")
-    today_orders = get_orders_by_date(db, today_str)
-    unmatched = [o for o in today_orders if o.matched_transaction_id is None]
+    # 查詢所有未匹配的訂單（跨天累積）
+    unmatched = get_unmatched_orders(db)
 
     candidates = []
     for order in unmatched:
@@ -703,6 +701,7 @@ def _auto_match_order(db: Session, transaction: Transaction):
 
     if len(candidates) == 1:
         candidates[0].matched_transaction_id = transaction.id
+        candidates[0].status = "processed"
         db.commit()
         print(f"🔗 自動匹配訂單 #{candidates[0].id}「{candidates[0].customer_name}」→ 交易 #{transaction.id}")
 

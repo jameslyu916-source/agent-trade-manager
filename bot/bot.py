@@ -135,9 +135,73 @@ async def _resolve_conversion(payment_info: dict, prev_text: str | None, to_curr
     for r in (rates or []):
         daily_rate_map[(r["from_currency"], r["to_currency"])] = r["rate"]
 
-    expected_pair = ("CNY", conv["result_currency"])
-    daily_rate = daily_rate_map.get(expected_pair)
+    # 獲取昨日匯率（作為 CNY 推斷的備選）
+    yesterday = datetime.now(HK_TZ) - timedelta(days=1)
+    yesterday_str = yesterday.strftime("%Y-%m-%d")
+    yesterday_rates = api_client.get_exchange_rates(date=yesterday_str)
+    yesterday_rate_map = {}
+    for r in (yesterday_rates or []):
+        yesterday_rate_map[(r["from_currency"], r["to_currency"])] = r["rate"]
 
+    # 獲取預設匯率
+    preset_rates = get_setting("preset_exchange_rates", {})
+    if not isinstance(preset_rates, dict):
+        preset_rates = {}
+
+    # 遍歷所有可能的 (source, target) 組合，找最接近的參考匯率
+    candidates = _EXCHANGE_OPTIONS.get(conv["result_currency"], [])
+    best_match = None  # (from, reference_rate, rate_source, pct_diff)
+
+    for from_cur, label in candidates:
+        pair_key = f"{from_cur}:{conv['result_currency']}"
+        reference_rate = None
+        rate_source = None
+
+        if (from_cur, conv["result_currency"]) in daily_rate_map:
+            reference_rate = daily_rate_map[(from_cur, conv["result_currency"])]
+            rate_source = "daily"
+        elif (from_cur, conv["result_currency"]) in yesterday_rate_map:
+            reference_rate = yesterday_rate_map[(from_cur, conv["result_currency"])]
+            rate_source = "previous_day"
+        elif pair_key in preset_rates:
+            reference_rate = preset_rates[pair_key]
+            rate_source = "preset"
+
+        if reference_rate and reference_rate > 0:
+            pct_diff = abs(conv["rate"] - reference_rate) / reference_rate
+            if best_match is None or pct_diff < best_match[3]:
+                best_match = (from_cur, reference_rate, rate_source, pct_diff)
+
+    # 最佳匹配在 3% 閾值內 → 自動推斷
+    if best_match and best_match[3] <= 0.03:
+        from_cur, ref_rate, rate_src, pct = best_match
+        conversion_info = {
+            "source_amount": source_amount,
+            "rate": conv["rate"],
+            "source_currency": from_cur,
+            "matched": True,
+            "daily_rate": ref_rate,
+            "rate_source": rate_src,
+        }
+        if autocorrected:
+            conversion_info["autocorrected"] = True
+        wan_note = f"（已自動補全萬位 {conv['source_amount']:,.0f}→{source_amount:,.0f}）" if autocorrected else ""
+        label = next((l for f, l in candidates if f == from_cur), from_cur)
+        return {
+            "auto_inferred": True,
+            "from_currency": from_cur,
+            "conversion": conversion_info,
+            "note": f"📐 從換匯公式 {conv['result_currency']} {conv['rate']} 自動推斷為 {from_cur}（{label}）{wan_note}",
+        }
+
+    # 無匹配 → 提示手動選擇
+    if best_match:
+        from_cur, ref_rate, rate_src, pct = best_match
+        best_str = f"{ref_rate:.3f}（差 {pct * 100:.1f}%）"
+        best_pair = f"{from_cur}→{conv['result_currency']}"
+    else:
+        best_str = "無可用參考匯率"
+        best_pair = "無"
     conversion_info = {
         "source_amount": source_amount,
         "rate": conv["rate"],
@@ -146,26 +210,13 @@ async def _resolve_conversion(payment_info: dict, prev_text: str | None, to_curr
     }
     if autocorrected:
         conversion_info["autocorrected"] = True
-
-    if daily_rate and _rate_within_threshold(conv["rate"], daily_rate):
-        conversion_info["matched"] = True
-        conversion_info["daily_rate"] = daily_rate
-        wan_note = f"（已自動補全萬位 {conv['source_amount']:,.0f}→{source_amount:,.0f}）" if autocorrected else ""
-        return {
-            "auto_inferred": True,
-            "from_currency": "CNY",
-            "conversion": conversion_info,
-            "note": f"📐 從換匯公式 {conv['result_currency']} {conv['rate']} 自動推斷為 CNY{wan_note}",
-        }
-    else:
-        daily_str = f"{daily_rate:.3f}" if daily_rate else "無今日數據"
-        wan_note = f"（已自動補全萬位 {conv['source_amount']:,.0f}→{source_amount:,.0f}）" if autocorrected else ""
-        return {
-            "auto_inferred": False,
-            "from_currency": None,
-            "conversion": conversion_info,
-            "note": f"📐 檢測到換匯公式 {source_amount:,.0f} / {conv['rate']} = {conv['result_amount']:,} {conv['result_currency']}，但匯率與今日 CNY→{conv['result_currency']} ({daily_str}) 差異超過 3%，請手動選擇{wan_note}",
-        }
+    wan_note = f"（已自動補全萬位 {conv['source_amount']:,.0f}→{source_amount:,.0f}）" if autocorrected else ""
+    return {
+        "auto_inferred": False,
+        "from_currency": None,
+        "conversion": conversion_info,
+        "note": f"📐 檢測到換匯公式 {source_amount:,.0f} / {conv['rate']} = {conv['result_amount']:,} {conv['result_currency']}，最佳匹配 {best_pair} ({best_str}) 超過 3% 閾值，請手動選擇{wan_note}",
+    }
 
 
 def _build_exchange_keyboard(to_currency: str):

@@ -84,6 +84,12 @@ function rateWithinThreshold(usedRate, dailyRate, threshold = 0.03) {
   return Math.abs(usedRate - dailyRate) / dailyRate <= threshold;
 }
 
+function getYesterdayDate() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().split("T")[0];
+}
+
 async function resolveConversion(paymentInfo, prevText, toCurrency) {
   if (!prevText) return null;
 
@@ -117,9 +123,78 @@ async function resolveConversion(paymentInfo, prevText, toCurrency) {
     dailyRateMap[`${r.from_currency}:${r.to_currency}`] = r.rate;
   }
 
-  const expectedPair = `CNY:${conv.result_currency}`;
-  const dailyRate = dailyRateMap[expectedPair];
+  // 獲取昨日匯率（作為 CNY 推斷的備選）
+  const yesterday = getYesterdayDate();
+  const yesterdayRates = await getExchangeRates(yesterday);
+  const yesterdayRateMap = {};
+  for (const r of (yesterdayRates || [])) {
+    yesterdayRateMap[`${r.from_currency}:${r.to_currency}`] = r.rate;
+  }
 
+  // 獲取預設匯率
+  const presetRates = getSetting("preset_exchange_rates", {});
+  if (typeof presetRates !== "object") presetRates = {};
+
+  // 遍歷所有可能的 (source, target) 組合，找最接近的參考匯率
+  const candidates = EXCHANGE_OPTIONS[conv.result_currency] || [];
+  let bestMatch = null; // { from, referenceRate, rateSource, pctDiff }
+
+  for (const candidate of candidates) {
+    const pair = `${candidate.from}:${conv.result_currency}`;
+    let referenceRate = null;
+    let rateSource = null;
+
+    if (dailyRateMap[pair] !== undefined) {
+      referenceRate = dailyRateMap[pair];
+      rateSource = "daily";
+    } else if (yesterdayRateMap[pair] !== undefined) {
+      referenceRate = yesterdayRateMap[pair];
+      rateSource = "previous_day";
+    } else if (presetRates[pair] !== undefined) {
+      referenceRate = presetRates[pair];
+      rateSource = "preset";
+    }
+
+    if (referenceRate && referenceRate > 0) {
+      const pctDiff = Math.abs(conv.rate - referenceRate) / referenceRate;
+      if (!bestMatch || pctDiff < bestMatch.pctDiff) {
+        bestMatch = { from: candidate.from, referenceRate, rateSource, pctDiff };
+      }
+    }
+  }
+
+  // 最佳匹配在 3% 閾值內 → 自動推斷
+  if (bestMatch && bestMatch.pctDiff <= 0.03) {
+    const conversionInfo = {
+      source_amount: sourceAmount,
+      rate: conv.rate,
+      source_currency: bestMatch.from,
+      matched: true,
+      daily_rate: bestMatch.referenceRate,
+      rate_source: bestMatch.rateSource,
+    };
+    if (autocorrected) {
+      conversionInfo.autocorrected = true;
+    }
+    const wanNote = autocorrected
+      ? `（已自動補全萬位 ${conv.source_amount.toLocaleString()}→${sourceAmount.toLocaleString()}）`
+      : "";
+    const label = candidates.find(o => o.from === bestMatch.from)?.label || bestMatch.from;
+    return {
+      auto_inferred: true,
+      from_currency: bestMatch.from,
+      conversion: conversionInfo,
+      note: `📐 從換匯公式 ${conv.result_currency} ${conv.rate} 自動推斷為 ${bestMatch.from}（${label}）${wanNote}`,
+    };
+  }
+
+  // 無匹配 → 提示手動選擇
+  const bestDailyStr = bestMatch
+    ? `${bestMatch.referenceRate.toFixed(3)}（差 ${(bestMatch.pctDiff * 100).toFixed(1)}%）`
+    : "無可用參考匯率";
+  const bestPairLabel = bestMatch
+    ? `${bestMatch.from}→${conv.result_currency}`
+    : "無";
   const conversionInfo = {
     source_amount: sourceAmount,
     rate: conv.rate,
@@ -129,31 +204,15 @@ async function resolveConversion(paymentInfo, prevText, toCurrency) {
   if (autocorrected) {
     conversionInfo.autocorrected = true;
   }
-
-  if (dailyRate && rateWithinThreshold(conv.rate, dailyRate)) {
-    conversionInfo.matched = true;
-    conversionInfo.daily_rate = dailyRate;
-    const wanNote = autocorrected
-      ? `（已自動補全萬位 ${conv.source_amount.toLocaleString()}→${sourceAmount.toLocaleString()}）`
-      : "";
-    return {
-      auto_inferred: true,
-      from_currency: "CNY",
-      conversion: conversionInfo,
-      note: `📐 從換匯公式 ${conv.result_currency} ${conv.rate} 自動推斷為 CNY${wanNote}`,
-    };
-  } else {
-    const dailyStr = dailyRate ? dailyRate.toFixed(3) : "無今日數據";
-    const wanNote = autocorrected
-      ? `（已自動補全萬位 ${conv.source_amount.toLocaleString()}→${sourceAmount.toLocaleString()}）`
-      : "";
-    return {
-      auto_inferred: false,
-      from_currency: null,
-      conversion: conversionInfo,
-      note: `📐 檢測到換匯公式 ${sourceAmount.toLocaleString()} / ${conv.rate} = ${conv.result_amount.toLocaleString()} ${conv.result_currency}，但匯率與今日 CNY→${conv.result_currency} (${dailyStr}) 差異超過 3%，請手動選擇${wanNote}`,
-    };
-  }
+  const wanNote = autocorrected
+    ? `（已自動補全萬位 ${conv.source_amount.toLocaleString()}→${sourceAmount.toLocaleString()}）`
+    : "";
+  return {
+    auto_inferred: false,
+    from_currency: null,
+    conversion: conversionInfo,
+    note: `📐 檢測到換匯公式 ${sourceAmount.toLocaleString()} / ${conv.rate} = ${conv.result_amount.toLocaleString()} ${conv.result_currency}，最佳匹配 ${bestPairLabel} (${bestDailyStr}) 超過 3% 閾值，請手動選擇${wanNote}`,
+  };
 }
 
 // ── 交易格式範本 ──

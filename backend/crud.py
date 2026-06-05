@@ -35,6 +35,12 @@ def _calculate_profit(db: Session, payment_details, currency: str, timestamp: st
     source_currency = conv.get("source_currency", "CNY")
     to_currency = (currency or "USD").upper()
 
+    # 非當天實際匯率推斷的交易不計算利潤
+    rate_source = conv.get("rate_source")
+    if rate_source in ("preset", "previous_day"):
+        print(f"🔍 [profit] rate_source={rate_source}，不計算利潤")
+        return None
+
     buy_rate = None
     if conv.get("matched") and conv.get("daily_rate"):
         buy_rate = conv["daily_rate"]
@@ -450,6 +456,47 @@ def update_settings(db: Session, updates: dict):
 #  每日匯率 CRUD
 # ═══════════════════════════════════════════
 
+def _recalculate_profits_for_rate(db: Session, date: str, from_currency: str, to_currency: str):
+    """匯率到帳後，重算之前等待中交易的利潤"""
+    txs = db.query(Transaction).filter(
+        Transaction.from_currency == from_currency,
+        Transaction.currency == to_currency,
+        Transaction.profit.is_(None),
+        Transaction.timestamp.like(f"{date}%")
+    ).all()
+
+    updated = 0
+    for tx in txs:
+        if not tx.payment_details:
+            continue
+        try:
+            pd_obj = json.loads(tx.payment_details) if isinstance(tx.payment_details, str) else tx.payment_details
+        except (json.JSONDecodeError, TypeError):
+            continue
+        conv = pd_obj.get("conversion") if pd_obj else None
+        if not conv or conv.get("source_currency") != from_currency:
+            continue
+
+        conv["daily_rate"] = buy_rate = db.query(ExchangeRate).filter(
+            ExchangeRate.date == date,
+            ExchangeRate.from_currency == from_currency,
+            ExchangeRate.to_currency == to_currency
+        ).first()
+        if not buy_rate:
+            continue
+        conv["daily_rate"] = buy_rate.rate
+        conv["matched"] = True
+        conv["rate_source"] = "daily"
+
+        tx.payment_details = json.dumps(pd_obj, ensure_ascii=False)
+        tx.profit = _calculate_profit(db, tx.payment_details, tx.currency or "USD", tx.timestamp)
+        updated += 1
+
+    if updated:
+        db.commit()
+        print(f"🔄 [recalculate] {date} {from_currency}→{to_currency} 重算 {updated} 筆交易利潤")
+
+
 def upsert_exchange_rate(db: Session, date: str, from_currency: str, to_currency: str,
                          rate: float, source: str = "POBO-MSO"):
     """插入或更新單日匯率"""
@@ -469,6 +516,10 @@ def upsert_exchange_rate(db: Session, date: str, from_currency: str, to_currency
             rate=rate, source=source
         ))
     db.commit()
+
+    # 重算先前因匯率未到帳而未計利潤的交易
+    _recalculate_profits_for_rate(db, date, from_currency, to_currency)
+
     return existing or db.query(ExchangeRate).filter(
         ExchangeRate.date == date,
         ExchangeRate.from_currency == from_currency,

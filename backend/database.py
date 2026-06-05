@@ -121,6 +121,7 @@ DEFAULT_SETTINGS = {
     "check_interval_minutes": "60",
     "reminder_time": '{"hour": 17, "minute": 30}',
     "reminder_group_name": '"Lb x Ryan chan \\ud83d\\udc0e\\u99ac\\u5230\\u6210\\u529f\\ud83c\\udfc6\\u606d\\u559c\\u767c\\u8ca1"',
+    "preset_exchange_rates": '{"USDT:USD": 1.0, "USDT:HKD": 7.8, "USDT:CNY": 7.2, "USD:CNY": 0.14, "HKD:CNY": 1.12}',
 }
 
 # ── Migration: add new columns if missing (SQLite doesn't auto-migrate) ──

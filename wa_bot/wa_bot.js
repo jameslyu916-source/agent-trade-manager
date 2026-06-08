@@ -882,6 +882,31 @@ client.on("message", async (msg) => {
     }
   }
 
+  // ── 今日訂單查詢指令（群組內直接發送關鍵詞）──
+  const ORDER_QUERY_KEYWORDS = ["今日訂單", "今日订单", "查詢訂單", "查询订单", "訂單狀態", "订单状态", "/orders"];
+  if (msg.from.endsWith("@g.us") && ORDER_QUERY_KEYWORDS.includes(msgText)) {
+    console.log("📋 收到今日訂單查詢");
+    try {
+      const today = new Date().toISOString().split("T")[0];
+      const dailyOrders = await getDailyOrders(today);
+      if (dailyOrders.length === 0) {
+        if (WA_SEND_REPLY) await msg.reply("📋 今日尚無客戶訂單");
+      } else {
+        let replyText = `📋 今日客戶訂單（${dailyOrders.length} 筆）：`;
+        for (const o of dailyOrders) {
+          const statusText = o.matched_transaction
+            ? `已匹配 → ${o.matched_transaction.customer_name || "—"}`
+            : "未匹配";
+          replyText += `\n• ${o.customer_name} ¥${o.amount.toLocaleString()} — ${statusText}`;
+        }
+        if (WA_SEND_REPLY) await msg.reply(replyText);
+      }
+    } catch (e) {
+      console.error("   ❌ 查詢今日訂單失敗：", e.message);
+    }
+    return;
+  }
+
   // ── 匯率訊息檢測（需 Bot 啟用，不限群組）──
   if (msg.from.endsWith("@g.us") && getSetting("whatsapp_enabled", true) !== false) {
     const exchangeRates = parseExchangeRates(msgText);
@@ -1102,7 +1127,7 @@ client.on("message", async (msg) => {
         if (conversionResult && conversionResult.note) {
           replyMsg += `\n${conversionResult.note}`;
         }
-        replyMsg += "\n\n請回覆數字選擇兌換方式：";
+        replyMsg += "\n\n💰 （優先）請發送換匯公式（例：50w / 7.01 = 71,023 USD）\n💰 （備選）或回覆數字選擇：";
         options.forEach((opt, i) => {
           replyMsg += `\n${i + 1}. ${opt.label}`;
         });

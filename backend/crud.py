@@ -664,6 +664,21 @@ def update_order(db: Session, order_id: int, updates: dict):
     return order
 
 
+def _to_pinyin(chinese_name: str) -> str | None:
+    """將中文名轉為拼音（大寫空格分隔），若無中文字則返回 None"""
+    if not chinese_name:
+        return None
+    import re as _re
+    cn = "".join(_re.findall(r"[一-鿿]+", chinese_name))
+    if not cn:
+        return None
+    try:
+        from pypinyin import lazy_pinyin
+        return " ".join(lazy_pinyin(cn)).upper()
+    except ImportError:
+        return None
+
+
 def _auto_match_order(db: Session, transaction: Transaction):
     """交易建立後自動嘗試匹配當天未匹配的客戶訂單"""
     import re
@@ -689,21 +704,39 @@ def _auto_match_order(db: Session, transaction: Transaction):
     tx_chinese = extract_chinese(tx_customer_name)
     tx_chinese_full = extract_chinese(account_name)
 
-    # 交易方沒有中文名稱則跳過（避免空字串匹配所有訂單）
-    if not tx_chinese and not tx_chinese_full:
-        return
-
     # 查詢所有未匹配的訂單（跨天累積）
     unmatched = get_unmatched_orders(db)
 
     candidates = []
     for order in unmatched:
         order_chinese = extract_chinese(order.customer_name)
-        if not order_chinese:
+        order_name = (order.customer_name or "").strip()
+        if not order_name:
             continue
-        # 雙向包含檢查
-        if order_chinese in tx_chinese_full or tx_chinese_full in order_chinese or order_chinese in tx_chinese or tx_chinese in order_chinese:
-            candidates.append(order)
+
+        tx_has_chinese = bool(tx_chinese or tx_chinese_full)
+        order_has_chinese = bool(order_chinese)
+
+        if tx_has_chinese and order_has_chinese:
+            # 雙向中文包含檢查
+            if order_chinese in tx_chinese_full or tx_chinese_full in order_chinese or order_chinese in tx_chinese or tx_chinese in order_chinese:
+                candidates.append(order)
+        elif not tx_has_chinese and not order_has_chinese:
+            # 雙方皆無中文 → 大小寫不敏感原文比對
+            if order_name.lower() == tx_customer_name.lower() or order_name.lower() == account_name.lower():
+                candidates.append(order)
+        elif order_has_chinese and not tx_has_chinese:
+            # 訂單有中文、交易無中文 → 比對拼音（去空格標準化）
+            order_pinyin = _to_pinyin(order_chinese)
+            tx_name_norm = (tx_customer_name + account_name).replace(" ", "").lower()
+            if order_pinyin and order_pinyin.replace(" ", "").lower() in tx_name_norm:
+                candidates.append(order)
+        elif not order_has_chinese and tx_has_chinese:
+            # 交易有中文、訂單無中文 → 比對拼音（去空格標準化）
+            tx_pinyin = _to_pinyin(tx_chinese_full or tx_chinese)
+            order_name_norm = order_name.replace(" ", "").lower()
+            if tx_pinyin and order_name_norm in tx_pinyin.replace(" ", "").lower():
+                candidates.append(order)
 
     if len(candidates) == 1:
         candidates[0].matched_transaction_id = transaction.id

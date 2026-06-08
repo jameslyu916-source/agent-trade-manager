@@ -96,6 +96,10 @@ async function resolveConversion(paymentInfo, prevText, toCurrency) {
   const conv = parseConversionLine(prevText);
   if (!conv) return null;
 
+  // 若公式無貨幣標籤，用付款信息的幣種補
+  const resultCurrency = conv.result_currency || toCurrency;
+  if (!resultCurrency) return null;
+
   // 檢查數學等式: source_amount / rate ≈ result_amount
   let sourceAmount = conv.source_amount;
   let autocorrected = false;
@@ -136,11 +140,11 @@ async function resolveConversion(paymentInfo, prevText, toCurrency) {
   if (typeof presetRates !== "object") presetRates = {};
 
   // 遍歷所有可能的 (source, target) 組合，找最接近的參考匯率
-  const candidates = EXCHANGE_OPTIONS[conv.result_currency] || [];
+  const candidates = EXCHANGE_OPTIONS[resultCurrency] || [];
   let bestMatch = null; // { from, referenceRate, rateSource, pctDiff }
 
   for (const candidate of candidates) {
-    const pair = `${candidate.from}:${conv.result_currency}`;
+    const pair = `${candidate.from}:${resultCurrency}`;
     let referenceRate = null;
     let rateSource = null;
 
@@ -184,7 +188,7 @@ async function resolveConversion(paymentInfo, prevText, toCurrency) {
       auto_inferred: true,
       from_currency: bestMatch.from,
       conversion: conversionInfo,
-      note: `📐 從換匯公式 ${conv.result_currency} ${conv.rate} 自動推斷為 ${bestMatch.from}（${label}）${wanNote}`,
+      note: `📐 從換匯公式 ${resultCurrency} ${conv.rate} 自動推斷為 ${bestMatch.from}（${label}）${wanNote}`,
     };
   }
 
@@ -193,7 +197,7 @@ async function resolveConversion(paymentInfo, prevText, toCurrency) {
     ? `${bestMatch.referenceRate.toFixed(3)}（差 ${(bestMatch.pctDiff * 100).toFixed(1)}%）`
     : "無可用參考匯率";
   const bestPairLabel = bestMatch
-    ? `${bestMatch.from}→${conv.result_currency}`
+    ? `${bestMatch.from}→${resultCurrency}`
     : "無";
   const conversionInfo = {
     source_amount: sourceAmount,
@@ -834,7 +838,11 @@ client.on("message", async (msg) => {
       // 查詢當天已有訂單，建立去重 set
       const today = new Date().toISOString().split("T")[0];
       const todayOrders = await getDailyOrders(today);
-      const existingSet = new Set(todayOrders.map(o => `${o.customer_name}:${o.amount}`));
+      const existingSet = new Set();
+      for (const o of todayOrders) {
+        existingSet.add(`${o.customer_name}:${o.amount}`);
+        if (o.pinyin_name) existingSet.add(`${o.pinyin_name}:${o.amount}`);
+      }
 
       console.log(`📋 檢測到 ${parsedOrders.length} 筆客戶訂單`);
       const results = [];

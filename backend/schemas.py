@@ -157,6 +157,7 @@ class CustomerOrderResponse(BaseModel):
     raw_message: Optional[str] = None
     created_at: datetime
     matched_transaction: Optional[dict] = None  # 匹配的交易摘要 {id, agent_name, customer_name, amount, currency}
+    pinyin_name: Optional[str] = None  # 中文名的拼音（供 bot 去重比對）
 
     class Config:
         from_attributes = True

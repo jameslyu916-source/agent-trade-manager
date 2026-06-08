@@ -110,6 +110,11 @@ async def _resolve_conversion(payment_info: dict, prev_text: str | None, to_curr
     if not conv:
         return None
 
+    # 若公式無貨幣標籤，用付款信息的幣種補
+    result_currency = conv.get("result_currency") or to_currency
+    if not result_currency:
+        return None
+
     # 檢查數學等式: source_amount / rate ≈ result_amount
     source_amount = conv["source_amount"]
     autocorrected = False
@@ -149,7 +154,7 @@ async def _resolve_conversion(payment_info: dict, prev_text: str | None, to_curr
         preset_rates = {}
 
     # 遍歷所有可能的 (source, target) 組合，找最接近的參考匯率
-    candidates = _EXCHANGE_OPTIONS.get(conv["result_currency"], [])
+    candidates = _EXCHANGE_OPTIONS.get(result_currency, [])
     best_match = None  # (from, reference_rate, rate_source, pct_diff)
 
     for from_cur, label in candidates:
@@ -157,11 +162,11 @@ async def _resolve_conversion(payment_info: dict, prev_text: str | None, to_curr
         reference_rate = None
         rate_source = None
 
-        if (from_cur, conv["result_currency"]) in daily_rate_map:
-            reference_rate = daily_rate_map[(from_cur, conv["result_currency"])]
+        if (from_cur, result_currency) in daily_rate_map:
+            reference_rate = daily_rate_map[(from_cur, result_currency)]
             rate_source = "daily"
-        elif (from_cur, conv["result_currency"]) in yesterday_rate_map:
-            reference_rate = yesterday_rate_map[(from_cur, conv["result_currency"])]
+        elif (from_cur, result_currency) in yesterday_rate_map:
+            reference_rate = yesterday_rate_map[(from_cur, result_currency)]
             rate_source = "previous_day"
         elif pair_key in preset_rates:
             reference_rate = preset_rates[pair_key]

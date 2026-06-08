@@ -431,7 +431,7 @@ function parsePaymentInfo(messageText) {
 //  换汇公式行解析器
 // ═══════════════════════════════════════════
 
-const CONVERSION_LINE_RE = /^([\d,]+(?:\.\d+)?(?:w|万|萬)?)\s*\/\s*([\d.]+)\s*=\s*([\d,]+(?:\.\d+)?(?:w|万|萬)?)\s*(USD|HKD|CNY|RMB)\s*$/i;
+const CONVERSION_LINE_RE = /^([\d,]+(?:\.\d+)?(?:w|万|萬)?)\s*\/\s*([\d.]+)\s*=\s*([\d,]+(?:\.\d+)?(?:w|万|萬)?)(?:\s*(USD|HKD|CNY|RMB))?\s*$/i;
 
 function parseConversionLine(text) {
   if (!text || !text.trim()) return null;
@@ -442,8 +442,9 @@ function parseConversionLine(text) {
   const sourceStr = m[1].replace(/,/g, "");
   const rate = parseFloat(m[2]);
   const resultStr = m[3].replace(/,/g, "");
-  let resultCurrency = m[4].toUpperCase();
+  let resultCurrency = (m[4] || "").toUpperCase();
   if (resultCurrency === "RMB") resultCurrency = "CNY";
+  if (!resultCurrency) resultCurrency = null;
 
   const sourceHasWan = /[w万萬]$/.test(sourceStr);
   let sourceAmount = parseFloat(sourceStr.replace(/[w万萬]$/, ""));

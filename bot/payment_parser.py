@@ -496,7 +496,7 @@ def parse_payment_info(message_text: str) -> dict | None:
 # ═══════════════════════════════════════════
 
 _CONVERSION_LINE_RE = re.compile(
-    r'^([\d,]+(?:\.\d+)?(?:w|万|萬)?)\s*/\s*([\d.]+)\s*=\s*([\d,]+(?:\.\d+)?(?:w|万|萬)?)\s*(USD|HKD|CNY|RMB)\s*$',
+    r'^([\d,]+(?:\.\d+)?(?:w|万|萬)?)\s*/\s*([\d.]+)\s*=\s*([\d,]+(?:\.\d+)?(?:w|万|萬)?)(?:\s*(USD|HKD|CNY|RMB))?\s*$',
     re.IGNORECASE
 )
 
@@ -513,9 +513,11 @@ def parse_conversion_line(text: str) -> dict | None:
     source_str = m.group(1).replace(",", "")
     rate = float(m.group(2))
     result_str = m.group(3).replace(",", "")
-    result_currency = m.group(4).upper()
+    result_currency = (m.group(4) or "").upper()
     if result_currency == "RMB":
         result_currency = "CNY"
+    if not result_currency:
+        result_currency = None
 
     source_has_wan = source_str.endswith(("w", "万", "萬"))
     source_amount = float(source_str.rstrip("w万萬"))

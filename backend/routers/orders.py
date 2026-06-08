@@ -47,6 +47,10 @@ async def list_orders(
     for order in orders:
         d = schemas.CustomerOrderResponse.model_validate(order)
         d.matched_transaction = crud._build_matched_transaction_summary(db, order)
+        # 附上拼音名供 bot 去重比對
+        pinyin = crud._to_pinyin(order.customer_name) if order.customer_name else None
+        if pinyin:
+            d.pinyin_name = pinyin
         result.append(d)
     return result
 

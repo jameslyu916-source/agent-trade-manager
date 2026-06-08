@@ -539,7 +539,7 @@ function parseCancellation(messageText) {
   const remainder = text.slice(matchedKw.length).trim();
 
   // "取消" 單獨使用 → 取消上一筆
-  if (!remainder || ["上一筆", "上一笔", "上一单", "last", "上一條", "上一"].includes(remainder)) {
+  if (!remainder || ["上一筆", "上一笔", "上一单", "上一單", "last", "上一條", "上一"].includes(remainder)) {
     return { action: "cancel", target: "last" };
   }
 
@@ -797,34 +797,52 @@ client.on("message", async (msg) => {
   // ── @mention 客戶訂單檢測（群組消息）──
   // WhatsApp body 中 @mention 顯示為 @phone_number，需用 mentionedIds 判斷
   if (msg.from.endsWith("@g.us") && msg.mentionedIds && msg.mentionedIds.length > 0) {
-    // 移除所有 @mention（格式為 @phone_number），再匹配訂單格式
+    // 移除所有 @mention（格式為 @phone_number），再逐行匹配訂單
     const afterMention = msgText.replace(/@\S+/g, "").trim();
-    const orderMatch = afterMention.match(/^(.+?)\s+(?:需要|需|要)?\s*(?:[￥¥$€£])?(\d[\d,]*(?:w|万|萬)?)\s*$/i);
-    if (orderMatch) {
-      const customerName = orderMatch[1].trim();
-      const amountStr = orderMatch[2];
-      // 解析金額：去逗號，處理 w/万/萬 後綴
+    const lines = afterMention.split(/\r?\n/);
+    const ORDER_LINE_RE = /^(.+?)\s+(?:需要(?:戶口|户口)?|需|要)?\s*(?:[￥¥$€£])?(\d[\d,]*(?:w|万|萬)?)/i;
+    const orders = [];
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) continue;
+      const m = line.match(ORDER_LINE_RE);
+      if (!m) continue;
+      const customerName = m[1].trim();
+      const amountStr = m[2];
       let amount = parseInt(amountStr.replace(/,/g, ""), 10);
       if (/[w万萬]$/i.test(amountStr)) {
         amount = amount * 10000;
       }
       if (amount > 0 && customerName.length >= 1) {
-        console.log(`📋 檢測到客戶訂單：${customerName} ¥${amount.toLocaleString()}`);
+        orders.push({ customerName, amount });
+      }
+    }
+
+    if (orders.length > 0) {
+      console.log(`📋 檢測到 ${orders.length} 筆客戶訂單`);
+      const results = [];
+      for (const o of orders) {
         try {
           const order = await createCustomerOrder({
-            customer_name: customerName,
-            amount: amount,
+            customer_name: o.customerName,
+            amount: o.amount,
             currency: "CNY",
             group_id: msg.from,
             message_timestamp: new Date().toISOString(),
             raw_message: msgText
           });
-          if (order && WA_SEND_REPLY) {
-            await msg.reply(`✅ 已記錄客戶訂單：${customerName} ¥${amount.toLocaleString()}`);
+          if (order) {
+            results.push(`• ${o.customerName} ¥${o.amount.toLocaleString()}`);
+            console.log(`   ✅ ${o.customerName} ¥${o.amount.toLocaleString()}`);
           }
         } catch (e) {
-          console.error("   ❌ 記錄客戶訂單失敗：", e.message);
+          console.error(`   ❌ ${o.customerName} 記錄失敗：`, e.message);
         }
+      }
+      if (results.length > 0 && WA_SEND_REPLY) {
+        const prefix = results.length === 1 ? "✅ 已記錄客戶訂單：" : `✅ 已記錄 ${results.length} 筆客戶訂單：`;
+        await msg.reply(prefix + "\n" + results.join("\n"));
       }
       return;
     }

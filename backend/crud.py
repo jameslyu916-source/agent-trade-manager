@@ -620,6 +620,7 @@ def match_order(db: Session, order_id: int, transaction_id: int):
     if not tx:
         return None
     order.matched_transaction_id = transaction_id
+    order.status = "processed"
     db.commit()
     db.refresh(order)
     return order
@@ -631,6 +632,7 @@ def unmatch_order(db: Session, order_id: int):
     if not order:
         return None
     order.matched_transaction_id = None
+    order.status = None
     db.commit()
     db.refresh(order)
     return order
@@ -686,6 +688,10 @@ def _auto_match_order(db: Session, transaction: Transaction):
 
     tx_chinese = extract_chinese(tx_customer_name)
     tx_chinese_full = extract_chinese(account_name)
+
+    # 交易方沒有中文名稱則跳過（避免空字串匹配所有訂單）
+    if not tx_chinese and not tx_chinese_full:
+        return
 
     # 查詢所有未匹配的訂單（跨天累積）
     unmatched = get_unmatched_orders(db)

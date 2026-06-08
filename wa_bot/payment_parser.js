@@ -88,6 +88,7 @@ const FIELD_PATTERNS = {
     /Branch\s*Address/i,
     /開戶行\s*地址/i,
     /开户行\s*地址/i,
+    /分行\s*/i,
     /银行\s*(?:地址|位址)/i,
   ],
   bank_code: [
@@ -430,7 +431,7 @@ function parsePaymentInfo(messageText) {
 //  换汇公式行解析器
 // ═══════════════════════════════════════════
 
-const CONVERSION_LINE_RE = /^([\d,]+(?:\.\d+)?(?:w|万|萬)?)\s*\/\s*([\d.]+)\s*=\s*([\d,]+(?:\.\d+)?)\s*(USD|HKD|CNY|RMB)\s*$/i;
+const CONVERSION_LINE_RE = /^([\d,]+(?:\.\d+)?(?:w|万|萬)?)\s*\/\s*([\d.]+)\s*=\s*([\d,]+(?:\.\d+)?(?:w|万|萬)?)\s*(USD|HKD|CNY|RMB)\s*$/i;
 
 function parseConversionLine(text) {
   if (!text || !text.trim()) return null;
@@ -448,7 +449,9 @@ function parseConversionLine(text) {
   let sourceAmount = parseFloat(sourceStr.replace(/[w万萬]$/, ""));
   if (sourceHasWan) sourceAmount *= 10000;
 
-  const resultAmount = parseInt(resultStr.replace(/,/g, ""), 10);
+  const resultHasWan = /[w万萬]$/.test(resultStr);
+  let resultAmount = parseInt(resultStr.replace(/[w万萬]$/, ""), 10);
+  if (resultHasWan) resultAmount *= 10000;
 
   return {
     source_amount: sourceAmount,

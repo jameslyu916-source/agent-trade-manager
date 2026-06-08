@@ -97,6 +97,7 @@ FIELD_PATTERNS = {
         r"開戶行\s*地址",
         r"开户行\s*地址",
         r"银行\s*(?:地址|位址)",
+        r"分行\s*",
     ],
     "bank_code": [
         r"銀行\s*(?:代[碼码號号]|Code|CODE|code)\s*",
@@ -495,7 +496,7 @@ def parse_payment_info(message_text: str) -> dict | None:
 # ═══════════════════════════════════════════
 
 _CONVERSION_LINE_RE = re.compile(
-    r'^([\d,]+(?:\.\d+)?(?:w|万|萬)?)\s*/\s*([\d.]+)\s*=\s*([\d,]+(?:\.\d+)?)\s*(USD|HKD|CNY|RMB)\s*$',
+    r'^([\d,]+(?:\.\d+)?(?:w|万|萬)?)\s*/\s*([\d.]+)\s*=\s*([\d,]+(?:\.\d+)?(?:w|万|萬)?)\s*(USD|HKD|CNY|RMB)\s*$',
     re.IGNORECASE
 )
 
@@ -521,7 +522,10 @@ def parse_conversion_line(text: str) -> dict | None:
     if source_has_wan:
         source_amount *= 10000
 
-    result_amount = int(float(result_str))
+    result_has_wan = result_str.endswith(("w", "万", "萬"))
+    result_amount = int(float(result_str.rstrip("w万萬")))
+    if result_has_wan:
+        result_amount *= 10000
 
     return {
         "source_amount": source_amount,

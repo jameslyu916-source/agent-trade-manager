@@ -214,7 +214,7 @@ def parse_cancellation(message_text: str) -> dict | None:
     remainder = text[len(matched_kw):].strip()
 
     # "取消" 單獨使用 → 取消上一筆
-    if not remainder or remainder in ("上一筆", "上一笔", "上一单", "last", "上一條", "上一"):
+    if not remainder or remainder in ("上一筆", "上一笔", "上一单", "上一單", "last", "上一條", "上一"):
         return {"action": "cancel", "target": "last"}
 
     # "取消所有" 或 "取消全部"

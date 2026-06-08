@@ -612,6 +612,17 @@ async function createCustomerOrder(data) {
   }
 }
 
+async function getDailyOrders(date) {
+  try {
+    const res = await axios.get(`${API_BASE_URL}/orders/daily?date=${encodeURIComponent(date)}`, { headers: getHeaders() });
+    return res.data || [];
+  } catch (err) {
+    if (err.response?.status === 401) { await login(); return getDailyOrders(date); }
+    console.error("❌ 獲取當日訂單失敗：", err.response?.data || err.message);
+    return [];
+  }
+}
+
 async function getUnmatchedOrders() {
   try {
     const res = await axios.get(`${API_BASE_URL}/orders/unmatched`, { headers: getHeaders() });
@@ -801,7 +812,7 @@ client.on("message", async (msg) => {
     const afterMention = msgText.replace(/@\S+/g, "").trim();
     const lines = afterMention.split(/\r?\n/);
     const ORDER_LINE_RE = /^(.+?)\s+(?:需要(?:戶口|户口)?|需|要)?\s*(?:[￥¥$€£])?(\d[\d,]*(?:w|万|萬)?)/i;
-    const orders = [];
+    const parsedOrders = [];
 
     for (const rawLine of lines) {
       const line = rawLine.trim();
@@ -815,14 +826,26 @@ client.on("message", async (msg) => {
         amount = amount * 10000;
       }
       if (amount > 0 && customerName.length >= 1) {
-        orders.push({ customerName, amount });
+        parsedOrders.push({ customerName, amount });
       }
     }
 
-    if (orders.length > 0) {
-      console.log(`📋 檢測到 ${orders.length} 筆客戶訂單`);
+    if (parsedOrders.length > 0) {
+      // 查詢當天已有訂單，建立去重 set
+      const today = new Date().toISOString().split("T")[0];
+      const todayOrders = await getDailyOrders(today);
+      const existingSet = new Set(todayOrders.map(o => `${o.customer_name}:${o.amount}`));
+
+      console.log(`📋 檢測到 ${parsedOrders.length} 筆客戶訂單`);
       const results = [];
-      for (const o of orders) {
+      let skipped = 0;
+      for (const o of parsedOrders) {
+        const key = `${o.customerName}:${o.amount}`;
+        if (existingSet.has(key)) {
+          console.log(`   ⏭️ 跳過重複：${o.customerName} ¥${o.amount.toLocaleString()}`);
+          skipped++;
+          continue;
+        }
         try {
           const order = await createCustomerOrder({
             customer_name: o.customerName,
@@ -842,7 +865,10 @@ client.on("message", async (msg) => {
       }
       if (results.length > 0 && WA_SEND_REPLY) {
         const prefix = results.length === 1 ? "✅ 已記錄客戶訂單：" : `✅ 已記錄 ${results.length} 筆客戶訂單：`;
-        await msg.reply(prefix + "\n" + results.join("\n"));
+        const suffix = skipped > 0 ? `\n（跳過 ${skipped} 筆重複）` : "";
+        await msg.reply(prefix + "\n" + results.join("\n") + suffix);
+      } else if (results.length === 0 && skipped > 0 && WA_SEND_REPLY) {
+        await msg.reply(`⚠️ ${skipped} 筆訂單皆為當天重複，未新增記錄`);
       }
       return;
     }

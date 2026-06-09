@@ -721,6 +721,12 @@ def _auto_match_order(db: Session, transaction: Transaction):
             # 雙向中文包含檢查
             if order_chinese in tx_chinese_full or tx_chinese_full in order_chinese or order_chinese in tx_chinese or tx_chinese in order_chinese:
                 candidates.append(order)
+            else:
+                # 簡繁體差異 → Pinyin fallback
+                order_pinyin = _to_pinyin(order_chinese)
+                tx_pinyin = _to_pinyin(tx_chinese_full or tx_chinese)
+                if order_pinyin and tx_pinyin and order_pinyin.replace(" ", "").lower() == tx_pinyin.replace(" ", "").lower():
+                    candidates.append(order)
         elif not tx_has_chinese and not order_has_chinese:
             # 雙方皆無中文 → 大小寫不敏感原文比對
             if order_name.lower() == tx_customer_name.lower() or order_name.lower() == account_name.lower():
@@ -743,6 +749,30 @@ def _auto_match_order(db: Session, transaction: Transaction):
         candidates[0].status = "processed"
         db.commit()
         print(f"🔗 自動匹配訂單 #{candidates[0].id}「{candidates[0].customer_name}」→ 交易 #{transaction.id}")
+
+
+def auto_match_today(db: Session):
+    """手動觸發：對當天所有未匹配的交易嘗試自動匹配訂單"""
+    today = datetime.now(HK_TZ).strftime("%Y-%m-%d")
+    start_utc, end_utc = _get_utc_range_for_hk_date(today)
+    today_txs = db.query(Transaction).filter(
+        Transaction.timestamp >= start_utc,
+        Transaction.timestamp < end_utc
+    ).all()
+    matched_count = 0
+    for tx in today_txs:
+        existing = db.query(CustomerOrder).filter(
+            CustomerOrder.matched_transaction_id == tx.id
+        ).first()
+        if existing:
+            continue
+        # 記錄匹配前的狀態
+        orders_before = get_unmatched_orders(db)
+        _auto_match_order(db, tx)
+        orders_after = get_unmatched_orders(db)
+        if len(orders_after) < len(orders_before):
+            matched_count += 1
+    return {"matched": matched_count}
 
 
 def _build_matched_order_summary(db: Session, transaction_id: int) -> dict | None:

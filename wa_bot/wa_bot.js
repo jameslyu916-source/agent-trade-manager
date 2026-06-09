@@ -815,7 +815,12 @@ client.on("message", async (msg) => {
     // 移除所有 @mention（格式為 @phone_number），再逐行匹配訂單
     const afterMention = msgText.replace(/@\S+/g, "").trim();
     const lines = afterMention.split(/\r?\n/);
-    const ORDER_LINE_RE = /^(.+?)\s+(?:需要(?:戶口|户口)?|需|要)?\s*(?:[￥¥$€£])?(\d[\d,]*(?:w|万|萬)?)/i;
+    const ORDER_LINE_RE = /^(.+?)\s+(?:需要(?:戶口|户口)?|需|要|今日兌換|今日兑换|兌換|兑换)?\s*(?:[￥¥$€£])?(\d[\d,]*(?:-\d+)?(?:w|万|萬)?)\s*(美金|美元|USD|港幣|港元|港币|HKD|人民幣|人民币|rmb|RMB|CNY)?/i;
+    const CURRENCY_MAP = {
+      "美金": "USD", "美元": "USD", "usd": "USD",
+      "港幣": "HKD", "港元": "HKD", "港币": "HKD", "hkd": "HKD",
+      "人民幣": "CNY", "人民币": "CNY", "rmb": "CNY", "cny": "CNY",
+    };
     const parsedOrders = [];
 
     for (const rawLine of lines) {
@@ -825,12 +830,21 @@ client.on("message", async (msg) => {
       if (!m) continue;
       const customerName = m[1].trim();
       const amountStr = m[2];
-      let amount = parseInt(amountStr.replace(/,/g, ""), 10);
-      if (/[w万萬]$/i.test(amountStr)) {
+      // 區間取第一值：70-71万 → strip 万 → split → 再乘回去
+      const hasWan = /[w万萬]$/i.test(amountStr);
+      const amountClean = amountStr.replace(/[w万萬]$/i, "").split("-")[0].replace(/,/g, "");
+      let amount = parseInt(amountClean, 10);
+      if (hasWan) {
         amount = amount * 10000;
       }
+      // 幣種檢測
+      let currency = "CNY";
+      if (m[3]) {
+        const c = CURRENCY_MAP[m[3].toLowerCase()];
+        if (c) currency = c;
+      }
       if (amount > 0 && customerName.length >= 1) {
-        parsedOrders.push({ customerName, amount });
+        parsedOrders.push({ customerName, amount, currency });
       }
     }
 
@@ -844,13 +858,15 @@ client.on("message", async (msg) => {
         if (o.pinyin_name) existingSet.add(`${o.pinyin_name}:${o.amount}`);
       }
 
+      const CURRENCY_SYMBOL = { USD: "$", HKD: "HK$", CNY: "¥" };
       console.log(`📋 檢測到 ${parsedOrders.length} 筆客戶訂單`);
       const results = [];
       let skipped = 0;
       for (const o of parsedOrders) {
-        const key = `${o.customerName}:${o.amount}`;
+        const key = `${o.customerName}:${o.amount}:${o.currency}`;
         if (existingSet.has(key)) {
-          console.log(`   ⏭️ 跳過重複：${o.customerName} ¥${o.amount.toLocaleString()}`);
+          const sym = CURRENCY_SYMBOL[o.currency] || "¥";
+          console.log(`   ⏭️ 跳過重複：${o.customerName} ${sym}${o.amount.toLocaleString()}`);
           skipped++;
           continue;
         }
@@ -858,14 +874,15 @@ client.on("message", async (msg) => {
           const order = await createCustomerOrder({
             customer_name: o.customerName,
             amount: o.amount,
-            currency: "CNY",
+            currency: o.currency,
             group_id: msg.from,
             message_timestamp: new Date().toISOString(),
             raw_message: msgText
           });
           if (order) {
-            results.push(`• ${o.customerName} ¥${o.amount.toLocaleString()}`);
-            console.log(`   ✅ ${o.customerName} ¥${o.amount.toLocaleString()}`);
+            const sym = CURRENCY_SYMBOL[o.currency] || "¥";
+            results.push(`• ${o.customerName} ${sym}${o.amount.toLocaleString()}`);
+            console.log(`   ✅ ${o.customerName} ${sym}${o.amount.toLocaleString()}`);
           }
         } catch (e) {
           console.error(`   ❌ ${o.customerName} 記錄失敗：`, e.message);

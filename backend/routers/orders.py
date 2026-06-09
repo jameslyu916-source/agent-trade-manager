@@ -184,3 +184,13 @@ async def record_reminder_sent(
     d = schemas.CustomerOrderResponse.model_validate(order)
     d.matched_transaction = crud._build_matched_transaction_summary(db, order)
     return d
+
+
+@router.post("/auto-match")
+async def auto_match(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    """手動觸發當天未匹配交易與訂單的自動匹配"""
+    result = crud.auto_match_today(db)
+    return result

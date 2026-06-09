@@ -475,9 +475,10 @@
         function renderMatchedOrder(tx) {
             if (tx.matched_order) {
                 const mo = tx.matched_order;
+                const cs = { USD: "$", HKD: "HK$", CNY: "¥" }[mo.currency] || "¥";
                 return `<span class="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded text-xs font-medium" title="已匹配訂單 #${mo.id}">
                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                    ${escapeHtml(mo.customer_name)} ¥${mo.amount.toLocaleString()}
+                    ${escapeHtml(mo.customer_name)} ${cs}${mo.amount.toLocaleString()}
                 </span>`;
             }
             return '<span class="text-slate-600">-</span>';
@@ -702,7 +703,8 @@
 
             if (tx.matched_order) {
                 const mo = tx.matched_order;
-                statusEl.innerHTML = `<span class="text-emerald-400">已匹配：</span><span class="text-slate-200">${escapeHtml(mo.customer_name)} ¥${mo.amount.toLocaleString()}</span>`;
+                const cs = { USD: "$", HKD: "HK$", CNY: "¥" }[mo.currency] || "¥";
+                statusEl.innerHTML = `<span class="text-emerald-400">已匹配：</span><span class="text-slate-200">${escapeHtml(mo.customer_name)} ${cs}${mo.amount.toLocaleString()}</span>`;
                 actionsEl.style.display = "none";
                 unmatchBtn.style.display = "inline-block";
                 unmatchBtn.setAttribute("data-order-id", mo.id);

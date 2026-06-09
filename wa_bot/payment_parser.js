@@ -431,14 +431,18 @@ function parsePaymentInfo(messageText) {
 //  换汇公式行解析器
 // ═══════════════════════════════════════════
 
-const CONVERSION_LINE_RE = /^([\d,]+(?:\.\d+)?(?:w|万|萬)?)\s*\/\s*([\d.]+)\s*=\s*([\d,]+(?:\.\d+)?(?:w|万|萬)?)(?:\s*(USD|HKD|CNY|RMB))?\s*$/i;
+// 支援 / 和 * 兩種運算符
+const CONVERSION_LINE_RE = /^([\d,]+(?:\.\d+)?(?:w|万|萬)?)\s*[\/\*]\s*([\d.]+)\s*=\s*([\d,]+(?:\.\d+)?(?:w|万|萬)?)(?:\s*(USD|HKD|CNY|RMB))?\s*$/i;
 
-function parseConversionLine(text) {
-  if (!text || !text.trim()) return null;
+// 不加 anchor 的版本，用於在引用消息/長文本中搜尋公式
+const CONVERSION_SEARCH_RE = /([\d,]+(?:\.\d+)?(?:w|万|萬)?)\s*[\/\*]\s*([\d.]+)\s*=\s*([\d,]+(?:\.\d+)?(?:w|万|萬)?)(?:\s*(USD|HKD|CNY|RMB))?\s*/gi;
 
-  const m = text.trim().match(CONVERSION_LINE_RE);
-  if (!m) return null;
+// 去除貨幣裝飾符號（emoji 和獨立貨幣符號，避免干擾數字捕獲）
+function _stripDecorators(text) {
+  return text.replace(/\p{Extended_Pictographic}/gu, "").replace(/[\$£¥€￥]/g, "");
+}
 
+function _parseMatch(m) {
   const sourceStr = m[1].replace(/,/g, "");
   const rate = parseFloat(m[2]);
   const resultStr = m[3].replace(/,/g, "");
@@ -454,12 +458,37 @@ function parseConversionLine(text) {
   let resultAmount = parseInt(resultStr.replace(/[w万萬]$/, ""), 10);
   if (resultHasWan) resultAmount *= 10000;
 
+  const operator = m[0].includes("*") ? "*" : "/";
+
   return {
     source_amount: sourceAmount,
     rate: rate,
     result_amount: resultAmount,
     result_currency: resultCurrency,
+    operator: operator,
   };
 }
 
-module.exports = { parsePaymentInfo, parseConversionLine };
+function parseConversionLine(text) {
+  if (!text || !text.trim()) return null;
+
+  const cleaned = _stripDecorators(text.trim());
+  const m = cleaned.match(CONVERSION_LINE_RE);
+  if (!m) return null;
+
+  return _parseMatch(m);
+}
+
+// 在任意文本中搜尋換匯公式（用於引用消息、長文本等場景）
+function findConversionInText(text) {
+  if (!text || !text.trim()) return null;
+
+  const cleaned = _stripDecorators(text);
+  const m = CONVERSION_SEARCH_RE.exec(cleaned);
+  CONVERSION_SEARCH_RE.lastIndex = 0;  // reset
+  if (!m) return null;
+
+  return _parseMatch(m);
+}
+
+module.exports = { parsePaymentInfo, parseConversionLine, findConversionInText };

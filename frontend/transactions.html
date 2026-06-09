@@ -458,8 +458,9 @@
             if (conv) {
                 const srcAmt = Math.round(conv.source_amount).toLocaleString("zh-HK");
                 const srcCur = conv.source_currency || "CNY";
+                const opSymbol = conv.operator === "*" ? " × " : " / ";
                 return `<div class="flex flex-col items-center gap-0.5">
-                    <span class="text-[10px] text-amber-400 font-medium whitespace-nowrap">${srcAmt} ${srcCur} / ${conv.rate}</span>
+                    <span class="text-[10px] text-amber-400 font-medium whitespace-nowrap">${srcAmt} ${srcCur}${opSymbol}${conv.rate}</span>
                     <span class="inline-flex items-center gap-1 bg-gradient-to-r from-slate-800/80 to-slate-800/40 px-2 py-0.5 rounded-lg border border-slate-700/50">
                         ${renderCurrencyIcon(srcCur)}<span class="text-[10px] font-medium text-slate-400">→</span>${renderCurrencyIcon(toCur)}
                     </span>

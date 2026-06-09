@@ -2,7 +2,7 @@
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 const axios = require("axios");
-const { parsePaymentInfo, parseConversionLine } = require("./payment_parser");
+const { parsePaymentInfo, parseConversionLine, findConversionInText } = require("./payment_parser");
 require("dotenv").config();
 
 // ==================== 配置 ====================
@@ -68,10 +68,24 @@ const EXCHANGE_OPTIONS = {
   CNY: [{ from: "USD", label: "美金 → 人民幣" }, { from: "HKD", label: "港幣 → 人民幣" }, { from: "USDT", label: "USDT → 人民幣" }],
 };
 
-// 暫存等待代理選擇兌換方式的付款資訊: senderId -> {paymentInfo, agentName, customerName, toCurrency, chat, expireAt}
+// 暫存等待代理選擇兌換方式的付款資訊: senderId -> {paymentInfo, agentName, customerName, toCurrency, state, ...}
 const pendingExchanges = new Map();
-// 每個聊天的最新消息: chatId -> 上一條消息文本
-const lastMessages = new Map();
+// 公式緩衝區：每個聊天保留最近 20 條換匯公式，用於跨消息查找
+const formulaBuffer = new Map();  // chatId -> [{text, timestamp}]
+const MAX_FORMULA_BUFFER = 20;
+
+// 從緩衝區中查找與付款金額匹配的換匯公式（從新到舊）
+function findFormulaInBuffer(chatId, paymentAmount) {
+  const buffer = formulaBuffer.get(chatId);
+  if (!buffer || buffer.length === 0) return null;
+  for (let i = buffer.length - 1; i >= 0; i--) {
+    const conv = parseConversionLine(buffer[i].text);
+    if (conv && amountsMatch(conv.result_amount, paymentAmount)) {
+      return buffer[i].text;
+    }
+  }
+  return null;
+}
 
 // ── 換匯公式自動推斷輔助函數 ──
 function amountsMatch(conversionResult, paymentAmount) {
@@ -100,15 +114,20 @@ async function resolveConversion(paymentInfo, prevText, toCurrency) {
   const resultCurrency = conv.result_currency || toCurrency;
   if (!resultCurrency) return null;
 
-  // 檢查數學等式: source_amount / rate ≈ result_amount
+  // 檢查數學等式（根據運算符選擇乘法或除法）
   let sourceAmount = conv.source_amount;
   let autocorrected = false;
-  const expectedResult = conv.rate !== 0 ? sourceAmount / conv.rate : 0;
-  if (!amountsMatch(Math.round(expectedResult), conv.result_amount)) {
+  const isMultiply = conv.operator === "*";
+  const expectedResult = isMultiply
+    ? Math.round(sourceAmount * conv.rate)
+    : conv.rate !== 0 ? Math.round(sourceAmount / conv.rate) : 0;
+  if (!amountsMatch(expectedResult, conv.result_amount)) {
     // 嘗試補全萬位
     const correctedSource = sourceAmount * 10000;
-    const correctedResult = conv.rate !== 0 ? correctedSource / conv.rate : 0;
-    if (amountsMatch(Math.round(correctedResult), conv.result_amount)) {
+    const correctedResult = isMultiply
+      ? Math.round(correctedSource * conv.rate)
+      : conv.rate !== 0 ? Math.round(correctedSource / conv.rate) : 0;
+    if (amountsMatch(correctedResult, conv.result_amount)) {
       sourceAmount = correctedSource;
       autocorrected = true;
     } else {
@@ -176,6 +195,7 @@ async function resolveConversion(paymentInfo, prevText, toCurrency) {
       matched: true,
       daily_rate: bestMatch.referenceRate,
       rate_source: bestMatch.rateSource,
+      operator: conv.operator || "/",
     };
     if (autocorrected) {
       conversionInfo.autocorrected = true;
@@ -204,6 +224,7 @@ async function resolveConversion(paymentInfo, prevText, toCurrency) {
     rate: conv.rate,
     source_currency: "CNY",
     matched: false,
+    operator: conv.operator || "/",
   };
   if (autocorrected) {
     conversionInfo.autocorrected = true;
@@ -211,11 +232,12 @@ async function resolveConversion(paymentInfo, prevText, toCurrency) {
   const wanNote = autocorrected
     ? `（已自動補全萬位 ${conv.source_amount.toLocaleString()}→${sourceAmount.toLocaleString()}）`
     : "";
+  const opSymbol = conv.operator === "*" ? " × " : " / ";
   return {
     auto_inferred: false,
     from_currency: null,
     conversion: conversionInfo,
-    note: `📐 檢測到換匯公式 ${sourceAmount.toLocaleString()} / ${conv.rate} = ${conv.result_amount.toLocaleString()} ${conv.result_currency}，最佳匹配 ${bestPairLabel} (${bestDailyStr}) 超過 3% 閾值，請手動選擇${wanNote}`,
+    note: `📐 檢測到換匯公式 ${sourceAmount.toLocaleString()}${opSymbol}${conv.rate} = ${conv.result_amount.toLocaleString()} ${conv.result_currency}，最佳匹配 ${bestPairLabel} (${bestDailyStr}) 超過 3% 閾值，請手動選擇${wanNote}`,
   };
 }
 
@@ -974,9 +996,15 @@ client.on("message", async (msg) => {
   const senderId = msg.author;
   const senderDisplayName = (msg._data && msg._data.notifyName) || senderId;
 
-  // ── 讀取並更新聊天消息歷史 ──
-  const prevText = lastMessages.get(msg.from) || null;
-  lastMessages.set(msg.from, text);
+  // ── 更新公式緩衝區（只保留換匯公式） ──
+  const prevText = text;  // 向後兼容：上一條消息文本
+  const parsedFormula = parseConversionLine(text);
+  if (parsedFormula) {
+    if (!formulaBuffer.has(msg.from)) formulaBuffer.set(msg.from, []);
+    const buffer = formulaBuffer.get(msg.from);
+    buffer.push({ text, timestamp: Date.now() });
+    if (buffer.length > MAX_FORMULA_BUFFER) buffer.shift();
+  }
 
   // ── 換匯公式後發匹配：若當前消息是換匯公式，檢查是否有待處理的兌換 ──
   const trailingConv = parseConversionLine(text);
@@ -1043,49 +1071,122 @@ client.on("message", async (msg) => {
   // ── 檢查是否有待處理的兌換方式選擇 ──
   const pending = pendingExchanges.get(senderId);
   if (pending) {
-    const num = parseInt(text.trim());
-    const options = EXCHANGE_OPTIONS[pending.toCurrency] || [];
-    pendingExchanges.delete(senderId);
+    // 強制檢查過期
+    if (Date.now() > pending.expireAt) {
+      pendingExchanges.delete(senderId);
+      if (WA_SEND_REPLY) {
+        await msg.reply(`⏰ 選擇已過期：${pending.customerName} ${pending.paymentInfo.amount.toLocaleString()} ${pending.toCurrency}`);
+      }
+      return;
+    }
 
-    if (isNaN(num) || num < 1 || num > options.length) {
-      // 取消或無效輸入
+    // 檢查是否為顯式取消指令
+    const cancelKeywords = ["取消", "撤銷", "撤销", "undo", "cancel"];
+    const trimmedText = text.trim().toLowerCase();
+    if (cancelKeywords.some(k => trimmedText.startsWith(k))) {
+      pendingExchanges.delete(senderId);
       if (WA_SEND_REPLY) {
         await msg.reply(`❌ 已取消記錄：${pending.customerName} ${pending.paymentInfo.amount.toLocaleString()} ${pending.toCurrency}`);
       }
       return;
     }
 
-    const chosen = options[num - 1];
+    const options = EXCHANGE_OPTIONS[pending.toCurrency] || [];
 
-    // 注入換匯信息到 payment_details
-    if (pending.conversionInfo) {
-      const pd = pending.paymentInfo.payment_details_dict || {};
-      pd.conversion = pending.conversionInfo;
-      pending.paymentInfo.payment_details = JSON.stringify(pd);
+    if (pending.state === "awaiting_rate") {
+      // Step 2: 等待用戶輸入匯率
+      const rateNum = parseFloat(trimmedText);
+      if (isNaN(rateNum) || rateNum < 0) {
+        if (WA_SEND_REPLY) {
+          await msg.reply("⚠️ 請輸入有效的賣出匯率（如 7.08），或回覆 0 跳過（不計算盈利）");
+        }
+        return;  // pending 保持存活
+      }
+
+      pendingExchanges.delete(senderId);
+
+      if (rateNum === 0) {
+        // 跳過匯率，不計算盈利
+        const pd = pending.paymentInfo.payment_details_dict || {};
+        pd.conversion = {
+          source_amount: null,
+          rate: null,
+          source_currency: pending.selectedFrom,
+          rate_source: "manual_skip",
+        };
+        pending.paymentInfo.payment_details = JSON.stringify(pd);
+
+        const success = await createTransaction({
+          agent_name: pending.agentName,
+          customer_name: pending.customerName,
+          amount: pending.paymentInfo.amount,
+          currency: pending.paymentInfo.currency,
+          raw_message: pending.paymentInfo.raw_message,
+          source: "whatsapp",
+          payment_details: pending.paymentInfo.payment_details,
+          from_currency: pending.selectedFrom,
+          to_currency: pending.toCurrency,
+          remarks: pending.paymentInfo.remarks || "",
+          insured_person: pending.paymentInfo.insured_person || ""
+        });
+
+        if (success && WA_SEND_REPLY) {
+          await msg.reply(`✅ 已紀錄收款：${pending.customerName}\n兌換：${pending.selectedFrom} → ${pending.toCurrency}\n金額：${pending.paymentInfo.amount.toLocaleString()} ${pending.toCurrency}\n⚠️ 未記錄匯率，不計算盈利`);
+        }
+      } else {
+        // 計算來源金額：result_amount * rate = source_amount
+        const sourceAmount = Math.round(pending.paymentInfo.amount * rateNum);
+        const pd = pending.paymentInfo.payment_details_dict || {};
+        pd.conversion = {
+          source_amount: sourceAmount,
+          rate: rateNum,
+          source_currency: pending.selectedFrom,
+          rate_source: "manual",
+        };
+        pending.paymentInfo.payment_details = JSON.stringify(pd);
+
+        const success = await createTransaction({
+          agent_name: pending.agentName,
+          customer_name: pending.customerName,
+          amount: pending.paymentInfo.amount,
+          currency: pending.paymentInfo.currency,
+          raw_message: pending.paymentInfo.raw_message,
+          source: "whatsapp",
+          payment_details: pending.paymentInfo.payment_details,
+          from_currency: pending.selectedFrom,
+          to_currency: pending.toCurrency,
+          remarks: pending.paymentInfo.remarks || "",
+          insured_person: pending.paymentInfo.insured_person || ""
+        });
+
+        if (success && WA_SEND_REPLY) {
+          let replyMsg = `✅ 已紀錄收款：${pending.customerName}\n兌換：${pending.selectedFrom} → ${pending.toCurrency}\n金額：${pending.paymentInfo.amount.toLocaleString()} ${pending.toCurrency}`;
+          replyMsg += `\n📐 匯率：${rateNum} | 來源金額：${sourceAmount.toLocaleString()} ${pending.selectedFrom}`;
+          if (pending.paymentInfo.remarks) replyMsg += `\n備註：${pending.paymentInfo.remarks}`;
+          if (pending.paymentInfo.insured_person) replyMsg += `\n投保人：${pending.paymentInfo.insured_person}`;
+          await msg.reply(replyMsg);
+        }
+      }
+      return;
     }
 
-    const success = await createTransaction({
-      agent_name: pending.agentName,
-      customer_name: pending.customerName,
-      amount: pending.paymentInfo.amount,
-      currency: pending.paymentInfo.currency,
-      raw_message: pending.paymentInfo.raw_message,
-      source: "whatsapp",
-      payment_details: pending.paymentInfo.payment_details,
-      from_currency: chosen.from,
-      to_currency: pending.toCurrency,
-      remarks: pending.paymentInfo.remarks || "",
-      insured_person: pending.paymentInfo.insured_person || ""
-    });
+    // state === "awaiting_currency": 等待用戶選擇幣種（回覆數字）
+    const num = parseInt(trimmedText);
+    if (isNaN(num) || num < 1 || num > options.length) {
+      // 無效數字或不相關消息 → 忽略，pending 保持存活
+      return;
+    }
 
-    if (success) {
-      console.log(`💾 付款資訊已記錄（${pending.agentName}, ${pending.customerName}, ${chosen.from}→${pending.toCurrency}）`);
-      if (WA_SEND_REPLY) {
-        let replyMsg = `✅ 已紀錄收款：${pending.customerName}\n兌換：${chosen.from} → ${pending.toCurrency}\n金額：${pending.paymentInfo.amount.toLocaleString()} ${pending.toCurrency}`;
-        if (pending.paymentInfo.remarks) replyMsg += `\n備註：${pending.paymentInfo.remarks}`;
-        if (pending.paymentInfo.insured_person) replyMsg += `\n投保人：${pending.paymentInfo.insured_person}`;
-        await msg.reply(replyMsg);
-      }
+    const chosen = options[num - 1];
+
+    // 轉為 awaiting_rate，追問匯率
+    pending.state = "awaiting_rate";
+    pending.selectedFrom = chosen.from;
+    pending.selectedLabel = chosen.label;
+    pending.expireAt = Date.now() + 5 * 60 * 1000;  // 刷新過期時間
+
+    if (WA_SEND_REPLY) {
+      await msg.reply(`✅ 已選 ${chosen.label}\n💰 請輸入賣出匯率（如 7.08），或回覆 0 跳過（不計算盈利）`);
     }
     return;
   }
@@ -1116,8 +1217,32 @@ client.on("message", async (msg) => {
       if (pd.bank_name) replyMsg += `\n銀行：${pd.bank_name}`;
       if (pd.account_number) replyMsg += `\n戶口：${pd.account_number}`;
 
-      // ── 嘗試從前一條消息自動推斷換匯來源 ──
-      const conversionResult = await resolveConversion(paymentInfo, prevText, toCurrency);
+      // ── 三層搜索換匯公式：引用消息 → 公式緩衝區 → 上一條消息 ──
+      let formulaText = null;
+
+      // 1. 檢查引用消息中是否有換匯公式
+      let quotedText = null;
+      if (msg.from.endsWith("@g.us") && msg.hasQuotedMsg) {
+        try {
+          const quotedMsg = await msg.getQuotedMessage();
+          quotedText = quotedMsg.body || "";
+          if (quotedText && parseConversionLine(quotedText)) {
+            formulaText = quotedText;
+          }
+        } catch (e) { /* ignore */ }
+      }
+
+      // 2. 從公式緩衝區搜尋
+      if (!formulaText) {
+        formulaText = findFormulaInBuffer(msg.from, paymentInfo.amount);
+      }
+
+      // 3. 向後兼容：上一條消息
+      if (!formulaText) {
+        formulaText = prevText;
+      }
+
+      const conversionResult = await resolveConversion(paymentInfo, formulaText, toCurrency);
 
       if (conversionResult && conversionResult.auto_inferred) {
         // 自動推斷成功，跳過兌換選單直接記錄
@@ -1157,7 +1282,9 @@ client.on("message", async (msg) => {
           paymentInfo, agentName: senderDisplayName,
           customerName, toCurrency,
           conversionInfo: conversionResult ? conversionResult.conversion : null,
-          expireAt: Date.now() + 5 * 60 * 1000  // 5 分鐘過期
+          state: "awaiting_currency",
+          expireAt: Date.now() + 5 * 60 * 1000,  // 5 分鐘過期
+          chat: msg.from,
         });
       } else {
         // 未知目標貨幣，直接記錄

@@ -495,21 +495,36 @@ def parse_payment_info(message_text: str) -> dict | None:
 #        "50w / 0.896 = 558,036 HKD"
 # ═══════════════════════════════════════════
 
+# 支援 / 和 * 兩種運算符
 _CONVERSION_LINE_RE = re.compile(
-    r'^([\d,]+(?:\.\d+)?(?:w|万|萬)?)\s*/\s*([\d.]+)\s*=\s*([\d,]+(?:\.\d+)?(?:w|万|萬)?)(?:\s*(USD|HKD|CNY|RMB))?\s*$',
+    r'^([\d,]+(?:\.\d+)?(?:w|万|萬)?)\s*[/*]\s*([\d.]+)\s*=\s*([\d,]+(?:\.\d+)?(?:w|万|萬)?)(?:\s*(USD|HKD|CNY|RMB))?\s*$',
     re.IGNORECASE
 )
 
+# 不加 anchor 的版本，用於在引用消息/長文本中搜尋公式
+_CONVERSION_SEARCH_RE = re.compile(
+    r'([\d,]+(?:\.\d+)?(?:w|万|萬)?)\s*[/*]\s*([\d.]+)\s*=\s*([\d,]+(?:\.\d+)?(?:w|万|萬)?)(?:\s*(USD|HKD|CNY|RMB))?\s*',
+    re.IGNORECASE
+)
 
-def parse_conversion_line(text: str) -> dict | None:
-    """解析换汇公式行，返回 {source_amount, rate, result_amount, result_currency} 或 None"""
-    if not text or not text.strip():
-        return None
+import unicodedata
 
-    m = _CONVERSION_LINE_RE.match(text.strip())
-    if not m:
-        return None
 
+def _strip_decorators(text: str) -> str:
+    """去除貨幣裝飾符號（emoji 和獨立貨幣符號，避免干擾數字捕獲）"""
+    # 去除常見獨立貨幣符號
+    for ch in "$£¥€￥":
+        text = text.replace(ch, "")
+    # 去除 emoji（Unicode category So 和 Sk）
+    result = []
+    for ch in text:
+        cat = unicodedata.category(ch)
+        if cat not in ("So", "Sk"):
+            result.append(ch)
+    return "".join(result)
+
+
+def _parse_match(m: re.Match) -> dict:
     source_str = m.group(1).replace(",", "")
     rate = float(m.group(2))
     result_str = m.group(3).replace(",", "")
@@ -529,9 +544,38 @@ def parse_conversion_line(text: str) -> dict | None:
     if result_has_wan:
         result_amount *= 10000
 
+    operator = "*" if "*" in m.group(0) else "/"
+
     return {
         "source_amount": source_amount,
         "rate": rate,
         "result_amount": result_amount,
         "result_currency": result_currency,
+        "operator": operator,
     }
+
+
+def parse_conversion_line(text: str) -> dict | None:
+    """解析换汇公式行，返回 {source_amount, rate, result_amount, result_currency} 或 None"""
+    if not text or not text.strip():
+        return None
+
+    cleaned = _strip_decorators(text.strip())
+    m = _CONVERSION_LINE_RE.match(cleaned)
+    if not m:
+        return None
+
+    return _parse_match(m)
+
+
+def find_conversion_in_text(text: str) -> dict | None:
+    """在任意文本中搜尋換匯公式（用於引用消息、長文本等場景）"""
+    if not text or not text.strip():
+        return None
+
+    cleaned = _strip_decorators(text)
+    m = _CONVERSION_SEARCH_RE.search(cleaned)
+    if not m:
+        return None
+
+    return _parse_match(m)

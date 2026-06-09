@@ -15,7 +15,7 @@ from telegram.ext import (
 from telegram.request import HTTPXRequest
 # Import the transaction parser
 from .parser import parse_cancellation
-from .payment_parser import parse_payment_info, parse_conversion_line
+from .payment_parser import parse_payment_info, parse_conversion_line, find_conversion_in_text
 
 # Import the API client
 from .api_client import api_client
@@ -79,12 +79,23 @@ _EXCHANGE_OPTIONS = {
     "CNY": [("USD", "美金 → 人民幣"), ("HKD", "港幣 → 人民幣"), ("USDT", "USDT → 人民幣")],
 }
 
-# 暫存等待代理選擇兌換方式的付款資訊: message_id -> {payment_info, agent_name, ...}
+# 暫存等待代理選擇兌換方式的付款資訊: message_id -> {payment_info, agent_name, state, ...}
 _pending_exchanges = {}
 # 快速查找 pending exchange: (chat_id, user_id) -> message_id
 _pending_by_user = {}
-# 每個聊天的最新消息文本: chat_id -> 上一條消息文本
-_last_messages = {}
+# 公式緩衝區：每個聊天保留最近 20 條換匯公式，用於跨消息查找
+_formula_buffer = {}  # chat_id -> [{"text": ..., "timestamp": ...}]
+_MAX_FORMULA_BUFFER = 20
+
+
+def _find_formula_in_buffer(chat_id: int, payment_amount: int) -> str | None:
+    """從緩衝區中查找與付款金額匹配的換匯公式（從新到舊）"""
+    buffer = _formula_buffer.get(chat_id, [])
+    for entry in reversed(buffer):
+        conv = parse_conversion_line(entry["text"])
+        if conv and _amounts_match(conv["result_amount"], payment_amount):
+            return entry["text"]
+    return None
 
 
 # ── 換匯公式自動推斷輔助函數 ──
@@ -115,15 +126,24 @@ async def _resolve_conversion(payment_info: dict, prev_text: str | None, to_curr
     if not result_currency:
         return None
 
-    # 檢查數學等式: source_amount / rate ≈ result_amount
+    # 檢查數學等式（根據運算符選擇乘法或除法）
     source_amount = conv["source_amount"]
     autocorrected = False
-    expected_result = source_amount / conv["rate"] if conv["rate"] != 0 else 0
-    if not _amounts_match(int(expected_result), conv["result_amount"]):
+    is_multiply = conv.get("operator") == "*"
+    expected_result = (
+        int(source_amount * conv["rate"])
+        if is_multiply
+        else int(source_amount / conv["rate"]) if conv["rate"] != 0 else 0
+    )
+    if not _amounts_match(expected_result, conv["result_amount"]):
         # 嘗試補全萬位
         corrected_source = source_amount * 10000
-        corrected_result = corrected_source / conv["rate"] if conv["rate"] != 0 else 0
-        if _amounts_match(int(corrected_result), conv["result_amount"]):
+        corrected_result = (
+            int(corrected_source * conv["rate"])
+            if is_multiply
+            else int(corrected_source / conv["rate"]) if conv["rate"] != 0 else 0
+        )
+        if _amounts_match(corrected_result, conv["result_amount"]):
             source_amount = corrected_source
             autocorrected = True
         else:
@@ -187,6 +207,7 @@ async def _resolve_conversion(payment_info: dict, prev_text: str | None, to_curr
             "matched": True,
             "daily_rate": ref_rate,
             "rate_source": rate_src,
+            "operator": conv.get("operator", "/"),
         }
         if autocorrected:
             conversion_info["autocorrected"] = True
@@ -207,20 +228,23 @@ async def _resolve_conversion(payment_info: dict, prev_text: str | None, to_curr
     else:
         best_str = "無可用參考匯率"
         best_pair = "無"
+    op = conv.get("operator", "/")
     conversion_info = {
         "source_amount": source_amount,
         "rate": conv["rate"],
         "source_currency": "CNY",
         "matched": False,
+        "operator": op,
     }
     if autocorrected:
         conversion_info["autocorrected"] = True
+    op_symbol = " × " if op == "*" else " / "
     wan_note = f"（已自動補全萬位 {conv['source_amount']:,.0f}→{source_amount:,.0f}）" if autocorrected else ""
     return {
         "auto_inferred": False,
         "from_currency": None,
         "conversion": conversion_info,
-        "note": f"📐 檢測到換匯公式 {source_amount:,.0f} / {conv['rate']} = {conv['result_amount']:,} {conv['result_currency']}，最佳匹配 {best_pair} ({best_str}) 超過 3% 閾值，請手動選擇{wan_note}",
+        "note": f"📐 檢測到換匯公式 {source_amount:,.0f}{op_symbol}{conv['rate']} = {conv['result_amount']:,} {conv['result_currency']}，最佳匹配 {best_pair} ({best_str}) 超過 3% 閾值，請手動選擇{wan_note}",
     }
 
 
@@ -452,11 +476,115 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     user_name = message.from_user.username or message.from_user.first_name
     agent_display_name = message.from_user.first_name or user_name
 
-    # ── 讀取並更新聊天消息歷史 ──
-    prev_text = _last_messages.get(chat_id, None)
-    _last_messages[chat_id] = message.text
+    # ── 更新公式緩衝區（只保留換匯公式） ──
+    prev_text = message.text  # 向後兼容
+    parsed_formula = parse_conversion_line(message.text)
+    if parsed_formula:
+        if chat_id not in _formula_buffer:
+            _formula_buffer[chat_id] = []
+        buffer = _formula_buffer[chat_id]
+        buffer.append({"text": message.text, "timestamp": datetime.now().timestamp()})
+        if len(buffer) > _MAX_FORMULA_BUFFER:
+            buffer.pop(0)
 
     print(f"收到群消息 [{message.chat.title}] {user_name}: {message.text}")
+
+    # ── 檢查是否有 awaiting_rate 狀態的 pending（等待用戶輸入匯率）──
+    pending_msg_id = _pending_by_user.get((chat_id, message.from_user.id))
+    if pending_msg_id:
+        pending_rate = _pending_exchanges.get(pending_msg_id)
+        if pending_rate and pending_rate.get("state") == "awaiting_rate":
+            trimmed_text = message.text.strip()
+            # 檢查顯式取消
+            cancel_keywords = ["取消", "撤銷", "撤销", "undo", "cancel"]
+            if any(trimmed_text.lower().startswith(k) for k in cancel_keywords):
+                _pending_exchanges.pop(pending_msg_id, None)
+                _pending_by_user.pop((chat_id, message.from_user.id), None)
+                await update.message.reply_text(
+                    f"❌ 已取消記錄：{pending_rate['customer_name']} {pending_rate['payment_info']['amount']:,} {pending_rate['to_currency']}"
+                )
+                return
+
+            rate_num = None
+            try:
+                rate_num = float(trimmed_text)
+            except ValueError:
+                pass
+
+            if rate_num is None or rate_num < 0:
+                await update.message.reply_text("⚠️ 請輸入有效的賣出匯率（如 7.08），或回覆 0 跳過（不計算盈利）")
+                return  # pending 保持存活
+
+            _pending_exchanges.pop(pending_msg_id, None)
+            _pending_by_user.pop((chat_id, message.from_user.id), None)
+
+            pi = pending_rate["payment_info"]
+            pd = pi.get("payment_details_dict", {})
+
+            if rate_num == 0:
+                pd["conversion"] = {
+                    "source_amount": None,
+                    "rate": None,
+                    "source_currency": pending_rate["selected_from"],
+                    "rate_source": "manual_skip",
+                }
+                pi["payment_details"] = json.dumps(pd, ensure_ascii=False)
+                await api_client.create_transaction(
+                    agent_name=pending_rate["agent_name"],
+                    customer_name=pending_rate["customer_name"],
+                    amount=pi["amount"],
+                    currency=pi["currency"],
+                    timestamp=None,
+                    raw_message=pi["raw_message"],
+                    source="telegram",
+                    payment_details=pi["payment_details"],
+                    from_currency=pending_rate["selected_from"],
+                    to_currency=pending_rate["to_currency"],
+                    remarks=pi.get("remarks", ""),
+                    insured_person=pi.get("insured_person", ""),
+                )
+                await update.message.reply_text(
+                    f"✅ 已紀錄收款：{pending_rate['customer_name']}\n"
+                    f"兌換：{pending_rate['selected_from']} → {pending_rate['to_currency']}\n"
+                    f"金額：{pi['amount']:,} {pending_rate['to_currency']}\n"
+                    f"⚠️ 未記錄匯率，不計算盈利"
+                )
+            else:
+                source_amount = round(pi["amount"] * rate_num)
+                pd["conversion"] = {
+                    "source_amount": source_amount,
+                    "rate": rate_num,
+                    "source_currency": pending_rate["selected_from"],
+                    "rate_source": "manual",
+                }
+                pi["payment_details"] = json.dumps(pd, ensure_ascii=False)
+                await api_client.create_transaction(
+                    agent_name=pending_rate["agent_name"],
+                    customer_name=pending_rate["customer_name"],
+                    amount=pi["amount"],
+                    currency=pi["currency"],
+                    timestamp=None,
+                    raw_message=pi["raw_message"],
+                    source="telegram",
+                    payment_details=pi["payment_details"],
+                    from_currency=pending_rate["selected_from"],
+                    to_currency=pending_rate["to_currency"],
+                    remarks=pi.get("remarks", ""),
+                    insured_person=pi.get("insured_person", ""),
+                )
+                reply_parts = [
+                    f"✅ 已紀錄收款：{pending_rate['customer_name']}",
+                    f"兌換：{pending_rate['selected_from']} → {pending_rate['to_currency']}",
+                    f"金額：{pi['amount']:,} {pending_rate['to_currency']}",
+                    f"📐 匯率：{rate_num} | 來源金額：{source_amount:,} {pending_rate['selected_from']}",
+                ]
+                if pi.get("remarks"):
+                    reply_parts.append(f"備註：{pi['remarks']}")
+                if pi.get("insured_person"):
+                    reply_parts.append(f"投保人：{pi['insured_person']}")
+                await update.message.reply_text("\n".join(reply_parts))
+            print(f"💾 付款資訊已記錄（手動匯率 {rate_num}，代理: {pending_rate['agent_name']}, 客戶: {pending_rate['customer_name']}）")
+            return
 
     # ── 換匯公式後發匹配：若當前消息是換匯公式，檢查是否有待處理的兌換 ──
     trailing_conv = parse_conversion_line(message.text)
@@ -531,8 +659,24 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
             if pd.get("account_number"):
                 reply_parts.append(f"戶口：{pd['account_number']}")
 
-            # ── 嘗試從前一條消息自動推斷換匯來源 ──
-            conversion_result = await _resolve_conversion(payment_info, prev_text, to_currency)
+            # ── 三層搜索換匯公式：引用消息 → 公式緩衝區 → 上一條消息 ──
+            formula_text = None
+
+            # 1. 檢查引用消息中是否有換匯公式
+            replied_msg = message.reply_to_message
+            if replied_msg and replied_msg.text:
+                if parse_conversion_line(replied_msg.text):
+                    formula_text = replied_msg.text
+
+            # 2. 從公式緩衝區搜尋
+            if not formula_text:
+                formula_text = _find_formula_in_buffer(chat_id, payment_info["amount"])
+
+            # 3. 向後兼容：上一條消息
+            if not formula_text:
+                formula_text = prev_text
+
+            conversion_result = await _resolve_conversion(payment_info, formula_text, to_currency)
 
             if conversion_result and conversion_result["auto_inferred"]:
                 # 自動推斷成功，跳過兌換選單直接記錄
@@ -574,6 +718,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                     "customer_name": customer_name,
                     "to_currency": to_currency,
                     "conversion_info": conversion_result["conversion"] if conversion_result else None,
+                    "state": "awaiting_currency",
                 }
                 _pending_by_user[(chat_id, message.from_user.id)] = sent_msg.message_id
             else:
@@ -787,15 +932,15 @@ async def handle_exchange_callback(update: Update, context: ContextTypes.DEFAULT
         return
 
     msg_id = query.message.message_id
-    pending = _pending_exchanges.pop(msg_id, None)
-    # 清理 user 索引
-    _pending_by_user.pop((query.message.chat.id, query.from_user.id), None)
+    pending = _pending_exchanges.get(msg_id)
 
     if not pending:
         await query.edit_message_text("⚠️ 該選擇已過期，請重新發送付款資訊")
         return
 
     if data == "exch:cancel":
+        _pending_exchanges.pop(msg_id, None)
+        _pending_by_user.pop((query.message.chat.id, query.from_user.id), None)
         await query.edit_message_text(
             f"❌ 已取消記錄：{pending['customer_name']} {pending['payment_info']['amount']:,} {pending['to_currency']}"
         )
@@ -806,51 +951,22 @@ async def handle_exchange_callback(update: Update, context: ContextTypes.DEFAULT
     from_cur = parts[1] if len(parts) > 1 else ""
     to_cur = parts[2] if len(parts) > 2 else pending["to_currency"]
 
-    payment_info = pending["payment_info"]
-    agent_name = pending["agent_name"]
-    customer_name = pending["customer_name"]
-    conversion_info = pending.get("conversion_info")
+    # 查找 label
+    from_label = from_cur
+    for opt in _EXCHANGE_OPTIONS.get(pending["to_currency"], []):
+        if opt[0] == from_cur:
+            from_label = opt[1]
+            break
 
-    # 注入換匯信息到 payment_details
-    if conversion_info:
-        pd = payment_info.get("payment_details_dict", {})
-        pd["conversion"] = conversion_info
-        payment_info["payment_details"] = json.dumps(pd, ensure_ascii=False)
+    # 轉為 awaiting_rate，追問匯率
+    pending["state"] = "awaiting_rate"
+    pending["selected_from"] = from_cur
+    pending["selected_label"] = from_label
 
-    # 記錄交易
-    api_client.create_transaction(
-        agent_name=agent_name,
-        customer_name=customer_name,
-        amount=payment_info["amount"],
-        timestamp=payment_info.get("timestamp"),
-        raw_message=payment_info["raw_message"],
-        source=payment_info.get("source", "telegram"),
-        currency=payment_info["currency"],
-        payment_details=payment_info["payment_details"],
-        from_currency=from_cur,
-        to_currency=to_cur,
-        remarks=payment_info.get("remarks", ""),
-        insured_person=payment_info.get("insured_person", ""),
+    await query.edit_message_text(
+        f"✅ 已選 {from_label}\n"
+        f"💰 請輸入賣出匯率（如 7.08），或回覆 0 跳過（不計算盈利）"
     )
-    print(f"💾 付款資訊已記錄（代理: {agent_name}, 客戶: {customer_name}, {from_cur}→{to_cur}）")
-
-    # 更新回覆訊息
-    pd = payment_info.get("payment_details_dict", {})
-    reply_parts = [
-        f"✅ 已紀錄收款：{customer_name}",
-        f"兌換：{from_cur} → {to_cur}",
-        f"金額：{payment_info['amount']:,} {to_cur}",
-    ]
-    if pd.get("bank_name"):
-        reply_parts.append(f"銀行：{pd['bank_name']}")
-    if pd.get("account_number"):
-        reply_parts.append(f"戶口：{pd['account_number']}")
-    if payment_info.get("remarks"):
-        reply_parts.append(f"備註：{payment_info['remarks']}")
-    if payment_info.get("insured_person"):
-        reply_parts.append(f"投保人：{payment_info['insured_person']}")
-
-    await query.edit_message_text("\n".join(reply_parts))
         
 # Handler for checking abnormal transactions and sending alerts
 async def check_abnormal_transactions(context: ContextTypes.DEFAULT_TYPE):

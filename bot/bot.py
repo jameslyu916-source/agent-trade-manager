@@ -601,6 +601,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                     if conv_result["conversion"]:
                         pd["conversion"] = conv_result["conversion"]
                         pending_ex["payment_info"]["payment_details"] = json.dumps(pd, ensure_ascii=False)
+                    resolved_from = conv_result.get("from_currency") or "CNY"
                     await api_client.create_transaction(
                         agent_name=pending_ex["agent_name"],
                         customer_name=pending_ex["customer_name"],
@@ -610,7 +611,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                         raw_message=pending_ex["payment_info"]["raw_message"],
                         source="telegram",
                         payment_details=pending_ex["payment_info"].get("payment_details"),
-                        from_currency="CNY",
+                        from_currency=resolved_from,
                         to_currency=pending_ex["to_currency"],
                         remarks=pending_ex["payment_info"].get("remarks", ""),
                         insured_person=pending_ex["payment_info"].get("insured_person", ""),
@@ -623,7 +624,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                         reply_parts.append(f"戶口：{pd['account_number']}")
                     reply_parts.append(conv_result["note"])
                     await update.message.reply_text("\n".join(reply_parts))
-                    print(f"💾 付款資訊已記錄（公式後發自動推斷 CNY→{pending_ex['to_currency']}，代理: {pending_ex['agent_name']}, 客戶: {pending_ex['customer_name']}）")
+                    print(f"💾 付款資訊已記錄（公式後發自動推斷 {resolved_from}→{pending_ex['to_currency']}，代理: {pending_ex['agent_name']}, 客戶: {pending_ex['customer_name']}）")
                     return
 
     # ── 優先檢查是否為結構化付款資訊 ──
@@ -687,6 +688,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                 if has_warnings:
                     reply_parts.append("\n⚠️ 請注意：\n" + "\n".join(warnings))
                 await update.message.reply_text("\n".join(reply_parts))
+                inferred_from = conversion_result.get("from_currency") or "CNY"
                 api_client.create_transaction(
                     agent_name=agent_display_name,
                     customer_name=customer_name,
@@ -696,12 +698,12 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                     source=payment_info.get("source", "telegram"),
                     currency=payment_info["currency"],
                     payment_details=payment_info["payment_details"],
-                    from_currency="CNY",
+                    from_currency=inferred_from,
                     to_currency=to_currency,
                     remarks=payment_info.get("remarks", ""),
                     insured_person=payment_info.get("insured_person", ""),
                 )
-                print(f"💾 付款資訊已記錄（自動推斷 CNY→{to_currency}，代理: {agent_display_name}, 客戶: {customer_name}）")
+                print(f"💾 付款資訊已記錄（自動推斷 {inferred_from}→{to_currency}，代理: {agent_display_name}, 客戶: {customer_name}）")
             elif keyboard:
                 if conversion_result and conversion_result["note"]:
                     reply_parts.append(conversion_result["note"])

@@ -1024,17 +1024,18 @@ client.on("message", async (msg) => {
         if (pd.account_number) replyMsg += `\n戶口：${pd.account_number}`;
         replyMsg += `\n${conversionResult.note}`;
         if (WA_SEND_REPLY) { await msg.reply(replyMsg); }
+        const resolvedFrom = conversionResult.from_currency || "CNY";
         await createTransaction({
           agent_name: pendingByFormula.agentName, customer_name: pendingByFormula.customerName,
           amount: pendingByFormula.paymentInfo.amount, currency: pendingByFormula.paymentInfo.currency,
           raw_message: pendingByFormula.paymentInfo.raw_message, source: "whatsapp",
           payment_details: pendingByFormula.paymentInfo.payment_details,
-          from_currency: "CNY",
+          from_currency: resolvedFrom,
           to_currency: pendingByFormula.toCurrency,
           remarks: pendingByFormula.paymentInfo.remarks || "",
           insured_person: pendingByFormula.paymentInfo.insured_person || ""
         });
-        console.log(`💾 付款資訊已記錄（公式後發自動推斷 CNY→${pendingByFormula.toCurrency}，代理: ${pendingByFormula.agentName}, 客戶: ${pendingByFormula.customerName}）`);
+        console.log(`💾 付款資訊已記錄（公式後發自動推斷 ${resolvedFrom}→${pendingByFormula.toCurrency}，代理: ${pendingByFormula.agentName}, 客戶: ${pendingByFormula.customerName}）`);
         return;
       }
     }
@@ -1071,6 +1072,12 @@ client.on("message", async (msg) => {
   // ── 檢查是否有待處理的兌換方式選擇 ──
   const pending = pendingExchanges.get(senderId);
   if (pending) {
+    // 如果當前消息是新的付款信息，清除舊 pending，交給下方支付處理
+    const newPaymentCheck = parsePaymentInfo(text);
+    if (newPaymentCheck && newPaymentCheck.amount > 0 && (newPaymentCheck.customer_name || "Unknown") !== "Unknown") {
+      pendingExchanges.delete(senderId);
+      // fall through — 不 return，讓下方支付處理代碼執行
+    } else {
     // 強制檢查過期
     if (Date.now() > pending.expireAt) {
       pendingExchanges.delete(senderId);
@@ -1172,6 +1179,16 @@ client.on("message", async (msg) => {
 
     // state === "awaiting_currency": 等待用戶選擇幣種（回覆數字）
     const num = parseInt(trimmedText);
+
+    // 取消選項（最後一個數字 = options.length + 1）
+    if (num === options.length + 1) {
+      pendingExchanges.delete(senderId);
+      if (WA_SEND_REPLY) {
+        await msg.reply(`❌ 已取消記錄：${pending.customerName} ${pending.paymentInfo.amount.toLocaleString()} ${pending.toCurrency}`);
+      }
+      return;
+    }
+
     if (isNaN(num) || num < 1 || num > options.length) {
       // 無效數字或不相關消息 → 忽略，pending 保持存活
       return;
@@ -1190,6 +1207,7 @@ client.on("message", async (msg) => {
     }
     return;
   }
+  }  // close if (pending) after else block
 
   // ── 優先檢查是否為結構化付款資訊 ──
   const paymentInfo = parsePaymentInfo(text);
@@ -1253,17 +1271,18 @@ client.on("message", async (msg) => {
         replyMsg += `\n${conversionResult.note}`;
         if (hasWarnings) replyMsg += "\n\n⚠️ 請注意：\n" + warnings.join("\n");
         if (WA_SEND_REPLY) { await msg.reply(replyMsg); }
+        const inferredFrom = conversionResult.from_currency || "CNY";
         await createTransaction({
           agent_name: senderDisplayName, customer_name: customerName,
           amount: paymentInfo.amount, currency: paymentInfo.currency,
           raw_message: paymentInfo.raw_message, source: "whatsapp",
           payment_details: paymentInfo.payment_details,
-          from_currency: "CNY",
+          from_currency: inferredFrom,
           to_currency: toCurrency,
           remarks: paymentInfo.remarks || "",
           insured_person: paymentInfo.insured_person || ""
         });
-        console.log(`💾 付款資訊已記錄（自動推斷 CNY→${toCurrency}，代理: ${senderDisplayName}, 客戶: ${customerName}）`);
+        console.log(`💾 付款資訊已記錄（自動推斷 ${inferredFrom}→${toCurrency}，代理: ${senderDisplayName}, 客戶: ${customerName}）`);
       } else if (options && options.length > 0) {
         // 有兌換選項，發送文字選單讓代理回覆數字
         if (conversionResult && conversionResult.note) {

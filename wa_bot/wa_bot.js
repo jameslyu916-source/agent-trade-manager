@@ -79,6 +79,8 @@ let lastMessageTime = Date.now();
 const MESSAGE_TIMEOUT_MS = 15 * 60 * 1000;  // 15 分鐘無消息判定靜默斷線
 let reconnectAttempts = 0;
 const MAX_RECONNECT_DELAY_MS = 5 * 60 * 1000;  // 最大重連延遲 5 分鐘
+let isReconnecting = false;  // 防止重連重疊
+let healthCheckInterval = null;  // 健康檢查定時器
 
 // 從緩衝區中查找與付款金額匹配的換匯公式（從新到舊）
 function findFormulaInBuffer(chatId, paymentAmount) {
@@ -812,6 +814,7 @@ client.on("qr", (qr) => {
 client.on("ready", async () => {
   console.log("✅ WhatsApp Bot 已就緒！");
   console.log(`📌 監控群組：${WATCH_GROUP_NAMES.join(", ") || "（未設置）"}`);
+  lastMessageTime = Date.now();  // 重置消息時間戳
   await login(); // 登錄後端API
   await initSettings(); // 載入系統設置（含重試）
   // 每 60 秒刷新設置
@@ -819,14 +822,22 @@ client.on("ready", async () => {
   // 每 60 秒檢查漏單提醒
   setInterval(sendReminderIfTime, 60 * 1000);
   // 每 60 秒健康檢查：超過 15 分鐘無消息 → 判定靜默斷線，強制重連
-  setInterval(() => {
+  if (healthCheckInterval) clearInterval(healthCheckInterval);
+  healthCheckInterval = setInterval(async () => {
+    if (isReconnecting) return;  // 已在重連中，跳過
     const idleMs = Date.now() - lastMessageTime;
     if (idleMs > MESSAGE_TIMEOUT_MS) {
       console.warn(`⏰ 已 ${Math.round(idleMs / 60000)} 分鐘未收到消息，可能靜默斷線，強制重連...`);
+      isReconnecting = true;
       reconnectAttempts = 0;
-      client.destroy().catch(() => {}).finally(() => {
-        setTimeout(() => client.initialize(), 2000);
-      });
+      try {
+        await client.destroy();
+        await new Promise(r => setTimeout(r, 3000));  // 等 Chrome 完全退出
+        await client.initialize();
+      } catch (e) {
+        console.error("❌ 健康檢查重連失敗：", e.message);
+      }
+      isReconnecting = false;
     }
   }, 60 * 1000);
 });
@@ -835,9 +846,15 @@ client.on("ready", async () => {
 client.on("change_state", (state) => {
   console.log(`🔄 WhatsApp 狀態變更：${state}`);
   if (state === "CONFLICT" || state === "UNPAIRED" || state === "UNPAIRED_IDLE") {
+    if (isReconnecting) return;
     console.warn("⚠️ 檢測到異常狀態，5 秒後重連...");
+    isReconnecting = true;
     reconnectAttempts = 0;
-    setTimeout(() => client.initialize(), 5000);
+    setTimeout(async () => {
+      try { await client.destroy(); } catch (_) {}
+      try { await client.initialize(); } catch (_) {}
+      isReconnecting = false;
+    }, 5000);
   }
 });
 
@@ -1429,14 +1446,18 @@ client.on("message", async (msg) => {
 
 // 處理斷線重連（指數退避）
 client.on("disconnected", (reason) => {
+  if (isReconnecting) return;
   console.warn("⚠️ WhatsApp 已斷線：", reason);
+  isReconnecting = true;
   reconnectAttempts++;
   const delay = Math.min(5000 * Math.pow(2, reconnectAttempts - 1), MAX_RECONNECT_DELAY_MS);
   console.log(`🔄 ${Math.round(delay / 1000)} 秒後嘗試重連（第 ${reconnectAttempts} 次）...`);
-  setTimeout(() => {
-    client.initialize().catch((err) => {
+  setTimeout(async () => {
+    try { await client.destroy(); } catch (_) {}
+    try { await client.initialize(); } catch (err) {
       console.error("❌ 重連失敗：", err.message);
-    });
+    }
+    isReconnecting = false;
   }, delay);
 });
 

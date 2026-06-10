@@ -74,6 +74,12 @@ const pendingExchanges = new Map();
 const formulaBuffer = new Map();  // chatId -> [{text, timestamp}]
 const MAX_FORMULA_BUFFER = 20;
 
+// ── 連線健康監控 ──
+let lastMessageTime = Date.now();
+const MESSAGE_TIMEOUT_MS = 15 * 60 * 1000;  // 15 分鐘無消息判定靜默斷線
+let reconnectAttempts = 0;
+const MAX_RECONNECT_DELAY_MS = 5 * 60 * 1000;  // 最大重連延遲 5 分鐘
+
 // 從緩衝區中查找與付款金額匹配的換匯公式（從新到舊）
 function findFormulaInBuffer(chatId, paymentAmount) {
   const buffer = formulaBuffer.get(chatId);
@@ -772,9 +778,20 @@ function cleanupPidFile() {
   try { if (fs.existsSync(PID_FILE)) fs.unlinkSync(PID_FILE); } catch (_) {}
 }
 
+async function gracefulShutdown() {
+  console.log("🛑 正在關閉 WhatsApp Bot...");
+  cleanupPidFile();
+  try { await client.destroy(); } catch (_) {}
+  process.exit(0);
+}
+
+process.on("unhandledRejection", (reason) => {
+  console.error("⚠️ 未處理的 Promise 拒絕：", reason);
+});
+
 process.on("exit", cleanupPidFile);
-process.on("SIGTERM", () => { cleanupPidFile(); process.exit(); });
-process.on("SIGINT", () => { cleanupPidFile(); process.exit(); });
+process.on("SIGTERM", () => { gracefulShutdown(); });
+process.on("SIGINT", () => { gracefulShutdown(); });
 
 const client = new Client({
   // LocalAuth 會將登錄狀態保存到本地，重啟後不需要重新掃碼
@@ -801,10 +818,39 @@ client.on("ready", async () => {
   setInterval(refreshSettings, 60 * 1000);
   // 每 60 秒檢查漏單提醒
   setInterval(sendReminderIfTime, 60 * 1000);
+  // 每 60 秒健康檢查：超過 15 分鐘無消息 → 判定靜默斷線，強制重連
+  setInterval(() => {
+    const idleMs = Date.now() - lastMessageTime;
+    if (idleMs > MESSAGE_TIMEOUT_MS) {
+      console.warn(`⏰ 已 ${Math.round(idleMs / 60000)} 分鐘未收到消息，可能靜默斷線，強制重連...`);
+      reconnectAttempts = 0;
+      client.destroy().catch(() => {}).finally(() => {
+        setTimeout(() => client.initialize(), 2000);
+      });
+    }
+  }, 60 * 1000);
+});
+
+// WhatsApp 內部狀態監聽
+client.on("change_state", (state) => {
+  console.log(`🔄 WhatsApp 狀態變更：${state}`);
+  if (state === "CONFLICT" || state === "UNPAIRED" || state === "UNPAIRED_IDLE") {
+    console.warn("⚠️ 檢測到異常狀態，5 秒後重連...");
+    reconnectAttempts = 0;
+    setTimeout(() => client.initialize(), 5000);
+  }
+});
+
+// 認證失敗處理
+client.on("auth_failure", (msg) => {
+  console.error("❌ WhatsApp 認證失敗：", msg);
+  console.log("🔄 請手動重啟 bot 以重新掃碼登錄");
 });
 
 // 監聽所有消息
 client.on("message", async (msg) => {
+  lastMessageTime = Date.now();
+  try {
   // 第一關：確認事件有觸發（任何消息都會打印）
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   console.log("📩 收到消息");
@@ -1376,13 +1422,22 @@ client.on("message", async (msg) => {
 
   // ── 簡易交易解析已停用，僅接受結構化付款資訊 ──
   console.log("   ⚪ 訊息非結構化付款格式，已略過");
+  } catch (err) {
+    console.error("❌ 消息處理異常：", err.message, err.stack);
+  }
 });
 
-// 處理斷線重連
+// 處理斷線重連（指數退避）
 client.on("disconnected", (reason) => {
   console.warn("⚠️ WhatsApp 已斷線：", reason);
-  console.log("🔄 5秒後嘗試重連...");
-  setTimeout(() => client.initialize(), 5000);
+  reconnectAttempts++;
+  const delay = Math.min(5000 * Math.pow(2, reconnectAttempts - 1), MAX_RECONNECT_DELAY_MS);
+  console.log(`🔄 ${Math.round(delay / 1000)} 秒後嘗試重連（第 ${reconnectAttempts} 次）...`);
+  setTimeout(() => {
+    client.initialize().catch((err) => {
+      console.error("❌ 重連失敗：", err.message);
+    });
+  }, delay);
 });
 
 // 啟動

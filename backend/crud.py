@@ -728,8 +728,11 @@ def _auto_match_order(db: Session, transaction: Transaction):
                 if order_pinyin and tx_pinyin and order_pinyin.replace(" ", "").lower() == tx_pinyin.replace(" ", "").lower():
                     candidates.append(order)
         elif not tx_has_chinese and not order_has_chinese:
-            # 雙方皆無中文 → 大小寫不敏感原文比對
-            if order_name.lower() == tx_customer_name.lower() or order_name.lower() == account_name.lower():
+            # 雙方皆無中文 → 去空格後大小寫不敏感比對（處理 "LI HEYI" vs "liheyi"）
+            order_norm = order_name.replace(" ", "").lower()
+            tx_norm = tx_customer_name.replace(" ", "").lower()
+            acct_norm = account_name.replace(" ", "").lower()
+            if order_norm == tx_norm or order_norm == acct_norm:
                 candidates.append(order)
         elif order_has_chinese and not tx_has_chinese:
             # 訂單有中文、交易無中文 → 比對拼音（去空格標準化）
@@ -744,11 +747,14 @@ def _auto_match_order(db: Session, transaction: Transaction):
             if tx_pinyin and order_name_norm in tx_pinyin.replace(" ", "").lower():
                 candidates.append(order)
 
+    print(f"🔍 自動匹配：交易 #{transaction.id}「{tx_customer_name}」候選數={len(candidates)}")
     if len(candidates) == 1:
         candidates[0].matched_transaction_id = transaction.id
         candidates[0].status = "processed"
         db.commit()
         print(f"🔗 自動匹配訂單 #{candidates[0].id}「{candidates[0].customer_name}」→ 交易 #{transaction.id}")
+    elif len(candidates) > 1:
+        print(f"⚠️ 多個候選：{[f'#{o.id} {o.customer_name}' for o in candidates]}")
 
 
 def auto_match_today(db: Session):
@@ -759,6 +765,7 @@ def auto_match_today(db: Session):
         Transaction.timestamp >= start_utc,
         Transaction.timestamp < end_utc
     ).all()
+    print(f"🔍 auto_match_today: today={today}, range={start_utc}~{end_utc}, tx_count={len(today_txs)}")
     matched_count = 0
     for tx in today_txs:
         existing = db.query(CustomerOrder).filter(

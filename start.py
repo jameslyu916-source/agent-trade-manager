@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""TradeManager Pro — 一鍵啟動腳本"""
+"""LINKBIZ GLOBAL TradeManager — 一鍵啟動腳本"""
 
 import subprocess
 import sys
@@ -16,9 +16,9 @@ processes = []
 
 def print_banner():
     print("\033[38;5;214m")
-    print("  ╔═══════════════════════════════════════╗")
-    print("  ║       TradeManager Pro 啟動中...      ║")
-    print("  ╚═══════════════════════════════════════╝")
+    print("  ╔══════════════════════════════════════════════════╗")
+    print("  ║       LINKBIZ GLOBAL TradeManager 啟動中...      ║")
+    print("  ╚══════════════════════════════════════════════════╝")
     print("\033[0m")
 
 
@@ -92,6 +92,14 @@ def cleanup(signum=None, frame=None):
         )
     except Exception:
         pass
+    # 清理後端 API 殘留程序
+    try:
+        subprocess.run(
+            ["pkill", "-f", "uvicorn backend.main:app"],
+            capture_output=True, timeout=5
+        )
+    except Exception:
+        pass
     # 確保沒有殘留的 wa_bot 程序
     try:
         subprocess.run(
@@ -101,7 +109,7 @@ def cleanup(signum=None, frame=None):
     except Exception:
         pass
 
-    print("\033[38;5;214m  TradeManager Pro 已停止\033[0m")
+    print("\033[38;5;214m  LINKBIZ GLOBAL TradeManager 已停止\033[0m")
     sys.exit(0)
 
 

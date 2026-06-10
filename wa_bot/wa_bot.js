@@ -280,7 +280,7 @@ const FORMAT_TEMPLATE = `📋 交易信息格式（請複製並填寫）：
 
 const FORMAT_CONVERSION_HINT = `💡 發送提示：
 請先發送換匯公式（如：50w / 7.01 = 71,023 USD），
-再發送上述交易信息。兩條消息請分開發送。`;
+再發送下述交易信息。兩條消息請分開發送。`;
 
 const FORMAT_FULL = FORMAT_CONVERSION_HINT + "\n\n" + FORMAT_EXAMPLE + "\n\n" + FORMAT_TEMPLATE;
 
@@ -708,6 +708,7 @@ function parseHKTime(timeObj) {
 }
 
 async function sendReminderIfTime() {
+  if (isReconnecting) return;  // 重連中，跳過（瀏覽器不可用）
   try {
     const reminderTime = getSetting("reminder_time", { hour: 17, minute: 30 });
     const { hour, minute } = parseHKTime(reminderTime);

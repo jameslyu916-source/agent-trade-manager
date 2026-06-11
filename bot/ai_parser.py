@@ -38,7 +38,7 @@ def _call_llm(prompt: str) -> str:
         raise RuntimeError("OpenAI 不可用且未設定 DEEPSEEK_API_KEY，無法備援")
 
     response = deepseek_client.chat.completions.create(
-        model="deepseek-chat",
+        model="deepseek-v4-flash",
         messages=[{"role": "user", "content": prompt}],
         temperature=0,
     )

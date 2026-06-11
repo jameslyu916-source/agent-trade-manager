@@ -120,7 +120,7 @@ ${messageText}`;
   // ── Primary: DeepSeek ──
   if (DEEPSEEK_API_KEY) {
     try {
-      const content = await _callApi(DEEPSEEK_URL, DEEPSEEK_API_KEY, "deepseek-chat", prompt);
+      const content = await _callApi(DEEPSEEK_URL, DEEPSEEK_API_KEY, "deepseek-v4-flash", prompt);
       const result = JSON.parse(_cleanJsonResponse(content));
       if (result && Array.isArray(result.orders)) {
         console.log(`   🤖 AI 訂單提取（DeepSeek）：${result.orders.length} 筆`);

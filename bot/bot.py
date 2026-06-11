@@ -542,6 +542,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                     to_currency=pending_rate["to_currency"],
                     remarks=pi.get("remarks", ""),
                     insured_person=pi.get("insured_person", ""),
+                    group_id=str(chat_id),
                 )
                 await update.message.reply_text(
                     f"✅ 已紀錄收款：{pending_rate['customer_name']}\n"
@@ -571,6 +572,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                     to_currency=pending_rate["to_currency"],
                     remarks=pi.get("remarks", ""),
                     insured_person=pi.get("insured_person", ""),
+                    group_id=str(chat_id),
                 )
                 reply_parts = [
                     f"✅ 已紀錄收款：{pending_rate['customer_name']}",
@@ -615,6 +617,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                         to_currency=pending_ex["to_currency"],
                         remarks=pending_ex["payment_info"].get("remarks", ""),
                         insured_person=pending_ex["payment_info"].get("insured_person", ""),
+                        group_id=str(chat_id),
                     )
                     reply_parts = [f"✅ 已檢測付款：{pending_ex['customer_name']}"]
                     reply_parts.append(f"金額：{pending_ex['payment_info']['amount']:,} {pending_ex['to_currency']}")
@@ -702,6 +705,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                     to_currency=to_currency,
                     remarks=payment_info.get("remarks", ""),
                     insured_person=payment_info.get("insured_person", ""),
+                    group_id=str(chat_id),
                 )
                 print(f"💾 付款資訊已記錄（自動推斷 {inferred_from}→{to_currency}，代理: {agent_display_name}, 客戶: {customer_name}）")
             elif keyboard:
@@ -747,6 +751,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                     to_currency=to_currency,
                     remarks=payment_info.get("remarks", ""),
                     insured_person=payment_info.get("insured_person", ""),
+                    group_id=str(chat_id),
                 )
                 print(f"💾 付款資訊已記錄（代理: {agent_display_name}, 客戶: {customer_name}）")
         elif payment_info["amount"] <= 0:
@@ -759,8 +764,8 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
         print(f"🔙 檢測到取消指令: {cancellation}")
         try:
             if cancellation["target"] == "last":
-                # 取消最近一筆 Telegram 交易
-                last_tx = api_client.get_last_transaction()
+                # 取消最近一筆 Telegram 交易（限當前群組）
+                last_tx = api_client.get_last_transaction(group_id=str(chat_id))
                 if last_tx:
                     api_client.delete_transaction(last_tx["id"])
                     cur = last_tx.get('currency', 'USD') or 'USD'
@@ -771,9 +776,9 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                 else:
                     await update.message.reply_text("⚠️ 沒有找到可取消的 Telegram 交易記錄")
             elif cancellation["target"] == "agent":
-                # 取消指定代理（發送者）最近一筆 Telegram 交易
+                # 取消指定代理（發送者）最近一筆 Telegram 交易（限當前群組）
                 agent = cancellation["agent_name"]
-                last_tx = api_client.get_last_transaction(agent)
+                last_tx = api_client.get_last_transaction(agent, group_id=str(chat_id))
                 if last_tx:
                     api_client.delete_transaction(last_tx["id"])
                     cur = last_tx.get('currency', 'USD') or 'USD'

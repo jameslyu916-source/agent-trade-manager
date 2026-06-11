@@ -207,12 +207,13 @@
                                 <th class="px-6 py-3.5 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">金額</th>
                                 <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">匹配狀態</th>
                                 <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">提醒狀態</th>
+                                <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">來源群組</th>
                                 <th class="px-6 py-3.5 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">操作</th>
                             </tr>
                         </thead>
                         <tbody id="orderTable" class="divide-y divide-slate-800">
-                            <tr class="skeleton-row"><td class="px-6 py-3.5"><div class="skeleton h-4 w-36"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-20"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-24 ml-auto"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-28"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-16"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-16 mx-auto"></div></td></tr>
-                            <tr class="skeleton-row"><td class="px-6 py-3.5"><div class="skeleton h-4 w-36"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-16"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-20 ml-auto"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-24"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-14"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-16 mx-auto"></div></td></tr>
+                            <tr class="skeleton-row"><td class="px-6 py-3.5"><div class="skeleton h-4 w-36"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-20"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-24 ml-auto"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-28"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-16"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-24"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-16 mx-auto"></div></td></tr>
+                            <tr class="skeleton-row"><td class="px-6 py-3.5"><div class="skeleton h-4 w-36"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-16"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-20 ml-auto"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-24"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-14"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-24"></div></td><td class="px-6 py-3.5"><div class="skeleton h-4 w-16 mx-auto"></div></td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -244,9 +245,36 @@
                     <label class="block text-xs font-semibold text-slate-400 mb-1">客戶名稱</label>
                     <input type="text" id="editCustomerName" required class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400">
                 </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-400 mb-1">金額</label>
+                        <input type="number" id="editAmount" min="1" required class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-400 mb-1">貨幣</label>
+                        <select id="editCurrency" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400">
+                            <option value="CNY">CNY (¥)</option>
+                            <option value="USD">USD ($)</option>
+                            <option value="HKD">HKD (HK$)</option>
+                        </select>
+                    </div>
+                </div>
                 <div>
-                    <label class="block text-xs font-semibold text-slate-400 mb-1">金額（CNY）</label>
-                    <input type="number" id="editAmount" min="1" required class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400">
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">來源群組</label>
+                    <input type="text" id="editGroupName" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400" placeholder="群組名稱（可留空）">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">來源群組 ID</label>
+                    <input type="text" id="editGroupId" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400" placeholder="WhatsApp chat ID 或留空">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">狀態</label>
+                    <select id="editStatus" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-400">
+                        <option value="">未提醒</option>
+                        <option value="processed">已處理</option>
+                        <option value="unprocessed">未處理</option>
+                        <option value="ignored">忽略</option>
+                    </select>
                 </div>
                 <div class="flex gap-3 pt-2">
                     <button type="button" onclick="closeEditModal()" class="flex-1 px-4 py-2.5 border border-slate-700 rounded-xl text-sm font-medium text-slate-400 hover:bg-slate-800 transition-colors">取消</button>
@@ -270,9 +298,27 @@
                     <label class="block text-xs font-semibold text-slate-400 mb-1">客戶名稱</label>
                     <input type="text" id="newCustomerName" required class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-400">
                 </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-400 mb-1">金額</label>
+                        <input type="number" id="newAmount" min="1" required class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-400">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-400 mb-1">貨幣</label>
+                        <select id="newCurrency" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-400">
+                            <option value="CNY">CNY (¥)</option>
+                            <option value="USD">USD ($)</option>
+                            <option value="HKD">HKD (HK$)</option>
+                        </select>
+                    </div>
+                </div>
                 <div>
-                    <label class="block text-xs font-semibold text-slate-400 mb-1">金額（CNY）</label>
-                    <input type="number" id="newAmount" min="1" required class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-400">
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">來源群組</label>
+                    <input type="text" id="newGroupName" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-400" placeholder="群組名稱（可留空）">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-400 mb-1">來源群組 ID</label>
+                    <input type="text" id="newGroupId" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-400" placeholder="WhatsApp chat ID（可留空）">
                 </div>
                 <div class="flex gap-3 pt-2">
                     <button type="button" onclick="closeNewOrderModal()" class="flex-1 px-4 py-2.5 border border-slate-700 rounded-xl text-sm font-medium text-slate-400 hover:bg-slate-800 transition-colors">取消</button>
@@ -319,13 +365,13 @@
                 document.getElementById("summaryMatched").textContent = `${matchedCount} / ${allOrders.length}`;
 
                 if (allOrders.length === 0) {
-                    tableBody.innerHTML = `<tr><td colspan="6" class="px-6 py-14">${renderEmptyState("暫無訂單記錄", date ? `於 ${date} 沒有找到客戶訂單` : "今日尚無訂單")}</td></tr>`;
+                    tableBody.innerHTML = `<tr><td colspan="7" class="px-6 py-14">${renderEmptyState("暫無訂單記錄", date ? `於 ${date} 沒有找到客戶訂單` : "今日尚無訂單")}</td></tr>`;
                     return;
                 }
 
                 renderPage(0);
             } catch (e) {
-                tableBody.innerHTML = `<tr><td colspan="6" class="px-6 py-14 text-center text-red-400 text-sm">載入失敗：${e.message || e}</td></tr>`;
+                tableBody.innerHTML = `<tr><td colspan="7" class="px-6 py-14 text-center text-red-400 text-sm">載入失敗：${e.message || e}</td></tr>`;
             }
         }
 
@@ -362,6 +408,7 @@
                     <td class="px-6 py-3.5 whitespace-nowrap text-sm font-bold text-amber-400 text-right">${currencySymbol(o.currency)}${o.amount.toLocaleString('zh-HK')}</td>
                     <td class="px-6 py-3.5 text-sm">${matchHtml}</td>
                     <td class="px-6 py-3.5 whitespace-nowrap text-sm ${statusColor}">${statusText}</td>
+                    <td class="px-6 py-3.5 whitespace-nowrap text-sm text-slate-400" title="${escapeHtml(o.group_id || '')}">${escapeHtml((o.group_name || o.group_id || '-').substring(0, 20))}</td>
                     <td class="px-6 py-3.5 whitespace-nowrap text-sm text-center">
                         <div class="flex items-center justify-center gap-1">
                             <button onclick="editOrder(${o.id})" class="text-blue-400 hover:text-amber-400 hover:bg-amber-500/10 px-2 py-1 rounded-lg transition-colors" title="編輯此訂單">
@@ -401,6 +448,10 @@
             document.getElementById("editOrderId").value = o.id;
             document.getElementById("editCustomerName").value = o.customer_name;
             document.getElementById("editAmount").value = o.amount;
+            document.getElementById("editCurrency").value = o.currency || "CNY";
+            document.getElementById("editGroupName").value = o.group_name || "";
+            document.getElementById("editGroupId").value = o.group_id || "";
+            document.getElementById("editStatus").value = o.status || "";
             document.getElementById("editModal").classList.add("flex");
             document.getElementById("editModal").classList.remove("hidden");
         }
@@ -419,6 +470,10 @@
             const id = document.getElementById("editOrderId").value;
             const customerName = document.getElementById("editCustomerName").value.trim();
             const amount = parseInt(document.getElementById("editAmount").value);
+            const currency = document.getElementById("editCurrency").value;
+            const groupName = document.getElementById("editGroupName").value.trim();
+            const groupId = document.getElementById("editGroupId").value.trim();
+            const status = document.getElementById("editStatus").value;
             if (!customerName) return showToast("客戶名稱不能為空", "error");
             if (!amount || amount <= 0) return showToast("金額必須大於 0", "error");
 
@@ -426,7 +481,7 @@
             btn.disabled = true;
             btn.textContent = "儲存中...";
             try {
-                await apiRequest(`/orders/${id}`, "PUT", { customer_name: customerName, amount: amount });
+                await apiRequest(`/orders/${id}`, "PUT", { customer_name: customerName, amount: amount, currency: currency, group_name: groupName, group_id: groupId, status: status || null });
                 showToast("訂單已更新", "success");
                 closeEditModal();
                 await loadOrders();
@@ -454,6 +509,9 @@
             e.preventDefault();
             const customerName = document.getElementById("newCustomerName").value.trim();
             const amount = parseInt(document.getElementById("newAmount").value, 10);
+            const currency = document.getElementById("newCurrency").value;
+            const groupName = document.getElementById("newGroupName").value.trim();
+            const groupId = document.getElementById("newGroupId").value.trim();
             if (!customerName || !amount || amount <= 0) {
                 showToast("請填寫客戶名稱和有效金額", "error");
                 return;
@@ -465,11 +523,12 @@
                 await apiRequest("/orders/", "POST", {
                     customer_name: customerName,
                     amount: amount,
-                    currency: "CNY",
-                    group_id: "",
+                    currency: currency,
+                    group_id: groupId,
+                    group_name: groupName,
                     message_timestamp: new Date().toISOString()
                 });
-                showToast(`已新增訂單：${customerName} ${currencySymbol("CNY")}${amount.toLocaleString()}`, "success");
+                showToast(`已新增訂單：${customerName} ${currencySymbol(currency)}${amount.toLocaleString()}`, "success");
                 closeNewOrderModal();
                 await loadOrders();
             } catch (e) {

@@ -139,7 +139,7 @@ const FIELD_PATTERNS = {
 //  輔助函數
 // ═══════════════════════════════════════════
 
-function matchField(line) {
+function matchField(line, patterns = FIELD_PATTERNS) {
   // 預處理：去除行首尾 * 標記
   let cleanLine = line.trim().replace(/^\*+|\*+$/g, "").trim();
   let keyPart, valuePart;
@@ -164,8 +164,8 @@ function matchField(line) {
   valuePart = valuePart.replace(/^\*+|\*+$/g, "").trim();
   const keyPartClean = keyPart.trim().replace(/[:：= ]+$/, "");
 
-  for (const [fieldKey, patterns] of Object.entries(FIELD_PATTERNS)) {
-    for (const pattern of patterns) {
+  for (const [fieldKey, fieldPatterns] of Object.entries(patterns)) {
+    for (const pattern of fieldPatterns) {
       if (pattern.test(keyPartClean)) {
         return [fieldKey, valuePart];
       }
@@ -182,14 +182,15 @@ const CN_CURRENCY_MAP = {
 };
 const CN_CURRENCY_RE = new RegExp(Object.keys(CN_CURRENCY_MAP).join("|"));
 
-function parseAmountWithCurrency(rawValue) {
+function parseAmountWithCurrency(rawValue, currencyMap = CN_CURRENCY_MAP) {
   const v = rawValue.trim().replace(/,/g, "");
 
   // 中文貨幣後綴: 194,525 美金
-  const mCN = v.match(new RegExp(`([\\d,]+(?:\\.\\d+)?)\\s*(${CN_CURRENCY_RE.source})\\s*$`));
+  const cnCurrencyRe = new RegExp(Object.keys(currencyMap).join("|"));
+  const mCN = v.match(new RegExp(`([\\d,]+(?:\\.\\d+)?)\\s*(${cnCurrencyRe.source})\\s*$`));
   if (mCN) {
     const amount = parseInt(mCN[1], 10);
-    const currency = CN_CURRENCY_MAP[mCN[2]] || "USD";
+    const currency = currencyMap[mCN[2]] || "USD";
     return [isNaN(amount) ? null : amount, currency];
   }
 
@@ -241,12 +242,22 @@ function validateBankCode(code) {
   return /^\d{3}$/.test(code.trim());
 }
 
-function lookupBankBySwift(swift) {
+function buildSwiftLookupFromBanks(banks) {
+  const lookup = {};
+  for (const bank of banks) {
+    for (const s of bank.swift) {
+      lookup[s.toUpperCase()] = bank;
+    }
+  }
+  return lookup;
+}
+
+function lookupBankBySwift(swift, swiftLookup = SWIFT_LOOKUP, banks = HK_BANKS) {
   const swiftUpper = swift.trim().toUpperCase();
-  if (SWIFT_LOOKUP[swiftUpper]) return SWIFT_LOOKUP[swiftUpper];
+  if (swiftLookup[swiftUpper]) return swiftLookup[swiftUpper];
   const swift8 = swiftUpper.substring(0, 8);
-  if (SWIFT_LOOKUP[swift8]) return SWIFT_LOOKUP[swift8];
-  for (const bank of HK_BANKS) {
+  if (swiftLookup[swift8]) return swiftLookup[swift8];
+  for (const bank of banks) {
     for (const s of bank.swift) {
       if (s.toUpperCase().startsWith(swift8)) return bank;
     }
@@ -254,9 +265,9 @@ function lookupBankBySwift(swift) {
   return null;
 }
 
-function lookupBankByNameOrAlias(name) {
+function lookupBankByNameOrAlias(name, banks = HK_BANKS) {
   const nameLower = name.trim().toLowerCase();
-  for (const bank of HK_BANKS) {
+  for (const bank of banks) {
     if (nameLower === bank.name.toLowerCase()) return bank;
     for (const alias of bank.aliases) {
       if (nameLower === alias.toLowerCase()) return bank;
@@ -273,8 +284,17 @@ function lookupBankByNameOrAlias(name) {
 //  主要解析函數
 // ═══════════════════════════════════════════
 
-function parsePaymentInfo(messageText) {
+function parsePaymentInfo(messageText, agentOverrides = null) {
   if (!messageText || !messageText.trim()) return null;
+
+  // 根據 agent 配置合併自定義欄位規則
+  const fieldPatterns = agentOverrides?.field_patterns
+    ? { ...FIELD_PATTERNS, ...agentOverrides.field_patterns }
+    : FIELD_PATTERNS;
+  const currencyMap = agentOverrides?.currency_map
+    ? { ...CN_CURRENCY_MAP, ...agentOverrides.currency_map }
+    : CN_CURRENCY_MAP;
+  const banks = agentOverrides?.banks || HK_BANKS;
 
   const raw = messageText.trim();
   const lines = raw.split("\n");
@@ -285,7 +305,7 @@ function parsePaymentInfo(messageText) {
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    const [fieldKey, value] = matchField(trimmed);
+    const [fieldKey, value] = matchField(trimmed, fieldPatterns);
     if (fieldKey && value) {
       if (fieldKey in extracted) {
         if (value.length > extracted[fieldKey].length) {
@@ -314,7 +334,7 @@ function parsePaymentInfo(messageText) {
   let currency = "USD";
 
   if ("amount" in extracted) {
-    [amount, currency] = parseAmountWithCurrency(extracted["amount"]);
+    [amount, currency] = parseAmountWithCurrency(extracted["amount"], currencyMap);
     if (amount === null) {
       warnings.push(`⚠️ 無法解析金額：${extracted["amount"]}`);
     }
@@ -323,14 +343,15 @@ function parsePaymentInfo(messageText) {
 
   // 備用金額提取：掃描未匹配的行末尾找「數字 + 貨幣」
   if (amount === null) {
+    const cnCurrencyRe = new RegExp(Object.keys(currencyMap).join("|"));
     const matchedKeys = new Set(Object.keys(extracted));
     for (let i = lines.length - 1; i >= 0; i--) {
-      const [fk] = matchField(lines[i]);
+      const [fk] = matchField(lines[i], fieldPatterns);
       if (fk && matchedKeys.has(fk)) continue; // 已是已知欄位
       const cleaned = lines[i].trim().replace(/^\*+|\*+$/g, "").trim();
-      const hasCurrency = /[A-Za-z]{2,4}\s*$/.test(cleaned) || CN_CURRENCY_RE.test(cleaned);
+      const hasCurrency = /[A-Za-z]{2,4}\s*$/.test(cleaned) || cnCurrencyRe.test(cleaned);
       if (/\d/.test(cleaned) && hasCurrency && !fk) {
-        const [fallbackAmt, fallbackCur] = parseAmountWithCurrency(cleaned);
+        const [fallbackAmt, fallbackCur] = parseAmountWithCurrency(cleaned, currencyMap);
         if (fallbackAmt !== null) {
           amount = fallbackAmt;
           currency = fallbackCur;
@@ -340,18 +361,19 @@ function parsePaymentInfo(messageText) {
     }
   }
 
-  // 匹配銀行資料
+  // 匹配銀行資料（使用可覆蓋的 banks 列表）
+  const bankSwiftLookup = buildSwiftLookupFromBanks(banks);
   let matchedBank = null;
   if ("swift" in extracted) {
     const swiftVal = extracted["swift"].trim();
     const { valid, looksBroken } = validateSwift(swiftVal);
     if (valid) {
-      matchedBank = lookupBankBySwift(swiftVal);
+      matchedBank = lookupBankBySwift(swiftVal, bankSwiftLookup, banks);
       if (matchedBank) {
         if (!("bank_name" in extracted)) extracted["bank_name"] = matchedBank.name;
         if (!("bank_code" in extracted)) extracted["bank_code"] = matchedBank.code;
         if ("bank_name" in extracted) {
-          const bankByName = lookupBankByNameOrAlias(extracted["bank_name"]);
+          const bankByName = lookupBankByNameOrAlias(extracted["bank_name"], banks);
           if (bankByName && bankByName.name !== matchedBank.name) {
             warnings.push(`⚠️ SWIFT 代碼與銀行名稱不一致：SWIFT 對應「${matchedBank.name}」，名稱給出「${extracted["bank_name"]}」`);
           }
@@ -366,7 +388,7 @@ function parsePaymentInfo(messageText) {
       }
     }
   } else if ("bank_name" in extracted) {
-    matchedBank = lookupBankByNameOrAlias(extracted["bank_name"]);
+    matchedBank = lookupBankByNameOrAlias(extracted["bank_name"], banks);
     if (!matchedBank) {
       warnings.push(`⚠️ 無法識別的銀行名稱：${extracted["bank_name"]}`);
     }

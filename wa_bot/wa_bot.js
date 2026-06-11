@@ -611,15 +611,16 @@ function parseCancellation(messageText) {
 
 // ==================== API 輔助：交易刪除 ====================
 
-async function getLastTransaction(agentName) {
+async function getLastTransaction(agentName, groupId) {
   try {
     const params = new URLSearchParams();
     params.set("source", "whatsapp");
     if (agentName) params.set("agent_name", agentName);
+    if (groupId) params.set("group_id", groupId);
     const res = await axios.get(`${API_BASE_URL}/transactions/last?${params.toString()}`, { headers: getHeaders() });
     return res.data;
   } catch (err) {
-    if (err.response?.status === 401) { await login(); return getLastTransaction(agentName); }
+    if (err.response?.status === 401) { await login(); return getLastTransaction(agentName, groupId); }
     return null;
   }
 }
@@ -657,12 +658,15 @@ async function getDailyOrders(date) {
   }
 }
 
-async function getUnmatchedOrders() {
+async function getUnmatchedOrders(groupId) {
   try {
-    const res = await axios.get(`${API_BASE_URL}/orders/unmatched`, { headers: getHeaders() });
+    const url = groupId
+      ? `${API_BASE_URL}/orders/unmatched?group_id=${encodeURIComponent(groupId)}`
+      : `${API_BASE_URL}/orders/unmatched`;
+    const res = await axios.get(url, { headers: getHeaders() });
     return res.data;
   } catch (err) {
-    if (err.response?.status === 401) { await login(); return getUnmatchedOrders(); }
+    if (err.response?.status === 401) { await login(); return getUnmatchedOrders(groupId); }
     console.error("❌ 獲取未匹配訂單失敗：", err.response?.data || err.message);
     return [];
   }
@@ -723,44 +727,59 @@ async function sendReminderIfTime() {
     console.log(`⏰ 觸發漏單提醒（${todayStr} ${hour}:${String(minute).padStart(2, "0")} HKT）`);
     lastReminderDate = todayStr;
 
-    const reminderGroupName = getSetting("reminder_group_name", null);
-    if (!reminderGroupName) {
-      console.log("   ⚠️ 未設定提醒群組名稱");
-      return;
+    // 優先使用 reminder_group_names（多群組），向後兼容 reminder_group_name（單一群組）
+    let reminderGroups = getSetting("reminder_group_names", null);
+    if (!reminderGroups || !Array.isArray(reminderGroups) || reminderGroups.length === 0) {
+      const legacyName = getSetting("reminder_group_name", null);
+      if (legacyName) {
+        reminderGroups = [legacyName];
+      } else {
+        console.log("   ⚠️ 未設定提醒群組名稱");
+        return;
+      }
     }
 
     const chats = await client.getChats();
-    const reminderChat = chats.find(c => c.name === reminderGroupName && c.isGroup);
-    if (!reminderChat) {
-      console.log(`   ⚠️ 找不到提醒群組「${reminderGroupName}」`);
-      return;
-    }
 
-    const orders = await getUnmatchedOrders();
-    if (!orders || orders.length === 0) {
-      console.log("   ✅ 今日無漏單");
-      await reminderChat.sendMessage("✅ 今日無漏單 🎉（定時消息）");
-      return;
-    }
-
-    console.log(`   📋 發送 ${orders.length} 筆漏單提醒到「${reminderGroupName}」`);
-
-    for (const order of orders) {
+    for (const groupName of reminderGroups) {
       try {
-        const orderDate = order.created_at
-          ? new Date(order.created_at).toLocaleDateString("zh-HK", { timeZone: "Asia/Hong_Kong" })
-          : "未知日期";
-        const msg = await reminderChat.sendMessage(
-          `📋 漏單提醒：${order.customer_name} ¥${order.amount.toLocaleString()}（${orderDate}）\n` +
-          `請回覆處理狀態（直接回覆此消息）：\n` +
-          `1=已處理  2=未處理  3=忽略`
-        );
-        await updateOrderReminderSent(order.id, msg.id._serialized);
-        console.log(`      ✅ 已發送：${order.customer_name}（order #${order.id}, msg ${msg.id._serialized}）`);
-        // 短暫延遲避免發送過快
-        await new Promise(r => setTimeout(r, 1500));
+        const reminderChat = chats.find(c => c.name === groupName && c.isGroup);
+        if (!reminderChat) {
+          console.log(`   ⚠️ 找不到提醒群組「${groupName}」`);
+          continue;
+        }
+
+        // 獲取該群的未匹配訂單
+        const chatId = reminderChat.id._serialized;
+        const orders = await getUnmatchedOrders(chatId);
+        if (!orders || orders.length === 0) {
+          console.log(`   ✅ 「${groupName}」今日無漏單`);
+          await reminderChat.sendMessage("✅ 今日無漏單 🎉（定時消息）");
+          continue;
+        }
+
+        console.log(`   📋 發送 ${orders.length} 筆漏單提醒到「${groupName}」`);
+
+        for (const order of orders) {
+          try {
+            const orderDate = order.created_at
+              ? new Date(order.created_at).toLocaleDateString("zh-HK", { timeZone: "Asia/Hong_Kong" })
+              : "未知日期";
+            const msg = await reminderChat.sendMessage(
+              `📋 漏單提醒：${order.customer_name} ¥${order.amount.toLocaleString()}（${orderDate}）\n` +
+              `請回覆處理狀態（直接回覆此消息）：\n` +
+              `1=已處理  2=未處理  3=忽略`
+            );
+            await updateOrderReminderSent(order.id, msg.id._serialized);
+            console.log(`      ✅ 已發送：${order.customer_name}（order #${order.id}, msg ${msg.id._serialized}）`);
+            // 短暫延遲避免發送過快
+            await new Promise(r => setTimeout(r, 1500));
+          } catch (e) {
+            console.error(`      ❌ 發送失敗：${order.customer_name}`, e.message);
+          }
+        }
       } catch (e) {
-        console.error(`      ❌ 發送失敗：${order.customer_name}`, e.message);
+        console.error(`   ❌ 「${groupName}」提醒處理失敗：`, e.message);
       }
     }
   } catch (err) {
@@ -898,10 +917,23 @@ client.on("message", async (msg) => {
   // ── @mention 客戶訂單檢測（群組消息）──
   // WhatsApp body 中 @mention 顯示為 @phone_number，需用 mentionedIds 判斷
   if (msg.from.endsWith("@g.us") && msg.mentionedIds && msg.mentionedIds.length > 0) {
+    const orderChat = await msg.getChat();
     // 移除所有 @mention（格式為 @phone_number），再逐行匹配訂單
     const afterMention = msgText.replace(/@\S+/g, "").trim();
     const lines = afterMention.split(/\r?\n/);
-    const ORDER_LINE_RE = /^(.+?)\s+(?:需要(?:戶口|户口)?|需|要|今日兌換|今日兑换|兌換|兑换)?\s*(?:[￥¥$€£])?(\d[\d,]*(?:-\d+)?(?:w|万|萬)?)\s*(美金|美元|USD|港幣|港元|港币|HKD|人民幣|人民币|rmb|RMB|CNY)?/i;
+    // ORDER_LINE_RE keyword 前用 \s+（需有空格），無空格連寫由下方預處理標準化
+    const ORDER_LINE_RE = /^(.+?)\s+(?:需要(?:戶口|户口)?|需|要|單筆|今日兌換|今日兑换|兌換|兑换)?\s*(?:[￥¥$€£])?(\d[\d,]*(?:-\d+)?(?:w|万|萬|千万|千萬|百万|百萬|十万|十萬|千|百|亿|億)?)\s*(美金|美元|USD|港幣|港元|港币|HKD|人民幣|人民币|rmb|RMB|CNY)?/i;
+    const CN_UNIT_MULTIPLIER = {
+      "亿": 100000000, "億": 100000000,
+      "千万": 10000000, "千萬": 10000000,
+      "百万": 1000000, "百萬": 1000000,
+      "十万": 100000, "十萬": 100000,
+      "万": 10000, "萬": 10000, "w": 10000,
+      "千": 1000,
+      "百": 100,
+    };
+    // 按長度由長到短排序，避免「千万」被「万」先匹配
+    const CN_UNIT_KEYS = Object.keys(CN_UNIT_MULTIPLIER).sort((a, b) => b.length - a.length);
     const CURRENCY_MAP = {
       "美金": "USD", "美元": "USD", "usd": "USD",
       "港幣": "HKD", "港元": "HKD", "港币": "HKD", "hkd": "HKD",
@@ -909,27 +941,60 @@ client.on("message", async (msg) => {
     };
     const parsedOrders = [];
 
-    for (const rawLine of lines) {
+    // ── 預處理：name+keyword 無空格連寫標準化（如「duo需要戶口」→「duo 需要戶口」）──
+    const KW_NORMALIZE_RE = /(\S)((?:需要(?:戶口|户口)?|單筆))/g;
+    const normalizedLines = lines.map(l => l.trim().replace(KW_NORMALIZE_RE, "$1 $2"));
+
+    // ── 跨行合併預處理：若 line N 含關鍵詞但無數字，line N+1 含金額，則拼接 ──
+    const mergedLines = [];
+    for (let i = 0; i < normalizedLines.length; i++) {
+      const cur = normalizedLines[i];
+      if (!cur) { mergedLines.push(cur); continue; }
+      const next = i + 1 < normalizedLines.length ? normalizedLines[i + 1] : "";
+      // 當前行含「需要戶口/需要」但沒有數字金額，且下一行有數字
+      if (/需要(?:戶口|户口)?/.test(cur) && !/\d/.test(cur) && /\d/.test(next)) {
+        // 剝離下行中的「單筆」前綴再拼接
+        const nextClean = next.replace(/^單筆\s*/, "");
+        mergedLines.push(cur + " " + nextClean);
+        i++;
+      } else if (/單筆\s*\d/.test(next) && !/\d/.test(cur) && cur.length > 0) {
+        // 下一行以「單筆+數字」開頭且當前行不含數字 → 拼接（剝離單筆）
+        const nextClean = next.replace(/^單筆\s*/, "");
+        mergedLines.push(cur + " " + nextClean);
+        i++;
+      } else {
+        mergedLines.push(cur);
+      }
+    }
+
+    for (const rawLine of mergedLines) {
       const line = rawLine.trim();
       if (!line) continue;
+      // 跳過含換匯公式的行（如 "6.92 / 1.002 x 1.004 = 6.934"），避免誤判為訂單
+      if (/[\/\*].*=/.test(line)) continue;
       const m = line.match(ORDER_LINE_RE);
       if (!m) continue;
       const customerName = m[1].trim();
       const amountStr = m[2];
-      // 區間取第一值：70-71万 → strip 万 → split → 再乘回去
-      const hasWan = /[w万萬]$/i.test(amountStr);
-      const amountClean = amountStr.replace(/[w万萬]$/i, "").split("-")[0].replace(/,/g, "");
-      let amount = parseInt(amountClean, 10);
-      if (hasWan) {
-        amount = amount * 10000;
+      // 區間取第一值：70-71万 → 剝離單位後 split → 再乘回去
+      let unitMultiplier = 1;
+      let amountClean = amountStr;
+      for (const unit of CN_UNIT_KEYS) {
+        if (amountStr.endsWith(unit)) {
+          unitMultiplier = CN_UNIT_MULTIPLIER[unit];
+          amountClean = amountStr.slice(0, -unit.length);
+          break;
+        }
       }
+      amountClean = amountClean.split("-")[0].replace(/,/g, "");
+      const amount = parseInt(amountClean, 10) * unitMultiplier;
       // 幣種檢測
       let currency = "CNY";
       if (m[3]) {
         const c = CURRENCY_MAP[m[3].toLowerCase()];
         if (c) currency = c;
       }
-      if (amount > 0 && customerName.length >= 1) {
+      if (amount >= 100 && customerName.length >= 1) {
         parsedOrders.push({ customerName, amount, currency });
       }
     }
@@ -962,6 +1027,7 @@ client.on("message", async (msg) => {
             amount: o.amount,
             currency: o.currency,
             group_id: msg.from,
+            group_name: orderChat.name || "",
             message_timestamp: new Date().toISOString(),
             raw_message: msgText
           });
@@ -995,12 +1061,29 @@ client.on("message", async (msg) => {
       if (dailyOrders.length === 0) {
         if (WA_SEND_REPLY) await msg.reply("📋 今日尚無客戶訂單");
       } else {
-        let replyText = `📋 今日客戶訂單（${dailyOrders.length} 筆）：`;
+        // 按 group_id 分組整理
+        const groups = {};
         for (const o of dailyOrders) {
-          const statusText = o.matched_transaction
-            ? `已匹配 → ${o.matched_transaction.customer_name || "—"}`
-            : "未匹配";
-          replyText += `\n• ${o.customer_name} ¥${o.amount.toLocaleString()} — ${statusText}`;
+          const gid = o.group_id || "(未分組)";
+          if (!groups[gid]) groups[gid] = [];
+          groups[gid].push(o);
+        }
+        let replyText = `📋 今日客戶訂單（${dailyOrders.length} 筆）：`;
+        for (const [gid, orders] of Object.entries(groups)) {
+          let groupLabel = gid;
+          if (gid !== "(未分組)") {
+            try {
+              const chat = await client.getChatById(gid);
+              groupLabel = chat.name || gid;
+            } catch (_) { /* 無法獲取名稱，使用 ID */ }
+          }
+          replyText += `\n\n【${groupLabel}】（${orders.length} 筆）`;
+          for (const o of orders) {
+            const statusText = o.matched_transaction
+              ? `已匹配 → ${o.matched_transaction.customer_name || "—"}`
+              : "未匹配";
+            replyText += `\n  • ${o.customer_name} ¥${o.amount.toLocaleString()} — ${statusText}`;
+          }
         }
         if (WA_SEND_REPLY) await msg.reply(replyText);
       }
@@ -1060,6 +1143,18 @@ client.on("message", async (msg) => {
   const senderId = msg.author;
   const senderDisplayName = (msg._data && msg._data.notifyName) || senderId;
 
+  // ── 載入當前群的 Agent Parser 配置（若已設定） ──
+  let agentParserOverrides = null;
+  try {
+    const groupAgentMapping = getSetting("group_agent_mapping", {});
+    const agentParserConfigs = getSetting("agent_parser_configs", {});
+    // group_agent_mapping key 可能是群組名稱或 chatId，兩者都嘗試匹配
+    const agentName = groupAgentMapping[groupName] || groupAgentMapping[msg.from];
+    if (agentName && agentParserConfigs[agentName]) {
+      agentParserOverrides = agentParserConfigs[agentName];
+    }
+  } catch (_) { /* 解析失敗則使用默認規則 */ }
+
   // ── 更新公式緩衝區（只保留換匯公式） ──
   const prevText = text;  // 向後兼容：上一條消息文本
   const parsedFormula = parseConversionLine(text);
@@ -1093,6 +1188,7 @@ client.on("message", async (msg) => {
           agent_name: pendingByFormula.agentName, customer_name: pendingByFormula.customerName,
           amount: pendingByFormula.paymentInfo.amount, currency: pendingByFormula.paymentInfo.currency,
           raw_message: pendingByFormula.paymentInfo.raw_message, source: "whatsapp",
+          group_id: msg.from,
           payment_details: pendingByFormula.paymentInfo.payment_details,
           from_currency: resolvedFrom,
           to_currency: pendingByFormula.toCurrency,
@@ -1137,7 +1233,7 @@ client.on("message", async (msg) => {
   const pending = pendingExchanges.get(senderId);
   if (pending) {
     // 如果當前消息是新的付款信息，清除舊 pending，交給下方支付處理
-    const newPaymentCheck = parsePaymentInfo(text);
+    const newPaymentCheck = parsePaymentInfo(text, agentParserOverrides);
     if (newPaymentCheck && newPaymentCheck.amount > 0 && (newPaymentCheck.customer_name || "Unknown") !== "Unknown") {
       pendingExchanges.delete(senderId);
       // fall through — 不 return，讓下方支付處理代碼執行
@@ -1194,6 +1290,7 @@ client.on("message", async (msg) => {
           currency: pending.paymentInfo.currency,
           raw_message: pending.paymentInfo.raw_message,
           source: "whatsapp",
+          group_id: msg.from,
           payment_details: pending.paymentInfo.payment_details,
           from_currency: pending.selectedFrom,
           to_currency: pending.toCurrency,
@@ -1223,6 +1320,7 @@ client.on("message", async (msg) => {
           currency: pending.paymentInfo.currency,
           raw_message: pending.paymentInfo.raw_message,
           source: "whatsapp",
+          group_id: msg.from,
           payment_details: pending.paymentInfo.payment_details,
           from_currency: pending.selectedFrom,
           to_currency: pending.toCurrency,
@@ -1274,7 +1372,7 @@ client.on("message", async (msg) => {
   }  // close if (pending) after else block
 
   // ── 優先檢查是否為結構化付款資訊 ──
-  const paymentInfo = parsePaymentInfo(text);
+  const paymentInfo = parsePaymentInfo(text, agentParserOverrides);
   if (paymentInfo) {
     const customerName = paymentInfo.customer_name || "Unknown";
     console.log(`🏦 檢測到付款資訊: 客戶=${customerName} ${paymentInfo.amount} ${paymentInfo.currency}`);
@@ -1340,6 +1438,7 @@ client.on("message", async (msg) => {
           agent_name: senderDisplayName, customer_name: customerName,
           amount: paymentInfo.amount, currency: paymentInfo.currency,
           raw_message: paymentInfo.raw_message, source: "whatsapp",
+          group_id: msg.from,
           payment_details: paymentInfo.payment_details,
           from_currency: inferredFrom,
           to_currency: toCurrency,
@@ -1385,6 +1484,7 @@ client.on("message", async (msg) => {
           agent_name: senderDisplayName, customer_name: customerName,
           amount: paymentInfo.amount, currency: paymentInfo.currency,
           raw_message: paymentInfo.raw_message, source: "whatsapp",
+          group_id: msg.from,
           payment_details: paymentInfo.payment_details,
           from_currency: conversionResult ? conversionResult.from_currency || "" : "",
           to_currency: toCurrency,
@@ -1405,7 +1505,7 @@ client.on("message", async (msg) => {
     console.log(`   🔙 檢測到取消指令:`, JSON.stringify(cancellation));
     try {
       if (cancellation.target === "last") {
-        const lastTx = await getLastTransaction();
+        const lastTx = await getLastTransaction(null, msg.from);
         if (lastTx) {
           await deleteTransactionById(lastTx.id);
           const cur = lastTx.currency || "USD";
@@ -1419,7 +1519,7 @@ client.on("message", async (msg) => {
           if (WA_SEND_REPLY) await msg.reply("⚠️ 沒有找到可取消的 WhatsApp 交易記錄");
         }
       } else if (cancellation.target === "agent") {
-        const lastTx = await getLastTransaction(cancellation.agent_name);
+        const lastTx = await getLastTransaction(cancellation.agent_name, msg.from);
         if (lastTx) {
           await deleteTransactionById(lastTx.id);
           const cur = lastTx.currency || "USD";

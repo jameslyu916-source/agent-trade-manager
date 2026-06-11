@@ -62,6 +62,7 @@ class Transaction(Base):
     timestamp = Column(String, nullable=False)  # UTC時間ISO格式
     raw_message = Column(String)
     source = Column(String, default="telegram")  # 數據來源：telegram/crawler/manual
+    group_id = Column(String, default="")  # 來源群組 ID（WhatsApp chatId / Telegram chat_id）
     payment_details = Column(String)  # JSON格式的銀行付款詳情（可選）
 
 class SystemSetting(Base):
@@ -82,6 +83,7 @@ class CustomerOrder(Base):
     amount = Column(Integer, nullable=False)
     currency = Column(String, default="CNY")
     group_id = Column(String, default="")
+    group_name = Column(String, default="")  # 群組顯示名稱
     message_timestamp = Column(String, nullable=False)  # UTC ISO
     matched_transaction_id = Column(Integer, nullable=True)
     status = Column(String, nullable=True)  # processed / unprocessed / ignored
@@ -121,7 +123,10 @@ DEFAULT_SETTINGS = {
     "check_interval_minutes": "60",
     "reminder_time": '{"hour": 17, "minute": 30}',
     "reminder_group_name": '"Lb x Ryan chan \\ud83d\\udc0e\\u99ac\\u5230\\u6210\\u529f\\ud83c\\udfc6\\u606d\\u559c\\u767c\\u8ca1"',
+    "reminder_group_names": '[]',
     "preset_exchange_rates": '{"USDT:USD": 1.0, "USDT:HKD": 7.8, "USDT:CNY": 7.2, "USD:CNY": 0.14, "HKD:CNY": 1.12}',
+    "agent_parser_configs": '{}',
+    "group_agent_mapping": '{}',
 }
 
 # ── Migration: add new columns if missing (SQLite doesn't auto-migrate) ──
@@ -148,6 +153,8 @@ def _migrate():
             conn.exec_driver_sql("ALTER TABLE transactions ADD COLUMN remarks VARCHAR DEFAULT ''")
         if "insured_person" not in existing_cols:
             conn.exec_driver_sql("ALTER TABLE transactions ADD COLUMN insured_person VARCHAR DEFAULT ''")
+        if "group_id" not in existing_cols:
+            conn.exec_driver_sql("ALTER TABLE transactions ADD COLUMN group_id VARCHAR DEFAULT ''")
 
         # Migrate agent total_earnings from Integer to JSON string
         result = conn.exec_driver_sql("PRAGMA table_info(agents)")
@@ -191,6 +198,13 @@ def _migrate():
                 )
             """)
             print("✅ customer_orders 表已建立")
+
+        # ── 為 customer_orders 添加 group_name 列（若不存在）──
+        result = conn.exec_driver_sql("PRAGMA table_info(customer_orders)")
+        order_cols = {row[1] for row in result.fetchall()}
+        if "group_name" not in order_cols:
+            conn.exec_driver_sql("ALTER TABLE customer_orders ADD COLUMN group_name VARCHAR DEFAULT ''")
+            print("✅ customer_orders.group_name 已添加")
 
         # ── 初始化預設設置 ──
         try:

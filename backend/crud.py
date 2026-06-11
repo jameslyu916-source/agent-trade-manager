@@ -214,6 +214,7 @@ def create_transaction(db: Session, transaction: schemas.TransactionCreate):
         timestamp=timestamp,
         raw_message=transaction.raw_message,
         source=transaction.source,
+        group_id=getattr(transaction, 'group_id', None) or "",
         payment_details=payment_details
     )
 
@@ -370,13 +371,15 @@ def get_transaction_by_id(db: Session, transaction_id: int):
     """按 ID 查詢單筆交易"""
     return db.query(Transaction).filter(Transaction.id == transaction_id).first()
 
-def get_last_transaction(db: Session, agent_name: str = None, source: str = None):
-    """獲取最近一筆交易，可選按代理和來源平台過濾"""
+def get_last_transaction(db: Session, agent_name: str = None, source: str = None, group_id: str = None):
+    """獲取最近一筆交易，可選按代理、來源平台和群組過濾"""
     query = db.query(Transaction)
     if agent_name:
         query = query.filter(Transaction.agent_name == agent_name)
     if source:
         query = query.filter(Transaction.source == source)
+    if group_id is not None:
+        query = query.filter(Transaction.group_id == group_id)
     return query.order_by(Transaction.timestamp.desc()).first()
 
 def delete_transaction(db: Session, transaction_id: int):
@@ -539,7 +542,8 @@ def get_exchange_rates_by_date(db: Session, date: str):
 
 def create_customer_order(
     db: Session, customer_name: str, amount: int, currency: str,
-    group_id: str, message_timestamp: str, raw_message: str = None
+    group_id: str, message_timestamp: str, raw_message: str = None,
+    group_name: str = ""
 ):
     """創建客戶訂單"""
     order = CustomerOrder(
@@ -547,6 +551,7 @@ def create_customer_order(
         amount=amount,
         currency=currency or "CNY",
         group_id=group_id or "",
+        group_name=group_name or "",
         message_timestamp=message_timestamp,
         raw_message=raw_message
     )
@@ -565,16 +570,19 @@ def get_orders_by_date(db: Session, date_str: str):
     ).order_by(CustomerOrder.created_at.desc()).all()
 
 
-def get_unmatched_orders(db: Session):
-    """獲取所有未匹配且未完成處理的訂單（跨天累積）"""
+def get_unmatched_orders(db: Session, group_id: str = None):
+    """獲取所有未匹配且未完成處理的訂單（跨天累積），可選按 group_id 過濾"""
     from sqlalchemy import or_
-    return db.query(CustomerOrder).filter(
+    query = db.query(CustomerOrder).filter(
         CustomerOrder.matched_transaction_id.is_(None),
         or_(
             CustomerOrder.status.is_(None),
             CustomerOrder.status == "unprocessed"
         )
-    ).order_by(CustomerOrder.created_at.desc()).all()
+    )
+    if group_id is not None:
+        query = query.filter(CustomerOrder.group_id == group_id)
+    return query.order_by(CustomerOrder.created_at.desc()).all()
 
 
 def get_order_by_reminder_message(db: Session, message_id: str):
@@ -659,6 +667,12 @@ def update_order(db: Session, order_id: int, updates: dict):
         order.amount = updates["amount"]
     if "currency" in updates and updates["currency"] is not None:
         order.currency = updates["currency"]
+    if "group_id" in updates:
+        order.group_id = updates["group_id"] or ""
+    if "group_name" in updates:
+        order.group_name = updates["group_name"] or ""
+    if "status" in updates:
+        order.status = updates["status"] if updates["status"] else None
     db.commit()
     db.refresh(order)
     return order
@@ -704,8 +718,12 @@ def _auto_match_order(db: Session, transaction: Transaction):
     tx_chinese = extract_chinese(tx_customer_name)
     tx_chinese_full = extract_chinese(account_name)
 
-    # 查詢所有未匹配的訂單（跨天累積）
-    unmatched = get_unmatched_orders(db)
+    # 查詢未匹配的訂單（同群隔離；若交易無 group_id 則向後兼容匹配無 group_id 的訂單）
+    tx_group_id = (transaction.group_id or "").strip()
+    if tx_group_id:
+        unmatched = get_unmatched_orders(db, group_id=tx_group_id)
+    else:
+        unmatched = get_unmatched_orders(db, group_id="")
 
     candidates = []
     for order in unmatched:

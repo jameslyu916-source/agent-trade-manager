@@ -23,7 +23,7 @@ async def get_settings(
     # 將 JSON 字串值解析為實際型別
     result = {}
     for key, value in settings.items():
-        if key in ("telegram_group_ids", "whatsapp_group_names"):
+        if key in ("telegram_group_ids", "whatsapp_group_names", "reminder_group_names"):
             try:
                 result[key] = json.loads(value)
             except (json.JSONDecodeError, TypeError):
@@ -68,8 +68,9 @@ async def update_settings(
         "report_time",
         "abnormal_single_transaction", "abnormal_daily_total",
         "abnormal_no_transaction_hours", "check_interval_minutes",
-        "reminder_time", "reminder_group_name",
+        "reminder_time", "reminder_group_name", "reminder_group_names",
         "preset_exchange_rates",
+        "agent_parser_configs", "group_agent_mapping",
     }
     sanitized = {}
     for key, value in updates.items():

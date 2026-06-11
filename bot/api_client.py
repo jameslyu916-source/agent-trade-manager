@@ -31,7 +31,7 @@ class APIClient:
         """獲取帶有認證信息的請求頭"""
         return {"Authorization": f"Bearer {self.token}"}
     
-    def create_transaction(self, agent_name, amount, timestamp=None, raw_message=None, source="telegram", currency="USD", payment_details=None, customer_name="", from_currency="", to_currency="", remarks="", insured_person=""):
+    def create_transaction(self, agent_name, amount, timestamp=None, raw_message=None, source="telegram", currency="USD", payment_details=None, customer_name="", from_currency="", to_currency="", remarks="", insured_person="", group_id=""):
         """創建交易記錄"""
         data = {
             "agent_name": agent_name,
@@ -43,7 +43,8 @@ class APIClient:
             "remarks": remarks,
             "insured_person": insured_person,
             "raw_message": raw_message,
-            "source": source
+            "source": source,
+            "group_id": group_id
         }
         if timestamp:
             data["timestamp"] = timestamp
@@ -61,7 +62,7 @@ class APIClient:
             elif response.status_code == 401:
                 # 令牌過期，重新登錄
                 if self.login():
-                    return self.create_transaction(agent_name, amount, timestamp, raw_message, source, currency, payment_details, customer_name, from_currency, to_currency, remarks, insured_person)
+                    return self.create_transaction(agent_name, amount, timestamp, raw_message, source, currency, payment_details, customer_name, from_currency, to_currency, remarks, insured_person, group_id)
             print(f"❌ 創建交易失敗：{response.text}")
             return False
         except Exception as e:
@@ -309,12 +310,14 @@ class APIClient:
             print(f"❌ 獲取最後交易時間失敗：{e}")
             return None
         
-    def get_last_transaction(self, agent_name: str = None):
-        """獲取最近一筆 Telegram 交易，可選按代理過濾"""
+    def get_last_transaction(self, agent_name: str = None, group_id: str = None):
+        """獲取最近一筆 Telegram 交易，可選按代理和群組過濾"""
         try:
             params = {"source": "telegram"}
             if agent_name:
                 params["agent_name"] = agent_name
+            if group_id:
+                params["group_id"] = group_id
             response = requests.get(
                 f"{self.base_url}/transactions/last",
                 params=params,
@@ -324,7 +327,7 @@ class APIClient:
                 return response.json()
             elif response.status_code == 401:
                 if self.login():
-                    return self.get_last_transaction(agent_name)
+                    return self.get_last_transaction(agent_name, group_id)
             return None
         except Exception as e:
             print(f"❌ 獲取最後交易失敗：{e}")

@@ -53,6 +53,7 @@ class TransactionBase(BaseModel):
     insured_person: Optional[str] = ""  # 投保人
     raw_message: Optional[str] = None
     source: str = "telegram"
+    group_id: Optional[str] = ""  # 來源群組 ID
     payment_details: Optional[str] = None  # JSON格式的銀行付款詳情
 
 class TransactionCreate(TransactionBase):
@@ -140,6 +141,7 @@ class CustomerOrderCreate(BaseModel):
     amount: int = Field(gt=0)
     currency: str = "CNY"
     group_id: str = ""
+    group_name: str = ""
     message_timestamp: str
     raw_message: Optional[str] = None
 
@@ -150,6 +152,7 @@ class CustomerOrderResponse(BaseModel):
     amount: int
     currency: str
     group_id: str
+    group_name: str = ""
     message_timestamp: str
     matched_transaction_id: Optional[int] = None
     status: Optional[str] = None

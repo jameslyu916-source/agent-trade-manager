@@ -22,7 +22,8 @@ async def create_order(
         currency=order.currency,
         group_id=order.group_id,
         message_timestamp=order.message_timestamp,
-        raw_message=order.raw_message
+        raw_message=order.raw_message,
+        group_name=order.group_name if hasattr(order, 'group_name') else ""
     )
     matched_tx = crud._build_matched_transaction_summary(db, result)
     resp = schemas.CustomerOrderResponse.model_validate(result)
@@ -57,11 +58,14 @@ async def list_orders(
 
 @router.get("/unmatched")
 async def list_unmatched_orders(
+    group_id: str = None,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
-    """獲取所有未匹配且未完成處理的訂單（跨天累積，用於漏單提醒）"""
-    orders = crud.get_unmatched_orders(db)
+    """獲取所有未匹配且未完成處理的訂單（跨天累積，用於漏單提醒），可選按群組過濾"""
+    import urllib.parse
+    gid = urllib.parse.unquote(group_id) if group_id else None
+    orders = crud.get_unmatched_orders(db, group_id=gid)
     result = []
     for order in orders:
         d = schemas.CustomerOrderResponse.model_validate(order)

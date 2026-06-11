@@ -718,12 +718,15 @@ def _auto_match_order(db: Session, transaction: Transaction):
     tx_chinese = extract_chinese(tx_customer_name)
     tx_chinese_full = extract_chinese(account_name)
 
-    # 查詢未匹配的訂單（同群隔離；若交易無 group_id 則向後兼容匹配無 group_id 的訂單）
+    # 查詢未匹配的訂單（同群優先，跨群兜底）
     tx_group_id = (transaction.group_id or "").strip()
     if tx_group_id:
         unmatched = get_unmatched_orders(db, group_id=tx_group_id)
     else:
         unmatched = get_unmatched_orders(db, group_id="")
+    # 同群無匹配時放寬到全部群組（解決前端手填 group_id / Telegram 跨群場景）
+    if not unmatched:
+        unmatched = get_unmatched_orders(db)
 
     candidates = []
     for order in unmatched:
@@ -791,11 +794,12 @@ def auto_match_today(db: Session):
         ).first()
         if existing:
             continue
-        # 記錄匹配前的狀態
-        orders_before = get_unmatched_orders(db)
         _auto_match_order(db, tx)
-        orders_after = get_unmatched_orders(db)
-        if len(orders_after) < len(orders_before):
+        # 檢查是否成功匹配（_auto_match_order 內部已 commit）
+        matched = db.query(CustomerOrder).filter(
+            CustomerOrder.matched_transaction_id == tx.id
+        ).first()
+        if matched:
             matched_count += 1
     return {"matched": matched_count}
 

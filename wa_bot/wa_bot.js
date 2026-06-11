@@ -2,8 +2,9 @@
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 const axios = require("axios");
-const { parsePaymentInfo, parseConversionLine, findConversionInText } = require("./payment_parser");
 require("dotenv").config();
+const { parsePaymentInfo, parseConversionLine, findConversionInText } = require("./payment_parser");
+const { extractOrders } = require("./ai_order_parser");
 
 // ==================== 配置 ====================
 const API_BASE_URL = process.env.API_BASE_URL || "http://localhost:8000";
@@ -87,7 +88,7 @@ function findFormulaInBuffer(chatId, paymentAmount) {
   const buffer = formulaBuffer.get(chatId);
   if (!buffer || buffer.length === 0) return null;
   for (let i = buffer.length - 1; i >= 0; i--) {
-    const conv = parseConversionLine(buffer[i].text);
+    const conv = parseConversionLine(buffer[i].text) || findConversionInText(buffer[i].text);
     if (conv && amountsMatch(conv.result_amount, paymentAmount)) {
       return buffer[i].text;
     }
@@ -115,7 +116,7 @@ function getYesterdayDate() {
 async function resolveConversion(paymentInfo, prevText, toCurrency) {
   if (!prevText) return null;
 
-  const conv = parseConversionLine(prevText);
+  const conv = parseConversionLine(prevText) || findConversionInText(prevText);
   if (!conv) return null;
 
   // 若公式無貨幣標籤，用付款信息的幣種補
@@ -895,14 +896,15 @@ client.on("message", async (msg) => {
   console.log("   body:", msg.body);
   console.log("   是否群組消息:", msg.from.endsWith("@g.us"));
 
-  // 第二關：確認群組名稱
+  // 第二關：確認群組名稱（使用系統設置優先，與實際過濾邏輯一致）
   if (msg.from.endsWith("@g.us")) {
     const chat = await msg.getChat();
+    const effectiveGroups = getSetting("whatsapp_group_names", null) || WATCH_GROUP_NAMES;
     console.log("   群組名稱:", `「${chat.name}」`);
-    console.log("   監控列表:", WATCH_GROUP_NAMES);
+    console.log("   監控列表:", effectiveGroups);
     console.log(
       "   名稱是否匹配:",
-      WATCH_GROUP_NAMES.length === 0 || WATCH_GROUP_NAMES.includes(chat.name)
+      effectiveGroups.length === 0 || effectiveGroups.includes(chat.name)
     );
   }
 
@@ -912,6 +914,33 @@ client.on("message", async (msg) => {
   if (msgText === "/format" || msgText === "/Format") {
     if (WA_SEND_REPLY) { await msg.reply(FORMAT_FULL); }
     return;
+  }
+
+  // ── 共享客戶名校驗（AI 和正則結果統一過濾）──
+  const NAME_STOP_WORDS = new Set([
+    "only", "just", "about", "around", "approx", "approximately",
+    "maybe", "probably", "almost", "nearly", "roughly",
+    "ok", "okay", "yes", "no", "hi", "hello", "hey",
+    "thanks", "thank", "please", "pls", "test",
+    "the", "a", "an", "is", "are", "was", "were",
+    "this", "that", "it", "i", "you", "he", "she", "we", "they",
+    "not", "all", "some", "any", "and", "or", "but", "if", "so",
+    "to", "for", "in", "on", "at", "by", "from", "with",
+    "also", "too", "very", "can", "will", "would", "could",
+  ]);
+
+  function isValidCustomerName(name) {
+    if (!name || name.length < 1) return false;
+    // 純數字（手機號，8 位以上）
+    if (/^\d{8,}$/.test(name)) return false;
+    // 含 @ 殘留
+    if (/@/.test(name)) return false;
+    // 純標點/空白
+    if (/^[\s.,\-+]+$/.test(name)) return false;
+    // 英文停用詞：去標點 → 小寫 → 精確匹配（僅純 ASCII 才檢查，避免誤傷拼音名）
+    const cleaned = name.replace(/[.\-_\s]/g, "").toLowerCase();
+    if (/^[a-zA-Z]+$/.test(cleaned) && NAME_STOP_WORDS.has(cleaned)) return false;
+    return true;
   }
 
   // ── @mention 客戶訂單檢測（群組消息）──
@@ -940,7 +969,40 @@ client.on("message", async (msg) => {
       "人民幣": "CNY", "人民币": "CNY", "rmb": "CNY", "cny": "CNY",
     };
     const parsedOrders = [];
+    let parserSource = "📐 Regex";
 
+    // ── 預篩條件：有數字 + 內容足夠長才調 AI ──
+    const hasDigits = /\d/.test(afterMention);
+    const hasMinContent = afterMention.replace(/\s/g, "").length > 3;
+    if (hasDigits && hasMinContent) {
+    // ── 第一關：AI 訂單提取（DeepSeek 優先，OpenAI 備援）──
+    try {
+      const aiResult = await extractOrders(msgText);
+      if (aiResult && Array.isArray(aiResult.orders) && aiResult.orders.length > 0) {
+        for (const o of aiResult.orders) {
+          const name = String(o.customer_name || "").trim();
+          const rawAmount = String(o.amount || "0").replace(/,/g, "");
+          const amount = parseInt(rawAmount, 10);
+          const currency = ["USD", "HKD", "CNY"].includes(o.currency) ? o.currency : "CNY";
+          // 校驗客戶名（AI 和正則共用同一校驗邏輯）
+          if (isValidCustomerName(name) && amount >= 100) {
+            parsedOrders.push({ customerName: name, amount, currency });
+          } else if (name && amount >= 100) {
+            console.log(`   ⚠️ AI 結果被校驗拒絕：customer_name="${name}"`);
+          }
+        }
+        if (parsedOrders.length > 0) {
+          parserSource = "🤖 AI (DeepSeek)";
+          console.log(`   🤖 AI 提取到 ${parsedOrders.length} 筆訂單，跳過正則`);
+        }
+      }
+    } catch (e) {
+      console.log(`   ⚠️ AI 訂單提取異常：${e.message}，降級至正則`);
+    }
+    } // end AI pre-filter
+
+    // ── 第二關：正則降級（AI 無結果時執行）──
+    if (parsedOrders.length === 0) {
     // ── 預處理：name+keyword 無空格連寫標準化（如「duo需要戶口」→「duo 需要戶口」）──
     const KW_NORMALIZE_RE = /(\S)((?:需要(?:戶口|户口)?|單筆))/g;
     const normalizedLines = lines.map(l => l.trim().replace(KW_NORMALIZE_RE, "$1 $2"));
@@ -994,10 +1056,11 @@ client.on("message", async (msg) => {
         const c = CURRENCY_MAP[m[3].toLowerCase()];
         if (c) currency = c;
       }
-      if (amount >= 100 && customerName.length >= 1) {
+      if (amount >= 100 && isValidCustomerName(customerName)) {
         parsedOrders.push({ customerName, amount, currency });
       }
     }
+    } // end regex fallback
 
     if (parsedOrders.length > 0) {
       // 查詢當天已有訂單，建立去重 set
@@ -1010,7 +1073,7 @@ client.on("message", async (msg) => {
       }
 
       const CURRENCY_SYMBOL = { USD: "$", HKD: "HK$", CNY: "¥" };
-      console.log(`📋 檢測到 ${parsedOrders.length} 筆客戶訂單`);
+      console.log(`📋 檢測到 ${parsedOrders.length} 筆客戶訂單（${parserSource}）`);
       const results = [];
       let skipped = 0;
       for (const o of parsedOrders) {
@@ -1157,7 +1220,7 @@ client.on("message", async (msg) => {
 
   // ── 更新公式緩衝區（只保留換匯公式） ──
   const prevText = text;  // 向後兼容：上一條消息文本
-  const parsedFormula = parseConversionLine(text);
+  const parsedFormula = parseConversionLine(text) || findConversionInText(text);
   if (parsedFormula) {
     if (!formulaBuffer.has(msg.from)) formulaBuffer.set(msg.from, []);
     const buffer = formulaBuffer.get(msg.from);
@@ -1166,7 +1229,7 @@ client.on("message", async (msg) => {
   }
 
   // ── 換匯公式後發匹配：若當前消息是換匯公式，檢查是否有待處理的兌換 ──
-  const trailingConv = parseConversionLine(text);
+  const trailingConv = parseConversionLine(text) || findConversionInText(text);
   if (trailingConv) {
     const pendingByFormula = pendingExchanges.get(senderId);
     if (pendingByFormula && amountsMatch(trailingConv.result_amount, pendingByFormula.paymentInfo.amount)) {
@@ -1406,7 +1469,7 @@ client.on("message", async (msg) => {
         try {
           const quotedMsg = await msg.getQuotedMessage();
           quotedText = quotedMsg.body || "";
-          if (quotedText && parseConversionLine(quotedText)) {
+          if (quotedText && (parseConversionLine(quotedText) || findConversionInText(quotedText))) {
             formulaText = quotedText;
           }
         } catch (e) { /* ignore */ }

@@ -69,6 +69,7 @@ async def generate_daily_report(
             "投保人": getattr(tx, 'insured_person', '') or '',
             "交易時間(香港)": datetime.fromisoformat(tx.timestamp).replace(tzinfo=timezone.utc).astimezone(HK_TZ).strftime("%Y-%m-%d %H:%M:%S"),
             "數據來源": tx.source,
+            "來源群組": (tx.group_id or "").strip() or "-",
             "付款詳情": _format_payment_details(pd_str),
         })
     df = pd.DataFrame(tx_rows)

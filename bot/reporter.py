@@ -87,6 +87,28 @@ def generate_daily_report(date=None):
         if "insured_person" in df.columns:
             cols.insert(-2, "insured_person")
             cols_display.insert(-2, "投保人")
+        if "group_id" in df.columns:
+            cols.insert(-2, "group_id")
+            cols_display.insert(-2, "來源群組")
+        if "source" in df.columns:
+            cols.insert(-2, "source")
+            cols_display.insert(-2, "數據來源")
+        if "payment_details" in df.columns:
+            # 格式化付款詳情為簡短摘要
+            def _fmt_pd(val):
+                if not val: return ""
+                try:
+                    pd_obj = json.loads(val) if isinstance(val, str) else val
+                    parts = []
+                    if pd_obj.get("bank_name"): parts.append(pd_obj["bank_name"])
+                    if pd_obj.get("account_number"): parts.append(pd_obj["account_number"])
+                    if pd_obj.get("swift"): parts.append(f"SWIFT:{pd_obj['swift']}")
+                    return " | ".join(parts)
+                except Exception:
+                    return str(val)[:80]
+            df["_payment_summary"] = df["payment_details"].apply(_fmt_pd)
+            cols.insert(-2, "_payment_summary")
+            cols_display.insert(-2, "付款詳情")
         df = df[cols]
         df.columns = cols_display
     else:

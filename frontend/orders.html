@@ -149,7 +149,7 @@
                     </div>
                     <button
                         onclick="loadOrders()"
-                        class="bg-gradient-to-r from-amber-500 to-amber-600 text-white px-5 py-2.5 rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all text-sm font-semibold shadow-md shadow-amber-500/20 hover:shadow-lg hover:shadow-blue-500/30 active:scale-[0.98] flex items-center gap-1.5"
+                        class="bg-gradient-to-r from-amber-500 to-amber-600 text-white px-5 py-2.5 rounded-xl hover:from-amber-600 hover:to-amber-700 transition-all text-sm font-semibold shadow-md shadow-amber-500/20 hover:shadow-lg hover:shadow-amber-500/30 active:scale-[0.98] flex items-center gap-1.5"
                     >
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                         查詢
@@ -406,7 +406,7 @@
                     </td>
                     <td class="px-6 py-3.5 whitespace-nowrap text-sm font-semibold text-slate-200">${escapeHtml(o.customer_name)}</td>
                     <td class="px-6 py-3.5 whitespace-nowrap text-sm font-bold text-amber-400 text-right">${currencySymbol(o.currency)}${o.amount.toLocaleString('zh-HK')}</td>
-                    <td class="px-6 py-3.5 text-sm">${matchHtml}</td>
+                    <td class="px-6 py-3.5 whitespace-nowrap text-sm">${matchHtml}</td>
                     <td class="px-6 py-3.5 whitespace-nowrap text-sm ${statusColor}">${statusText}</td>
                     <td class="px-6 py-3.5 whitespace-nowrap text-sm text-slate-400" title="${escapeHtml(o.group_id || '')}">${escapeHtml((o.group_name || o.group_id || '-').substring(0, 20))}</td>
                     <td class="px-6 py-3.5 whitespace-nowrap text-sm text-center">

@@ -320,6 +320,7 @@ async function createTransaction(data) {
       insured_person: data.insured_person || "",
       raw_message: data.raw_message || null,
       source: data.source || "whatsapp",
+      group_id: data.group_id || "",
       payment_details: data.payment_details || null
     };
     const res = await axios.post(`${API_BASE_URL}/transactions/`, payload, {

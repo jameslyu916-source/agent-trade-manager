@@ -5,6 +5,7 @@ const axios = require("axios");
 require("dotenv").config();
 const { parsePaymentInfo, parseConversionLine, findConversionInText } = require("./payment_parser");
 const { extractOrders } = require("./ai_order_parser");
+const { extractPaymentInfo } = require("./ai_payment_parser");
 
 // ==================== 配置 ====================
 const API_BASE_URL = process.env.API_BASE_URL || "http://localhost:8000";
@@ -1435,7 +1436,33 @@ client.on("message", async (msg) => {
   }  // close if (pending) after else block
 
   // ── 優先檢查是否為結構化付款資訊 ──
-  const paymentInfo = parsePaymentInfo(text, agentParserOverrides);
+  let paymentInfo = parsePaymentInfo(text, agentParserOverrides);
+
+  // ── AI 兜底：正則失敗、不完整、或有阻斷錯誤時嘗試 AI ──
+  let regexHadErrors = false;
+  if (paymentInfo) {
+    regexHadErrors = (paymentInfo.warnings || []).some(w => w.startsWith("❌"));
+  }
+  if (!paymentInfo || paymentInfo.amount <= 0 || (paymentInfo.customer_name || "") === "Unknown" || regexHadErrors) {
+    try {
+      const aiResult = await extractPaymentInfo(text);
+      if (aiResult && aiResult.amount > 0 && aiResult.customer_name && aiResult.customer_name !== "Unknown") {
+        // 事後校驗：檢查關鍵字段完整性，補 warnings
+        const aiWarnings = [];
+        const pd = aiResult.payment_details_dict || {};
+        if (!pd.account_number) aiWarnings.push("❌ 缺少戶口號碼");
+        if (!pd.account_name) aiWarnings.push("❌ 缺少戶口全名");
+        if (!pd.swift && !pd.bank_name && !pd.bank_code) aiWarnings.push("❌ 缺少銀行識別資訊（SWIFT、銀行名稱或銀行代碼至少需要一項）");
+        if (!pd.bank_address) aiWarnings.push("⚠️ 缺少銀行地址");
+        aiResult.warnings = aiWarnings;
+        paymentInfo = aiResult;
+        console.log("   🤖 AI 支付解析兜底成功");
+      }
+    } catch (e) {
+      console.log(`   ⚠️ AI 支付解析異常：${e.message}`);
+    }
+  }
+
   if (paymentInfo) {
     const customerName = paymentInfo.customer_name || "Unknown";
     console.log(`🏦 檢測到付款資訊: 客戶=${customerName} ${paymentInfo.amount} ${paymentInfo.currency}`);

@@ -154,6 +154,15 @@ async function resolveConversion(paymentInfo, prevText, toCurrency) {
     }
   }
 
+  // ── 嚴格驗證公式內部算術（僅允許個位數誤差）──
+  let formulaWarning = null;
+  if (!autocorrected) {
+    const mathError = Math.abs(expectedResult - conv.result_amount);
+    if (mathError > 5) {
+      formulaWarning = `⚠️ 換匯公式驗算異常：${sourceAmount.toLocaleString()} ${isMultiply ? "×" : "/"} ${conv.rate} 應為 ${expectedResult.toLocaleString()}，但公式寫的是 ${conv.result_amount.toLocaleString()}（差 ${mathError}）\n💡 如需取消，請回覆「取消」或「取消 上一筆」`;
+    }
+  }
+
   // 驗證 result_amount 與付款 amount 是否匹配
   if (!amountsMatch(conv.result_amount, paymentInfo.amount)) return null;
 
@@ -223,11 +232,13 @@ async function resolveConversion(paymentInfo, prevText, toCurrency) {
       ? `（已自動補全萬位 ${conv.source_amount.toLocaleString()}→${sourceAmount.toLocaleString()}）`
       : "";
     const label = candidates.find(o => o.from === bestMatch.from)?.label || bestMatch.from;
+    let note = `📐 從換匯公式 ${resultCurrency} ${conv.rate} 自動推斷為 ${bestMatch.from}（${label}）${wanNote}`;
+    if (formulaWarning) note += `\n${formulaWarning}`;
     return {
       auto_inferred: true,
       from_currency: bestMatch.from,
       conversion: conversionInfo,
-      note: `📐 從換匯公式 ${resultCurrency} ${conv.rate} 自動推斷為 ${bestMatch.from}（${label}）${wanNote}`,
+      note,
     };
   }
 
@@ -252,11 +263,13 @@ async function resolveConversion(paymentInfo, prevText, toCurrency) {
     ? `（已自動補全萬位 ${conv.source_amount.toLocaleString()}→${sourceAmount.toLocaleString()}）`
     : "";
   const opSymbol = conv.operator === "*" ? " × " : " / ";
+  let note = `📐 檢測到換匯公式 ${sourceAmount.toLocaleString()}${opSymbol}${conv.rate} = ${conv.result_amount.toLocaleString()} ${conv.result_currency}，最佳匹配 ${bestPairLabel} (${bestDailyStr}) 超過 3% 閾值，請手動選擇${wanNote}`;
+  if (formulaWarning) note += `\n${formulaWarning}`;
   return {
     auto_inferred: false,
     from_currency: null,
     conversion: conversionInfo,
-    note: `📐 檢測到換匯公式 ${sourceAmount.toLocaleString()}${opSymbol}${conv.rate} = ${conv.result_amount.toLocaleString()} ${conv.result_currency}，最佳匹配 ${bestPairLabel} (${bestDailyStr}) 超過 3% 閾值，請手動選擇${wanNote}`,
+    note,
   };
 }
 
@@ -781,7 +794,7 @@ async function sendReminderIfTime() {
               : "未知日期";
             const msg = await reminderChat.sendMessage(
               `📋 漏單提醒：${order.customer_name} ¥${order.amount.toLocaleString()}（${orderDate}）\n` +
-              `請回覆處理狀態（直接回覆此消息）：\n` +
+              `請回覆處理狀態（引用回覆此消息）：\n` +
               `1=已處理  2=未處理  3=忽略`
             );
             await updateOrderReminderSent(order.id, msg.id._serialized);

@@ -614,11 +614,13 @@ def update_order_status(db: Session, order_id: int, status: str):
 
 
 def update_order_reminder_sent(db: Session, order_id: int, reminder_message_id: str):
-    """記錄提醒消息已發送"""
+    """記錄提醒消息已發送，並將狀態自動設為「未處理」"""
     order = db.query(CustomerOrder).filter(CustomerOrder.id == order_id).first()
     if not order:
         return None
     order.reminder_message_id = reminder_message_id
+    if not order.status:
+        order.status = "unprocessed"
     db.commit()
     db.refresh(order)
     return order

@@ -108,6 +108,15 @@ function rateWithinThreshold(usedRate, dailyRate, threshold = 0.03) {
   return Math.abs(usedRate - dailyRate) / dailyRate <= threshold;
 }
 
+// ── 帳戶查找消息過濾（防止客戶轉款帳號被誤判為付款信息）──
+function isAccountLookupMessage(text) {
+  if (!text) return false;
+  const t = text.trim();
+  if (/^一笔出/.test(t)) return true;
+  if (/不打散/.test(t) && /不备注/.test(t)) return true;
+  return false;
+}
+
 function getYesterdayDate() {
   const d = new Date();
   d.setDate(d.getDate() - 1);
@@ -1279,6 +1288,18 @@ client.on("message", async (msg) => {
     }
   }
 
+  // ── 第一層：帳戶查找消息過濾 ──
+  if (isAccountLookupMessage(text)) {
+    console.log("   🔒 檢測到帳戶查找消息，跳過付款解析");
+    return;
+  }
+
+  // ── 第二層：Per-Agent skip_payment_parsing ──
+  if (agentParserOverrides?.skip_payment_parsing) {
+    console.log(`   🔒 agent 已設定 skip_payment_parsing，跳過付款解析`);
+    return;
+  }
+
   // ── 檢查是否有待處理的兌換方式選擇 ──
   const pending = pendingExchanges.get(senderId);
   if (pending) {
@@ -1420,6 +1441,18 @@ client.on("message", async (msg) => {
     return;
   }
   }  // close if (pending) after else block
+
+  // ── 第二層：Per-Agent skip_payment_parsing ──
+  if (agentParserOverrides?.skip_payment_parsing) {
+    console.log(`   🔒 agent 已設定 skip_payment_parsing，跳過付款解析`);
+    return;
+  }
+
+  // ── 第一層：帳戶查找消息過濾（防止客戶轉款帳號被誤判為付款）──
+  if (isAccountLookupMessage(text)) {
+    console.log("   🔒 檢測到帳戶查找消息，跳過付款解析");
+    return;
+  }
 
   // ── 優先檢查是否為結構化付款資訊 ──
   let paymentInfo = parsePaymentInfo(text, agentParserOverrides);

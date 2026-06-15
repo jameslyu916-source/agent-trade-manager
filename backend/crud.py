@@ -417,6 +417,8 @@ def update_transaction(db: Session, transaction_id: int, updates: dict):
         tx.currency = updates["currency"]
     if "payment_details" in updates:
         tx.payment_details = updates["payment_details"]
+    if "group_id" in updates:
+        tx.group_id = updates["group_id"]
 
     # 重新計算盈利
     tx.profit = _calculate_profit(db, tx.payment_details, tx.currency or "USD", tx.timestamp)

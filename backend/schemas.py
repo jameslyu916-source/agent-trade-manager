@@ -69,6 +69,7 @@ class TransactionUpdate(BaseModel):
     remarks: Optional[str] = None
     insured_person: Optional[str] = None
     payment_details: Optional[str] = None
+    group_id: Optional[str] = None
 
 class TransactionResponse(TransactionBase):
     id: int

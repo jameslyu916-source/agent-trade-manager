@@ -1,11 +1,48 @@
 # backend/routers/orders.py — 客戶訂單 API
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from ..database import get_db
+from ..database import get_db, CustomerOrder, Transaction
 from ..routers.auth import get_current_user
 from .. import crud, schemas
+from sqlalchemy import distinct
 
 router = APIRouter(prefix="/orders", tags=["客戶訂單"])
+
+
+@router.get("/groups")
+async def list_groups(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    """返回所有歷史群組（從訂單和交易表中合併去重）"""
+    groups = {}
+
+    # 從訂單表查詢（有 group_name）
+    order_rows = db.query(CustomerOrder.group_id, CustomerOrder.group_name).filter(
+        CustomerOrder.group_id != ""
+    ).distinct().all()
+    for gid, gname in order_rows:
+        if gid and gid.strip():
+            gid = gid.strip()
+            if gid not in groups or (gname and not groups[gid]):
+                groups[gid] = gname or ""
+
+    # 從交易表查詢（沒有 group_name 列，只取 group_id）
+    tx_rows = db.query(distinct(Transaction.group_id)).filter(
+        Transaction.group_id != ""
+    ).all()
+    for (gid,) in tx_rows:
+        if gid and gid.strip():
+            gid = gid.strip()
+            if gid not in groups:
+                groups[gid] = ""
+
+    result = [
+        {"group_id": gid, "group_name": gname}
+        for gid, gname in groups.items()
+    ]
+    result.sort(key=lambda x: x["group_name"] or x["group_id"])
+    return result
 
 
 @router.post("", response_model=schemas.CustomerOrderResponse)

@@ -34,16 +34,17 @@ async def create_order(
 @router.get("/daily")
 async def list_orders(
     date: str = None,
+    group_id: str = None,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
-    """獲取指定日期的所有客戶訂單"""
+    """獲取指定日期的客戶訂單，可選按 group_id 過濾"""
     if not date:
         from datetime import datetime
         from ..database import HK_TZ
         date = datetime.now(HK_TZ).strftime("%Y-%m-%d")
 
-    orders = crud.get_orders_by_date(db, date)
+    orders = crud.get_orders_by_date(db, date, group_id=group_id)
     result = []
     for order in orders:
         d = schemas.CustomerOrderResponse.model_validate(order)

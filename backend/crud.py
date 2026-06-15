@@ -561,13 +561,16 @@ def create_customer_order(
     return order
 
 
-def get_orders_by_date(db: Session, date_str: str):
-    """獲取指定日期的所有客戶訂單（香港時間）"""
+def get_orders_by_date(db: Session, date_str: str, group_id: str = None):
+    """獲取指定日期的客戶訂單（香港時間），可選按 group_id 過濾"""
     start_utc, end_utc = _get_utc_range_for_hk_date(date_str)
-    return db.query(CustomerOrder).filter(
+    query = db.query(CustomerOrder).filter(
         CustomerOrder.created_at >= start_utc,
         CustomerOrder.created_at < end_utc
-    ).order_by(CustomerOrder.created_at.desc()).all()
+    )
+    if group_id is not None:
+        query = query.filter(CustomerOrder.group_id == group_id)
+    return query.order_by(CustomerOrder.created_at.desc()).all()
 
 
 def get_unmatched_orders(db: Session, group_id: str = None):

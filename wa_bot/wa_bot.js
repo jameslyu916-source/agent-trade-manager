@@ -650,12 +650,14 @@ async function createCustomerOrder(data) {
   }
 }
 
-async function getDailyOrders(date) {
+async function getDailyOrders(date, groupId = null) {
   try {
-    const res = await axios.get(`${API_BASE_URL}/orders/daily?date=${encodeURIComponent(date)}`, { headers: getHeaders() });
+    let url = `${API_BASE_URL}/orders/daily?date=${encodeURIComponent(date)}`;
+    if (groupId) url += `&group_id=${encodeURIComponent(groupId)}`;
+    const res = await axios.get(url, { headers: getHeaders() });
     return res.data || [];
   } catch (err) {
-    if (err.response?.status === 401) { await login(); return getDailyOrders(date); }
+    if (err.response?.status === 401) { await login(); return getDailyOrders(date, groupId); }
     console.error("❌ 獲取當日訂單失敗：", err.response?.data || err.message);
     return [];
   }
@@ -1122,33 +1124,16 @@ client.on("message", async (msg) => {
     console.log("📋 收到今日訂單查詢");
     try {
       const today = new Date().toISOString().split("T")[0];
-      const dailyOrders = await getDailyOrders(today);
+      const dailyOrders = await getDailyOrders(today, msg.from);
       if (dailyOrders.length === 0) {
         if (WA_SEND_REPLY) await msg.reply("📋 今日尚無客戶訂單");
       } else {
-        // 按 group_id 分組整理
-        const groups = {};
-        for (const o of dailyOrders) {
-          const gid = o.group_id || "(未分組)";
-          if (!groups[gid]) groups[gid] = [];
-          groups[gid].push(o);
-        }
         let replyText = `📋 今日客戶訂單（${dailyOrders.length} 筆）：`;
-        for (const [gid, orders] of Object.entries(groups)) {
-          let groupLabel = gid;
-          if (gid !== "(未分組)") {
-            try {
-              const chat = await client.getChatById(gid);
-              groupLabel = chat.name || gid;
-            } catch (_) { /* 無法獲取名稱，使用 ID */ }
-          }
-          replyText += `\n\n【${groupLabel}】（${orders.length} 筆）`;
-          for (const o of orders) {
-            const statusText = o.matched_transaction
-              ? `已匹配 → ${o.matched_transaction.customer_name || "—"}`
-              : "未匹配";
-            replyText += `\n  • ${o.customer_name} ¥${o.amount.toLocaleString()} — ${statusText}`;
-          }
+        for (const o of dailyOrders) {
+          const statusText = o.matched_transaction
+            ? `已匹配 → ${o.matched_transaction.customer_name || "—"}`
+            : "未匹配";
+          replyText += `\n  • ${o.customer_name} ¥${o.amount.toLocaleString()} — ${statusText}`;
         }
         if (WA_SEND_REPLY) await msg.reply(replyText);
       }

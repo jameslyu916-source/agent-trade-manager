@@ -393,17 +393,24 @@ const FORMAT_TEMPLATE = `📋 交易信息格式（請複製並填寫）：
 收款人名字：
 銀行代碼：
 收款人帳號：
-金額：
+金額（+貨幣）：
 
 --- 以下為可選項 ---
 備註：
-投保人：`;
+投保人（投保專用）：`;
 
 const FORMAT_CONVERSION_HINT = `💡 發送提示：
 請先發送換匯公式（如：50w / 7.01 = 71,023 USD），
 再發送下述交易信息。兩條消息請分開發送。`;
 
-const FORMAT_FULL = FORMAT_CONVERSION_HINT + "\n\n" + FORMAT_EXAMPLE + "\n\n" + FORMAT_TEMPLATE;
+const FORMAT_MINIMAL = `📋 精簡版（僅必填項）：
+
+戶口全名：
+銀行名稱：
+戶口號碼：
+金額（+貨幣）：`;
+
+const FORMAT_FULL = FORMAT_CONVERSION_HINT + "\n\n" + FORMAT_EXAMPLE + "\n\n" + FORMAT_TEMPLATE + "\n\n" + FORMAT_MINIMAL;
 
 // ==================== API 客戶端 ====================
 let authToken = null;
@@ -1034,7 +1041,8 @@ client.on("message", async (msg) => {
   // 以下保持原有邏輯不變
   // ── 格式範例請求（私聊和群組都可用）──
   const msgText = msg.body.trim();
-  if (msgText === "/format" || msgText === "/Format") {
+  const formatAliases = ["/format", "/Format", "上單模板", "上单模板", "上單格式", "上单格式", "上單樣板", "上单样板"];
+  if (formatAliases.includes(msgText)) {
     if (WA_SEND_REPLY) { await msg.reply(FORMAT_FULL); }
     return;
   }

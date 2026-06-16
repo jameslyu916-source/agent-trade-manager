@@ -6,6 +6,7 @@ import sys
 import signal
 import time
 import webbrowser
+import threading
 import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -38,16 +39,43 @@ def start_backend():
 
 def start_telegram_bot():
     print("  [2/3] 啟動 Telegram Bot...", end=" ", flush=True)
-    log_file = open(os.path.join(LOG_DIR, "telegram.log"), "w")
-    p = subprocess.Popen(
-        [sys.executable, "-m", "bot.bot"],
-        cwd=BASE_DIR,
-        stdout=log_file,
-        stderr=log_file,
-    )
+    def run_bot():
+        log_file = open(os.path.join(LOG_DIR, "telegram.log"), "w")
+        p = subprocess.Popen(
+            [sys.executable, "-m", "bot.bot"],
+            cwd=BASE_DIR,
+            stdout=log_file,
+            stderr=log_file,
+        )
+        return p, log_file
+
+    p, log_file = run_bot()
     processes.append(("Telegram Bot", p, log_file))
     time.sleep(1.5)
     print("\033[32m✓\033[0m")
+
+    # 後台監控 Telegram Bot，崩潰後自動重啟（最多 5 次，間隔 10 秒）
+    bot_ref = [p, log_file]  # 可變引用，供監控線程更新
+    def monitor_telegram():
+        restart_count = 0
+        while True:
+            ret = bot_ref[0].wait()
+            restart_count += 1
+            if restart_count > 5:
+                print(f"\n  \033[31mTelegram Bot 已崩潰 {restart_count} 次，停止重啟\033[0m")
+                break
+            print(f"\n  \033[33mTelegram Bot 異常退出（第 {restart_count} 次），10 秒後重啟...\033[0m")
+            time.sleep(10)
+            try: bot_ref[1].close()
+            except: pass
+            new_p, new_log = run_bot()
+            bot_ref[0] = new_p
+            bot_ref[1] = new_log
+            for i, (name, _, _) in enumerate(processes):
+                if name == "Telegram Bot":
+                    processes[i] = ("Telegram Bot", new_p, new_log)
+                    break
+    threading.Thread(target=monitor_telegram, daemon=True).start()
 
 
 def start_whatsapp_bot():
@@ -137,8 +165,9 @@ def main():
 
     webbrowser.open("http://localhost:8000/frontend/index.html")
 
-    # 等待任意子程序結束或 Ctrl+C
-    signal.pause()
+    # 用 while 循環代替 signal.pause()，避免子進程 SIGCHLD 導致提前退出
+    while True:
+        time.sleep(1)
 
 
 if __name__ == "__main__":

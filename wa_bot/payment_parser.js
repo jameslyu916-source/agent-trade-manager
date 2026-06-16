@@ -121,6 +121,7 @@ const FIELD_PATTERNS = {
   ],
   amount: [
     /Mso[- ]?Pobo/i,
+    /^MSO\b/i,
     /(?:Amount|AMOUNT|amount)\s*/i,
     /(?:金額|金额|交易金額|交易金额)\s*/i,
     /(?:收款金額|收款金额|入金金額|入金金额)\s*/i,
@@ -402,10 +403,7 @@ function parsePaymentInfo(messageText, agentOverrides = null) {
     warnings.push("❌ 缺少銀行識別資訊（SWIFT、銀行名稱或銀行代碼至少需要一項）");
   }
 
-  // ── 驗證銀行地址 ──
-  if (!(extracted["bank_address"] || "").trim()) {
-    warnings.push("⚠️ 缺少銀行地址");
-  }
+  // ── 銀行地址為可選項，不顯示警告 ──
 
   // 驗證必填欄位
   if (!("account_number" in extracted)) warnings.push("❌ 缺少戶口號碼");
@@ -494,7 +492,7 @@ function _parseMatch(m) {
 function parseConversionLine(text) {
   if (!text || !text.trim()) return null;
 
-  const cleaned = _stripDecorators(text.trim());
+  const cleaned = _stripDecorators(text.trim()).trim();
   const m = cleaned.match(CONVERSION_LINE_RE);
   if (!m) return null;
 

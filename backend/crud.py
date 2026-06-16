@@ -37,7 +37,7 @@ def _calculate_profit(db: Session, payment_details, currency: str, timestamp: st
 
     # 非當天實際匯率推斷的交易不計算利潤
     rate_source = conv.get("rate_source")
-    if rate_source in ("preset", "previous_day"):
+    if rate_source in ("preset", "previous_day", "manual_skip"):
         print(f"🔍 [profit] rate_source={rate_source}，不計算利潤")
         return None
 

@@ -214,6 +214,67 @@ function parseSourceAmount(text) {
   return null;
 }
 
+// ── 解析補全欄位：從 agent 補發的文字中提取個別欄位 ──
+function parseCompletionFields(text) {
+  if (!text || !text.trim()) return { fields: {}, pd: {} };
+  const lines = text.split("\n");
+  const fields = {};     // top-level: customer_name, amount, currency
+  const pd = {};         // payment_details: account_name, bank_name, swift, etc.
+
+  // 欄位標籤映射
+  const labelMap = {
+    account_name: ["戶口全名", "户口全名", "收款人名稱", "收款人名称", "Account Name", "account name", "收款人", "戶名", "户名"],
+    account_number: ["戶口號碼", "户口号码", "賬戶號碼", "账户号码", "Account Number", "account number", "帳號", "账号", "銀行號碼", "银行号码", "戶口", "户口"],
+    bank_name: ["銀行名稱", "银行名称", "Bank Name", "bank name", "銀行", "银行", "收款銀行", "收款银行"],
+    swift: ["SWIFT", "swift", "Swift Code", "SWIFT Code", "BIC", "SwiftCode", "銀行電碼", "银行电码"],
+    bank_code: ["銀行代碼", "银行代码", "Bank Code", "bank code", "銀行編號", "银行编号"],
+    bank_address: ["銀行地址", "银行地址", "Bank Address", "bank address"],
+    amount: ["金額", "金额", "Amount", "amount", "MSO", "Mso-Pobo", "交易金額", "交易金额"],
+  };
+
+  for (const line of lines) {
+    const t = line.trim();
+    if (!t) continue;
+    // 找分隔符
+    let key = "", value = "";
+    for (const sep of ["：", ":", "="]) {
+      const idx = t.indexOf(sep);
+      if (idx > 0) { key = t.slice(0, idx).trim(); value = t.slice(idx + 1).trim(); break; }
+    }
+    if (!key) {
+      // 無分隔符 → 嘗試以空格分割
+      const sp = t.indexOf(" ");
+      if (sp > 0) { key = t.slice(0, sp).trim(); value = t.slice(sp + 1).trim(); }
+      else continue;
+    }
+
+    const keyLower = key.toLowerCase();
+    for (const [fieldKey, labels] of Object.entries(labelMap)) {
+      if (labels.some(l => keyLower === l.toLowerCase())) {
+        if (fieldKey === "amount") {
+          // 嘗試解析金額+幣種
+          const parsed = parsePaymentInfo(value, null);
+          if (parsed && parsed.amount > 0) {
+            fields.amount = parsed.amount;
+            fields.currency = parsed.currency;
+          } else {
+            // fallback: 純數字
+            const amt = parseSourceAmount(value);
+            if (amt) fields.amount = amt;
+          }
+        } else if (["account_name"].includes(fieldKey)) {
+          pd[fieldKey] = value;
+          fields.customer_name = value;  // 同步更新
+        } else {
+          pd[fieldKey] = value;
+        }
+        break;
+      }
+    }
+  }
+  return { fields, pd };
+}
+
 function getYesterdayDate() {
   const d = new Date();
   d.setDate(d.getDate() - 1);
@@ -701,8 +762,9 @@ function parseCancellation(messageText) {
 
   const remainder = text.slice(matchedKw.length).trim();
 
-  // "取消" 單獨使用 → 取消上一筆
-  if (!remainder || ["上一筆", "上一笔", "上一单", "上一單", "last", "上一條", "上一"].includes(remainder)) {
+  // 「取消」單獨使用太容易誤觸發，需搭配後綴（如「取消 上一筆」）；其他指令（撤銷等）單獨即可
+  const isCancelAlone = matchedKw === "取消" && !remainder;
+  if (!isCancelAlone && (!remainder || ["上一筆", "上一笔", "上一单", "上一單", "last", "上一條", "上一"].includes(remainder))) {
     return { action: "cancel", target: "last" };
   }
 
@@ -935,6 +997,10 @@ async function gracefulShutdown() {
   console.log("🛑 正在關閉 WhatsApp Bot...");
   cleanupPidFile();
   try { await client.destroy(); } catch (_) {}
+  try {
+    const { execSync } = require("child_process");
+    execSync("pkill -f 'Google Chrome for Testing'", { timeout: 3000 });
+  } catch (_) {}
   process.exit(0);
 }
 
@@ -950,7 +1016,7 @@ const client = new Client({
   // LocalAuth 會將登錄狀態保存到本地，重啟後不需要重新掃碼
   authStrategy: new LocalAuth({ clientId: "wa-bot" }),
   puppeteer: {
-    // Mac 上 Chromium 路徑，whatsapp-web.js 會自動處理
+    executablePath: "/Users/james.lyu916gmail.com/.cache/puppeteer/chrome/mac_arm-146.0.7680.31/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
   },
 });
@@ -1315,7 +1381,7 @@ client.on("message", async (msg) => {
     return;
   }
 
-  const text = msg.body;
+  let text = msg.body;
 
   const senderId = msg.author;
   const senderDisplayName = (msg._data && msg._data.notifyName) || senderId;
@@ -1431,7 +1497,9 @@ client.on("message", async (msg) => {
     if (Date.now() > pending.expireAt) {
       pendingExchanges.delete(senderId);
       if (WA_SEND_REPLY) {
-        await msg.reply(`⏰ 選擇已過期：${pending.customerName} ${pending.paymentInfo.amount.toLocaleString()} ${pending.toCurrency}`);
+        const pInfo = pending.paymentInfo || pending.partialPaymentInfo || {};
+        const amt = (pInfo.amount || 0).toLocaleString();
+        await msg.reply(`⏰ 選擇已過期：${pending.customerName || "Unknown"} ${amt} ${pending.toCurrency || ""}`);
       }
       return;
     }
@@ -1442,7 +1510,9 @@ client.on("message", async (msg) => {
     if (cancelKeywords.some(k => trimmedText.startsWith(k))) {
       pendingExchanges.delete(senderId);
       if (WA_SEND_REPLY) {
-        await msg.reply(`❌ 已取消記錄：${pending.customerName} ${pending.paymentInfo.amount.toLocaleString()} ${pending.toCurrency}`);
+        const pInfo = pending.paymentInfo || pending.partialPaymentInfo || {};
+        const amt = (pInfo.amount || 0).toLocaleString();
+        await msg.reply(`❌ 已取消記錄：${pending.customerName || "Unknown"} ${amt} ${pending.toCurrency || ""}`);
       }
       return;
     }
@@ -1483,6 +1553,8 @@ client.on("message", async (msg) => {
     }
 
     // ═══════════════════════════════════════════
+    let completed = false;  // awaiting_completion 成功標記
+
     //  State 1: awaiting_sell_rate — 等待賣出匯率
     // ═══════════════════════════════════════════
     if (pending.state === "awaiting_sell_rate") {
@@ -1499,7 +1571,7 @@ client.on("message", async (msg) => {
         pending.sellRate = null;
         // 追問匯率
         if (WA_SEND_REPLY) {
-          await msg.reply(`✅ 已選 ${chosen.label}\n💰 請輸入賣出匯率（如 7.08），或直接發送換匯公式\n💡 回覆「取消」可取消`);
+          await msg.reply(`✅ 已選 ${chosen.label}\n📝 *請回覆賣出匯率*，例：7.08`);
         }
         pending.expireAt = Date.now() + 5 * 60 * 1000;
         return;
@@ -1524,7 +1596,7 @@ client.on("message", async (msg) => {
           pending.expireAt = Date.now() + 5 * 60 * 1000;
           const fromLabel = `${inferred.from} → ${pending.toCurrency}`;
           if (WA_SEND_REPLY) {
-            await msg.reply(`✅ 分數匯率：成本 ${fractionRate.cost_rate} / 賣出 ${fractionRate.sell_rate}，推斷為 ${fromLabel}\n📉 已記錄底價匯率 ${fractionRate.cost_rate}\n💰 請輸入兌換前的 ${inferred.from} 金額（如 300w），或發送換匯公式\n💡 回覆「取消」可取消`);
+            await msg.reply(`✅ 賣出 ${fractionRate.sell_rate}｜底價 ${fractionRate.cost_rate} 已記錄\n📝 *請回覆兌換前 ${inferred.from} 金額*，例：300w\n💡 或發送換匯公式`);
           }
           return;
         }
@@ -1533,7 +1605,9 @@ client.on("message", async (msg) => {
       const rateNum = parseFloat(trimmedText);
       if (isNaN(rateNum) || rateNum <= 0) {
         if (WA_SEND_REPLY) {
-          await msg.reply(`⚠️ 請輸入有效的賣出匯率（如 7.01），或回覆數字選擇幣種：\n${options.map((o, i) => `${i + 1}. ${o.label}`).join("\n")}\n${options.length + 1}. 取消`);
+          const circ = ["①", "②", "③", "④", "⑤"];
+          const optList = options.map((o, i) => `${circ[i]}${o.label}`).join("  ");
+          await msg.reply(`❌ 請回覆數字，例：7.01\n幣種：${optList}  ${circ[options.length]}取消`);
         }
         return;
       }
@@ -1546,12 +1620,11 @@ client.on("message", async (msg) => {
       } else {
         // 無法推斷，讓用戶手動選擇
         if (WA_SEND_REPLY) {
-          let askMsg = `⚠️ 無法從匯率 ${rateNum} 自動推斷幣種，請回覆數字選擇：`;
-          options.forEach((o, i) => { askMsg += `\n${i + 1}. ${o.label}`; });
-          askMsg += `\n${options.length + 1}. 取消`;
-          await msg.reply(askMsg);
+          const circ = ["①", "②", "③", "④", "⑤"];
+          const optList = options.map((o, i) => `${circ[i]}${o.label}`).join("  ");
+          await msg.reply(`⚠️ 無法推斷幣種，請回覆數字：\n${optList}  ${circ[options.length]}取消`);
         }
-        return;  // 保持 awaiting_sell_rate，等用戶選幣種
+        return;
       }
 
       // ── 已獲得賣出匯率和來源幣種，檢查底價匯率 ──
@@ -1563,7 +1636,7 @@ client.on("message", async (msg) => {
         pending.expireAt = Date.now() + 5 * 60 * 1000;
         const fromLabel = `${pending.sourceCurrency} → ${pending.toCurrency}`;
         if (WA_SEND_REPLY) {
-          await msg.reply(`✅ 賣出匯率 ${rateNum}，推斷為 ${fromLabel}\n💰 請輸入兌換前的 ${pending.sourceCurrency} 金額（如 300w），或發送換匯公式\n💡 回覆「取消」可取消`);
+          await msg.reply(`✅ 賣出 ${rateNum}\n📝 *請回覆兌換前 ${pending.sourceCurrency} 金額*，例：300w\n💡 或發送換匯公式`);
         }
       } else {
         // 無底價匯率，追問
@@ -1571,7 +1644,7 @@ client.on("message", async (msg) => {
         pending.expireAt = Date.now() + 5 * 60 * 1000;
         const fromLabel = `${pending.sourceCurrency} → ${pending.toCurrency}`;
         if (WA_SEND_REPLY) {
-          await msg.reply(`✅ 賣出匯率 ${rateNum}，推斷為 ${fromLabel}\n💰 請輸入今天 ${fromLabel} 的底價匯率（如 0.99），或回覆 0 跳過\n💡 回覆「取消」可取消`);
+          await msg.reply(`✅ 賣出 ${rateNum}\n📝 *請回覆今天底價匯率*，例：0.99（0=跳過）`);
         }
       }
       return;
@@ -1584,7 +1657,7 @@ client.on("message", async (msg) => {
       const rateNum = parseFloat(trimmedText);
       if (isNaN(rateNum) || rateNum < 0) {
         if (WA_SEND_REPLY) {
-          await msg.reply(`⚠️ 請輸入有效的底價匯率（如 0.99），或回覆 0 跳過（不計算盈利）\n💡 回覆「取消」可取消`);
+          await msg.reply(`❌ 請回覆數字，例：0.99（或 0 跳過）`);
         }
         return;
       }
@@ -1611,8 +1684,11 @@ client.on("message", async (msg) => {
       pending.state = "awaiting_source_amount";
       pending.expireAt = Date.now() + 5 * 60 * 1000;
       if (WA_SEND_REPLY) {
-        const skipNote = rateNum === 0 ? "\n⚠️ 跳過底價，將不計算盈利" : "";
-        await msg.reply(`✅ 已記錄底價匯率${skipNote}\n💰 請輸入兌換前的 ${pending.sourceCurrency} 金額（如 300w），或發送換匯公式\n💡 回覆「取消」可取消`);
+        if (rateNum === 0) {
+          await msg.reply(`✅ 已跳過底價（不計盈利）\n📝 *請回覆兌換前 ${pending.sourceCurrency} 金額*，例：300w\n💡 或發送換匯公式`);
+        } else {
+          await msg.reply(`✅ 底價已記錄\n📝 *請回覆兌換前 ${pending.sourceCurrency} 金額*，例：300w\n💡 或發送換匯公式`);
+        }
       }
       return;
     }
@@ -1624,7 +1700,7 @@ client.on("message", async (msg) => {
       const sourceAmount = parseSourceAmount(text);
       if (!sourceAmount) {
         if (WA_SEND_REPLY) {
-          await msg.reply(`⚠️ 請輸入有效的兌換前 ${pending.sourceCurrency} 金額（如 300w / 3000000），或發送換匯公式\n💡 回覆「取消」可取消`);
+          await msg.reply(`❌ 請回覆數字，例：300w 或 3000000`);
         }
         return;
       }
@@ -1669,8 +1745,67 @@ client.on("message", async (msg) => {
       return;
     }
 
-    // 未知 state → 忽略
-    return;
+    // ═══════════════════════════════════════════
+    //  State 4: awaiting_completion — 等待補全付款資訊
+    // ═══════════════════════════════════════════
+    if (pending.state === "awaiting_completion") {
+      completed = false;
+      const completion = parseCompletionFields(text);
+      const hasNewFields = Object.keys(completion.fields).length > 0 || Object.keys(completion.pd).length > 0;
+
+      if (hasNewFields) {
+        const pInfo = pending.partialPaymentInfo;
+        if (!pInfo.payment_details_dict) {
+          try { pInfo.payment_details_dict = JSON.parse(pInfo.payment_details || "{}"); } catch (_) { pInfo.payment_details_dict = {}; }
+        }
+        const pd = pInfo.payment_details_dict || {};
+        if (completion.fields.amount) pInfo.amount = completion.fields.amount;
+        if (completion.fields.currency) pInfo.currency = completion.fields.currency;
+        if (completion.fields.customer_name) pInfo.customer_name = completion.fields.customer_name;
+        for (const [k, v] of Object.entries(completion.pd)) { if (v) pd[k] = v; }
+        pInfo.payment_details = JSON.stringify(pd);
+
+        const newWarnings = [];
+        if (!pd.account_number) newWarnings.push("❌ 缺少戶口號碼");
+        if (!pd.account_name && !pInfo.customer_name) newWarnings.push("❌ 缺少戶口全名");
+        if (!pd.swift && !pd.bank_name && !pd.bank_code) newWarnings.push("❌ 缺少銀行識別資訊");
+        if (!pInfo.amount || pInfo.amount <= 0) newWarnings.push("❌ 缺少或無法解析交易金額");
+
+        if (newWarnings.length === 0) {
+          pendingExchanges.delete(senderId);
+          const pd2 = pInfo.payment_details_dict || {};
+          text = `戶口全名：${pInfo.customer_name || pd2.account_name || ""}\n銀行名稱：${pd2.bank_name || ""}\n戶口號碼：${pd2.account_number || ""}\n金額：${pInfo.amount} ${pInfo.currency || "USD"}`;
+          if (pd2.swift) text += `\nSWIFT：${pd2.swift}`;
+          if (pd2.bank_code) text += `\n銀行代碼：${pd2.bank_code}`;
+          console.log("   ✅ 付款資訊已補全，重新進入主流程");
+          completed = true;
+        } else {
+          pending.partialPaymentInfo = pInfo;
+          pending.expireAt = Date.now() + 5 * 60 * 1000;
+          if (WA_SEND_REPLY) {
+            await msg.reply(`⚠️ 仍缺少以下欄位，請繼續補充：\n${newWarnings.join("\n")}\n💡 也可重新發送完整交易信息\n💡 回覆「取消」可取消`);
+          }
+          return;
+        }
+      }
+
+      if (!completed) {
+        if (WA_SEND_REPLY) {
+          const errWarnings = (pending.partialPaymentInfo.warnings || []).filter(w => w.startsWith("❌"));
+          await msg.reply(`⚠️ 未檢測到有效欄位，請補充：\n${errWarnings.join("\n")}\n💡 例：戶口全名：CHAN TAI MAN\n💡 回覆「取消」可取消`);
+        }
+        return;
+      }
+      // completed=true → fall through 到主付款解析
+      if (completed) {
+        // pending 已清除，reconstructed text 已在 text 變數中，繼續往下走到主付款解析
+      } else {
+        return;
+      }
+    }
+
+    // 未知 state → 忽略（除非是 awaiting_completion 補全成功 fall through）
+    if (!completed) return;
   }
   }  // close if (pending) after else block
 
@@ -1704,7 +1839,6 @@ client.on("message", async (msg) => {
         if (!pd.account_number) aiWarnings.push("❌ 缺少戶口號碼");
         if (!pd.account_name) aiWarnings.push("❌ 缺少戶口全名");
         if (!pd.swift && !pd.bank_name && !pd.bank_code) aiWarnings.push("❌ 缺少銀行識別資訊（SWIFT、銀行名稱或銀行代碼至少需要一項）");
-        if (!pd.bank_address) aiWarnings.push("⚠️ 缺少銀行地址");
         aiResult.warnings = aiWarnings;
         paymentInfo = aiResult;
         console.log("   🤖 AI 支付解析兜底成功");
@@ -1721,11 +1855,25 @@ client.on("message", async (msg) => {
     const hasErrors = warnings.some(w => w.startsWith("❌"));
     const hasWarnings = warnings.some(w => w.startsWith("⚠️"));
 
-    // ── 有嚴重錯誤（缺必填欄位）→ 阻擋記錄，只回報錯誤 ──
+    // ── 有嚴重錯誤（缺必填欄位）→ 暫存並讓 agent 補全 ──
     if (hasErrors) {
+      const toCurrency = (paymentInfo.currency || "HKD").toUpperCase();
+      // 只顯示 ❌ 的錯誤，不顯示 ⚠️
+      const errWarnings = warnings.filter(w => w.startsWith("❌"));
       if (WA_SEND_REPLY) {
-        await msg.reply("❌ 付款資訊不完整，請修正後重新發送：\n\n" + warnings.join("\n") + "\n\n輸入 /format 獲取格式範例");
+        await msg.reply(
+          `⚠️ 付款資訊不完整，請補充：\n${errWarnings.join("\n")}\n💡 可直接回覆缺失欄位（例：戶口全名：CHEN XIA）\n💡 也可重新發送完整交易信息\n💡 回覆「取消」可取消`
+        );
       }
+      pendingExchanges.set(senderId, {
+        partialPaymentInfo: paymentInfo,
+        agentName: senderDisplayName,
+        customerName: customerName !== "Unknown" ? customerName : "",
+        toCurrency,
+        state: "awaiting_completion",
+        expireAt: Date.now() + 5 * 60 * 1000,
+        chat: msg.from,
+      });
       return;
     }
 
@@ -1792,9 +1940,7 @@ client.on("message", async (msg) => {
         if (conversionResult && conversionResult.note) {
           replyMsg += `\n${conversionResult.note}`;
         }
-        const optionLabels = options.map(o => o.label).join(" / ");
-        replyMsg += `\n\n💰 （優先）請發送換匯公式（例：50w / 7.01 = 71,023 USD）`;
-        replyMsg += `\n💰 （備選）請回覆賣出匯率（如 7.01），可選幣種：${optionLabels}`;
+        replyMsg += `\n\n📝 *請回覆賣出匯率*\n例：7.01（人→美）或 0.982（USDT→美）\n💡 也可發送換匯公式，例：200w / 7.01 = 285,307 USD\n💡 回覆「取消」可取消`;
         if (hasWarnings) replyMsg += "\n\n⚠️ 請注意：\n" + warnings.join("\n");
 
         if (WA_SEND_REPLY) { await msg.reply(replyMsg); }

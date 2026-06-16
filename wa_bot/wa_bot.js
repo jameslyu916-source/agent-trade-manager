@@ -3,7 +3,7 @@ const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 const axios = require("axios");
 require("dotenv").config();
-const { parsePaymentInfo, parseConversionLine, findConversionInText } = require("./payment_parser");
+const { parsePaymentInfo, parseConversionLine, findConversionInText, parseFractionRate } = require("./payment_parser");
 const { extractOrders } = require("./ai_order_parser");
 const { extractPaymentInfo } = require("./ai_payment_parser");
 
@@ -1332,9 +1332,9 @@ client.on("message", async (msg) => {
     }
   } catch (_) { /* 解析失敗則使用默認規則 */ }
 
-  // ── 更新公式緩衝區（只保留換匯公式） ──
+  // ── 更新公式緩衝區（保留換匯公式和分數匯率） ──
   const prevText = text;  // 向後兼容：上一條消息文本
-  const parsedFormula = parseConversionLine(text) || findConversionInText(text);
+  const parsedFormula = parseConversionLine(text) || findConversionInText(text) || parseFractionRate(text);
   if (parsedFormula) {
     if (!formulaBuffer.has(msg.from)) formulaBuffer.set(msg.from, []);
     const buffer = formulaBuffer.get(msg.from);
@@ -1503,6 +1503,31 @@ client.on("message", async (msg) => {
         }
         pending.expireAt = Date.now() + 5 * 60 * 1000;
         return;
+      }
+
+      // 優先檢查是否為分數匯率（如 "0.99/0.982"）
+      const fractionRate = parseFractionRate(text);
+      if (fractionRate) {
+        pending.sellRate = fractionRate.sell_rate;
+        pending.sourceCurrency = null;  // 由 inferSourceCurrency 推斷
+        const today = new Date().toISOString().split("T")[0];
+        // 成本價作為底價匯率存入
+        const inferred = await inferSourceCurrency(fractionRate.sell_rate, pending.toCurrency);
+        if (inferred) {
+          pending.sourceCurrency = inferred.from;
+          pending.baseRate = fractionRate.cost_rate;
+          // 存入 collectedBaseRates
+          const key = `${today}:${inferred.from}:${pending.toCurrency}`;
+          collectedBaseRates.set(key, fractionRate.cost_rate);
+          // 直接跳到追問兌換前金額
+          pending.state = "awaiting_source_amount";
+          pending.expireAt = Date.now() + 5 * 60 * 1000;
+          const fromLabel = `${inferred.from} → ${pending.toCurrency}`;
+          if (WA_SEND_REPLY) {
+            await msg.reply(`✅ 分數匯率：成本 ${fractionRate.cost_rate} / 賣出 ${fractionRate.sell_rate}，推斷為 ${fromLabel}\n📉 已記錄底價匯率 ${fractionRate.cost_rate}\n💰 請輸入兌換前的 ${inferred.from} 金額（如 300w），或發送換匯公式\n💡 回覆「取消」可取消`);
+          }
+          return;
+        }
       }
 
       const rateNum = parseFloat(trimmedText);

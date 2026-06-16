@@ -513,4 +513,22 @@ function findConversionInText(text) {
   return _parseMatch(m);
 }
 
-module.exports = { parsePaymentInfo, parseConversionLine, findConversionInText };
+// ═══════════════════════════════════════════
+//  分數匯率解析器 — "0.99/0.982" 格式（成本價/賣出價）
+// ═══════════════════════════════════════════
+
+const FRACTION_RATE_RE = /^([\d]+(?:\.[\d]+)?)\s*\/\s*([\d]+(?:\.[\d]+)?)$/;
+
+function parseFractionRate(text) {
+  if (!text || !text.trim()) return null;
+  const trimmed = text.trim();
+  const m = trimmed.match(FRACTION_RATE_RE);
+  if (!m) return null;
+  const costRate = parseFloat(m[1]);
+  const sellRate = parseFloat(m[2]);
+  if (isNaN(costRate) || isNaN(sellRate) || costRate <= 0 || sellRate <= 0) return null;
+  if (costRate > 20 || sellRate > 20) return null;
+  return { type: "fraction_rate", cost_rate: costRate, sell_rate: sellRate };
+}
+
+module.exports = { parsePaymentInfo, parseConversionLine, findConversionInText, parseFractionRate };

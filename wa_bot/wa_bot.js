@@ -117,6 +117,103 @@ function isAccountLookupMessage(text) {
   return false;
 }
 
+// ── 從 agent 收集的當日底價匯率快取：key = "YYYY-MM-DD:FROM:TO" ──
+const collectedBaseRates = new Map();
+
+// ── 根據賣出匯率推斷來源幣種 ──
+async function inferSourceCurrency(sellRate, toCurrency) {
+  const options = EXCHANGE_OPTIONS[toCurrency] || [];
+  if (options.length === 0) return null;
+
+  const today = new Date().toISOString().split("T")[0];
+  const dailyRateMap = {};
+  const presetRates = getSetting("preset_exchange_rates", {});
+
+  // 先從每日 API 匯率查
+  try {
+    const rates = await getExchangeRates(today);
+    for (const r of (rates || [])) {
+      dailyRateMap[`${r.from_currency}:${r.to_currency}`] = r.rate;
+    }
+  } catch (_) { /* fall through */ }
+
+  // 收集其他來源的參考匯率（collectedBaseRates / preset 優先覆蓋）
+  for (const opt of options) {
+    const pair = `${opt.from}:${toCurrency}`;
+    // 從 collectedBaseRates 查（優先於 API）
+    const collectedKey = `${today}:${opt.from}:${toCurrency}`;
+    if (collectedBaseRates.has(collectedKey)) {
+      dailyRateMap[pair] = collectedBaseRates.get(collectedKey);
+      continue;
+    }
+    // 從 preset 查（若 API 沒有的話補上）
+    if (dailyRateMap[pair] === undefined && presetRates[pair] !== undefined) {
+      dailyRateMap[pair] = presetRates[pair];
+    }
+  }
+
+  // 找最接近的
+  let best = null;
+  for (const opt of options) {
+    const pair = `${opt.from}:${toCurrency}`;
+    const ref = dailyRateMap[pair];
+    if (ref && ref > 0) {
+      const pctDiff = Math.abs(sellRate - ref) / ref;
+      if (pctDiff <= 0.03 && (!best || pctDiff < best.pctDiff)) {
+        best = { from: opt.from, label: opt.label, pctDiff };
+      }
+    }
+  }
+  return best ? { from: best.from, label: best.label } : null;
+}
+
+// ── 獲取底價匯率（成本匯率）──
+async function getBaseRate(sourceCurrency, toCurrency) {
+  const today = new Date().toISOString().split("T")[0];
+  // CNY→USD 和 CNY→HKD 優先從 API 獲取
+  if (sourceCurrency === "CNY" && (toCurrency === "USD" || toCurrency === "HKD")) {
+    try {
+      const rates = await getExchangeRates(today);
+      const pair = `${sourceCurrency}:${toCurrency}`;
+      const r = (rates || []).find(r => r.from_currency === sourceCurrency && r.to_currency === toCurrency);
+      if (r && r.rate > 0) return r.rate;
+    } catch (_) { /* fall through */ }
+  }
+  // 從 collectedBaseRates 查
+  const key = `${today}:${sourceCurrency}:${toCurrency}`;
+  if (collectedBaseRates.has(key)) return collectedBaseRates.get(key);
+  // 從昨天的匯率嘗試（API）
+  try {
+    const yesterday = getYesterdayDate();
+    const yRates = await getExchangeRates(yesterday);
+    const pair = `${sourceCurrency}:${toCurrency}`;
+    const r = (yRates || []).find(r => r.from_currency === sourceCurrency && r.to_currency === toCurrency);
+    if (r && r.rate > 0) return r.rate;
+  } catch (_) { /* fall through */ }
+  return null;
+}
+
+// ── 解析兌換前金額（支援多種格式）──
+function parseSourceAmount(text) {
+  if (!text) return null;
+  let t = text.trim();
+  // 去掉可能攜帶的幣種後綴
+  t = t.replace(/\s*(CNY|USD|HKD|USDT|RMB|cny|usd|hkd|usdt|rmb)\s*$/i, "").trim();
+  // 去掉千分位逗號
+  t = t.replace(/,/g, "");
+  // 檢查 萬/w 後綴
+  const wanMatch = t.match(/^([\d.]+)\s*[wW万萬]$/);
+  if (wanMatch) {
+    const base = parseFloat(wanMatch[1]);
+    if (!isNaN(base) && base > 0) return Math.round(base * 10000);
+    return null;
+  }
+  // 純數字
+  const num = parseFloat(t);
+  if (!isNaN(num) && num > 0) return Math.round(num);
+  return null;
+}
+
 function getYesterdayDate() {
   const d = new Date();
   d.setDate(d.getDate() - 1);
@@ -1344,113 +1441,202 @@ client.on("message", async (msg) => {
 
     const options = EXCHANGE_OPTIONS[pending.toCurrency] || [];
 
-    if (pending.state === "awaiting_rate") {
-      // Step 2: 等待用戶輸入匯率
+    // ── 共用：檢查是否為換匯公式（任何狀態下都可發送公式來捷徑處理）──
+    const inlineFormula = parseConversionLine(text) || findConversionInText(text);
+    if (inlineFormula && amountsMatch(inlineFormula.result_amount, pending.paymentInfo.amount)) {
+      const conversionResult = await resolveConversion(pending.paymentInfo, text, pending.toCurrency);
+      if (conversionResult && conversionResult.auto_inferred) {
+        pendingExchanges.delete(senderId);
+        const pd = pending.paymentInfo.payment_details_dict || {};
+        if (conversionResult.conversion) {
+          pd.conversion = conversionResult.conversion;
+          pending.paymentInfo.payment_details = JSON.stringify(pd);
+        }
+        let replyMsg = `✅ 已檢測付款：${pending.customerName}\n金額：${pending.paymentInfo.amount.toLocaleString()} ${pending.toCurrency}`;
+        if (pd.bank_name) replyMsg += `\n銀行：${pd.bank_name}`;
+        if (pd.account_number) replyMsg += `\n戶口：${pd.account_number}`;
+        replyMsg += `\n${conversionResult.note}`;
+        if (WA_SEND_REPLY) { await msg.reply(replyMsg); }
+        const inferredFrom = conversionResult.from_currency || "CNY";
+        await createTransaction({
+          agent_name: pending.agentName, customer_name: pending.customerName,
+          amount: pending.paymentInfo.amount, currency: pending.paymentInfo.currency,
+          raw_message: pending.paymentInfo.raw_message, source: "whatsapp",
+          group_id: msg.from,
+          payment_details: pending.paymentInfo.payment_details,
+          from_currency: inferredFrom,
+          to_currency: pending.toCurrency,
+          remarks: pending.paymentInfo.remarks || "",
+          insured_person: pending.paymentInfo.insured_person || ""
+        });
+        console.log(`💾 付款資訊已記錄（pending 公式捷徑 ${inferredFrom}→${pending.toCurrency}，代理: ${pending.agentName}, 客戶: ${pending.customerName}）`);
+        return;
+      }
+    }
+
+    // ═══════════════════════════════════════════
+    //  State 1: awaiting_sell_rate — 等待賣出匯率
+    // ═══════════════════════════════════════════
+    if (pending.state === "awaiting_sell_rate") {
+      // 優先檢查是否為菜單數字選擇（處理「1」「2」等同時是有效 parseFloat 的輸入）
+      const num = parseInt(trimmedText);
+      if (!isNaN(num) && num === options.length + 1) {
+        pendingExchanges.delete(senderId);
+        if (WA_SEND_REPLY) await msg.reply(`❌ 已取消記錄：${pending.customerName} ${pending.paymentInfo.amount.toLocaleString()} ${pending.toCurrency}`);
+        return;
+      }
+      if (!isNaN(num) && num >= 1 && num <= options.length) {
+        const chosen = options[num - 1];
+        pending.sourceCurrency = chosen.from;
+        pending.sellRate = null;
+        // 追問匯率
+        if (WA_SEND_REPLY) {
+          await msg.reply(`✅ 已選 ${chosen.label}\n💰 請輸入賣出匯率（如 7.08），或直接發送換匯公式\n💡 回覆「取消」可取消`);
+        }
+        pending.expireAt = Date.now() + 5 * 60 * 1000;
+        return;
+      }
+
+      const rateNum = parseFloat(trimmedText);
+      if (isNaN(rateNum) || rateNum <= 0) {
+        if (WA_SEND_REPLY) {
+          await msg.reply(`⚠️ 請輸入有效的賣出匯率（如 7.01），或回覆數字選擇幣種：\n${options.map((o, i) => `${i + 1}. ${o.label}`).join("\n")}\n${options.length + 1}. 取消`);
+        }
+        return;
+      }
+
+      // 推斷來源幣種
+      pending.sellRate = rateNum;
+      const inferred = await inferSourceCurrency(rateNum, pending.toCurrency);
+      if (inferred) {
+        pending.sourceCurrency = inferred.from;
+      } else {
+        // 無法推斷，讓用戶手動選擇
+        if (WA_SEND_REPLY) {
+          let askMsg = `⚠️ 無法從匯率 ${rateNum} 自動推斷幣種，請回覆數字選擇：`;
+          options.forEach((o, i) => { askMsg += `\n${i + 1}. ${o.label}`; });
+          askMsg += `\n${options.length + 1}. 取消`;
+          await msg.reply(askMsg);
+        }
+        return;  // 保持 awaiting_sell_rate，等用戶選幣種
+      }
+
+      // ── 已獲得賣出匯率和來源幣種，檢查底價匯率 ──
+      const baseRate = await getBaseRate(pending.sourceCurrency, pending.toCurrency);
+      if (baseRate) {
+        // 有底價匯率，跳過追問，直接問兌換前金額
+        pending.baseRate = baseRate;
+        pending.state = "awaiting_source_amount";
+        pending.expireAt = Date.now() + 5 * 60 * 1000;
+        const fromLabel = `${pending.sourceCurrency} → ${pending.toCurrency}`;
+        if (WA_SEND_REPLY) {
+          await msg.reply(`✅ 賣出匯率 ${rateNum}，推斷為 ${fromLabel}\n💰 請輸入兌換前的 ${pending.sourceCurrency} 金額（如 300w），或發送換匯公式\n💡 回覆「取消」可取消`);
+        }
+      } else {
+        // 無底價匯率，追問
+        pending.state = "awaiting_base_rate";
+        pending.expireAt = Date.now() + 5 * 60 * 1000;
+        const fromLabel = `${pending.sourceCurrency} → ${pending.toCurrency}`;
+        if (WA_SEND_REPLY) {
+          await msg.reply(`✅ 賣出匯率 ${rateNum}，推斷為 ${fromLabel}\n💰 請輸入今天 ${fromLabel} 的底價匯率（如 0.99），或回覆 0 跳過\n💡 回覆「取消」可取消`);
+        }
+      }
+      return;
+    }
+
+    // ═══════════════════════════════════════════
+    //  State 2: awaiting_base_rate — 等待底價匯率
+    // ═══════════════════════════════════════════
+    if (pending.state === "awaiting_base_rate") {
       const rateNum = parseFloat(trimmedText);
       if (isNaN(rateNum) || rateNum < 0) {
         if (WA_SEND_REPLY) {
-          await msg.reply("⚠️ 請輸入有效的賣出匯率（如 7.08），或回覆 0 跳過（不計算盈利）");
+          await msg.reply(`⚠️ 請輸入有效的底價匯率（如 0.99），或回覆 0 跳過（不計算盈利）\n💡 回覆「取消」可取消`);
         }
-        return;  // pending 保持存活
+        return;
       }
-
-      pendingExchanges.delete(senderId);
 
       if (rateNum === 0) {
-        // 跳過匯率，不計算盈利
-        const pd = pending.paymentInfo.payment_details_dict || {};
-        pd.conversion = {
-          source_amount: null,
-          rate: null,
-          source_currency: pending.selectedFrom,
-          rate_source: "manual_skip",
-        };
-        pending.paymentInfo.payment_details = JSON.stringify(pd);
-
-        const success = await createTransaction({
-          agent_name: pending.agentName,
-          customer_name: pending.customerName,
-          amount: pending.paymentInfo.amount,
-          currency: pending.paymentInfo.currency,
-          raw_message: pending.paymentInfo.raw_message,
-          source: "whatsapp",
-          group_id: msg.from,
-          payment_details: pending.paymentInfo.payment_details,
-          from_currency: pending.selectedFrom,
-          to_currency: pending.toCurrency,
-          remarks: pending.paymentInfo.remarks || "",
-          insured_person: pending.paymentInfo.insured_person || ""
-        });
-
-        if (success && WA_SEND_REPLY) {
-          await msg.reply(`✅ 已紀錄收款：${pending.customerName}\n兌換：${pending.selectedFrom} → ${pending.toCurrency}\n金額：${pending.paymentInfo.amount.toLocaleString()} ${pending.toCurrency}\n⚠️ 未記錄匯率，不計算盈利`);
-        }
+        pending.baseRate = null;  // 跳過底價
       } else {
-        // 計算來源金額：result_amount * rate = source_amount
-        const sourceAmount = Math.round(pending.paymentInfo.amount * rateNum);
-        const pd = pending.paymentInfo.payment_details_dict || {};
-        pd.conversion = {
-          source_amount: sourceAmount,
-          rate: rateNum,
-          source_currency: pending.selectedFrom,
-          rate_source: "manual",
-        };
-        pending.paymentInfo.payment_details = JSON.stringify(pd);
-
-        const success = await createTransaction({
-          agent_name: pending.agentName,
-          customer_name: pending.customerName,
-          amount: pending.paymentInfo.amount,
-          currency: pending.paymentInfo.currency,
-          raw_message: pending.paymentInfo.raw_message,
-          source: "whatsapp",
-          group_id: msg.from,
-          payment_details: pending.paymentInfo.payment_details,
-          from_currency: pending.selectedFrom,
-          to_currency: pending.toCurrency,
-          remarks: pending.paymentInfo.remarks || "",
-          insured_person: pending.paymentInfo.insured_person || ""
-        });
-
-        if (success && WA_SEND_REPLY) {
-          let replyMsg = `✅ 已紀錄收款：${pending.customerName}\n兌換：${pending.selectedFrom} → ${pending.toCurrency}\n金額：${pending.paymentInfo.amount.toLocaleString()} ${pending.toCurrency}`;
-          replyMsg += `\n📐 匯率：${rateNum} | 來源金額：${sourceAmount.toLocaleString()} ${pending.selectedFrom}`;
-          if (pending.paymentInfo.remarks) replyMsg += `\n備註：${pending.paymentInfo.remarks}`;
-          if (pending.paymentInfo.insured_person) replyMsg += `\n投保人：${pending.paymentInfo.insured_person}`;
-          await msg.reply(replyMsg);
-        }
+        pending.baseRate = rateNum;
+        // 存入 collectedBaseRates 供當天後續使用
+        const today = new Date().toISOString().split("T")[0];
+        const key = `${today}:${pending.sourceCurrency}:${pending.toCurrency}`;
+        collectedBaseRates.set(key, rateNum);
+        // 同時更新 preset_exchange_rates
+        try {
+          const presetRates = getSetting("preset_exchange_rates", {});
+          const pair = `${pending.sourceCurrency}:${pending.toCurrency}`;
+          presetRates[pair] = rateNum;
+          await axios.put(`${API_BASE_URL}/settings`, { preset_exchange_rates: presetRates }, { headers: getHeaders() });
+          console.log(`   📌 已更新預設匯率：${pair} = ${rateNum}`);
+        } catch (e) { /* 非關鍵 */ }
       }
-      return;
-    }
 
-    // state === "awaiting_currency": 等待用戶選擇幣種（回覆數字）
-    const num = parseInt(trimmedText);
-
-    // 取消選項（最後一個數字 = options.length + 1）
-    if (num === options.length + 1) {
-      pendingExchanges.delete(senderId);
+      // 進入追問兌換前金額
+      pending.state = "awaiting_source_amount";
+      pending.expireAt = Date.now() + 5 * 60 * 1000;
       if (WA_SEND_REPLY) {
-        await msg.reply(`❌ 已取消記錄：${pending.customerName} ${pending.paymentInfo.amount.toLocaleString()} ${pending.toCurrency}`);
+        const skipNote = rateNum === 0 ? "\n⚠️ 跳過底價，將不計算盈利" : "";
+        await msg.reply(`✅ 已記錄底價匯率${skipNote}\n💰 請輸入兌換前的 ${pending.sourceCurrency} 金額（如 300w），或發送換匯公式\n💡 回覆「取消」可取消`);
       }
       return;
     }
 
-    if (isNaN(num) || num < 1 || num > options.length) {
-      // 無效數字或不相關消息 → 忽略，pending 保持存活
+    // ═══════════════════════════════════════════
+    //  State 3: awaiting_source_amount — 等待兌換前金額
+    // ═══════════════════════════════════════════
+    if (pending.state === "awaiting_source_amount") {
+      const sourceAmount = parseSourceAmount(text);
+      if (!sourceAmount) {
+        if (WA_SEND_REPLY) {
+          await msg.reply(`⚠️ 請輸入有效的兌換前 ${pending.sourceCurrency} 金額（如 300w / 3000000），或發送換匯公式\n💡 回覆「取消」可取消`);
+        }
+        return;
+      }
+
+      pendingExchanges.delete(senderId);
+
+      const pd = pending.paymentInfo.payment_details_dict || {};
+      const conversion = {
+        source_amount: sourceAmount,
+        rate: pending.sellRate,
+        source_currency: pending.sourceCurrency,
+        matched: pending.baseRate ? true : false,
+        daily_rate: pending.baseRate || null,
+        rate_source: pending.baseRate ? "manual_collected" : "manual_skip",
+      };
+      pd.conversion = conversion;
+      pending.paymentInfo.payment_details = JSON.stringify(pd);
+
+      const success = await createTransaction({
+        agent_name: pending.agentName,
+        customer_name: pending.customerName,
+        amount: pending.paymentInfo.amount,
+        currency: pending.paymentInfo.currency,
+        raw_message: pending.paymentInfo.raw_message,
+        source: "whatsapp",
+        group_id: msg.from,
+        payment_details: pending.paymentInfo.payment_details,
+        from_currency: pending.sourceCurrency,
+        to_currency: pending.toCurrency,
+        remarks: pending.paymentInfo.remarks || "",
+        insured_person: pending.paymentInfo.insured_person || ""
+      });
+
+      if (success && WA_SEND_REPLY) {
+        let replyMsg = `✅ 已紀錄收款：${pending.customerName}\n兌換：${pending.sourceCurrency} → ${pending.toCurrency}\n金額：${pending.paymentInfo.amount.toLocaleString()} ${pending.toCurrency}`;
+        replyMsg += `\n📐 賣出匯率：${pending.sellRate} | 來源金額：${sourceAmount.toLocaleString()} ${pending.sourceCurrency}`;
+        if (pending.baseRate) replyMsg += `\n📉 底價匯率：${pending.baseRate}`;
+        if (pending.paymentInfo.remarks) replyMsg += `\n備註：${pending.paymentInfo.remarks}`;
+        if (pending.paymentInfo.insured_person) replyMsg += `\n投保人：${pending.paymentInfo.insured_person}`;
+        await msg.reply(replyMsg);
+      }
       return;
     }
 
-    const chosen = options[num - 1];
-
-    // 轉為 awaiting_rate，追問匯率
-    pending.state = "awaiting_rate";
-    pending.selectedFrom = chosen.from;
-    pending.selectedLabel = chosen.label;
-    pending.expireAt = Date.now() + 5 * 60 * 1000;  // 刷新過期時間
-
-    if (WA_SEND_REPLY) {
-      await msg.reply(`✅ 已選 ${chosen.label}\n💰 請輸入賣出匯率（如 7.08），或回覆 0 跳過（不計算盈利）`);
-    }
+    // 未知 state → 忽略
     return;
   }
   }  // close if (pending) after else block
@@ -1569,25 +1755,26 @@ client.on("message", async (msg) => {
         });
         console.log(`💾 付款資訊已記錄（自動推斷 ${inferredFrom}→${toCurrency}，代理: ${senderDisplayName}, 客戶: ${customerName}）`);
       } else if (options && options.length > 0) {
-        // 有兌換選項，發送文字選單讓代理回覆數字
+        // 有兌換選項，先追問賣出匯率
         if (conversionResult && conversionResult.note) {
           replyMsg += `\n${conversionResult.note}`;
         }
-        replyMsg += "\n\n💰 （優先）請發送換匯公式（例：50w / 7.01 = 71,023 USD）\n💰 （備選）或回覆數字選擇：";
-        options.forEach((opt, i) => {
-          replyMsg += `\n${i + 1}. ${opt.label}`;
-        });
-        replyMsg += `\n${options.length + 1}. 取消`;
+        const optionLabels = options.map(o => o.label).join(" / ");
+        replyMsg += `\n\n💰 （優先）請發送換匯公式（例：50w / 7.01 = 71,023 USD）`;
+        replyMsg += `\n💰 （備選）請回覆賣出匯率（如 7.01），可選幣種：${optionLabels}`;
         if (hasWarnings) replyMsg += "\n\n⚠️ 請注意：\n" + warnings.join("\n");
 
         if (WA_SEND_REPLY) { await msg.reply(replyMsg); }
-        // 暫存，等待代理回覆數字
+        // 暫存，等待代理回覆賣出匯率或換匯公式
         pendingExchanges.set(senderId, {
           paymentInfo, agentName: senderDisplayName,
           customerName, toCurrency,
           conversionInfo: conversionResult ? conversionResult.conversion : null,
-          state: "awaiting_currency",
-          expireAt: Date.now() + 5 * 60 * 1000,  // 5 分鐘過期
+          state: "awaiting_sell_rate",
+          sellRate: null,
+          sourceCurrency: null,
+          baseRate: null,
+          expireAt: Date.now() + 5 * 60 * 1000,
           chat: msg.from,
         });
       } else {

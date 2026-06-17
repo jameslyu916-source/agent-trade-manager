@@ -278,19 +278,23 @@ function parseSourceAmount(text) {
   t = t.replace(/\s*(CNY|USD|HKD|USDT|RMB|cny|usd|hkd|usdt|rmb)\s*$/i, "").trim();
   // 去掉千分位逗號
   t = t.replace(/,/g, "");
-  // 檢查 千萬 後綴（必須在 萬 之前檢查）
-  const qianWanMatch = t.match(/^([\d.]+)\s*千[万萬]$/);
-  if (qianWanMatch) {
-    const base = parseFloat(qianWanMatch[1]);
-    if (!isNaN(base) && base > 0) return Math.round(base * 10000000);
-    return null;
-  }
-  // 檢查 萬/w 後綴
-  const wanMatch = t.match(/^([\d.]+)\s*[wW万萬]$/);
-  if (wanMatch) {
-    const base = parseFloat(wanMatch[1]);
-    if (!isNaN(base) && base > 0) return Math.round(base * 10000);
-    return null;
+  // 檢查中文單位（從大到小，避免 千萬 被 萬 先匹配）
+  const units = [
+    { re: /^([\d.]+)\s*億$/, mul: 100000000 },
+    { re: /^([\d.]+)\s*千[万萬]$/, mul: 10000000 },
+    { re: /^([\d.]+)\s*百[万萬]$/, mul: 1000000 },
+    { re: /^([\d.]+)\s*十[万萬]$/, mul: 100000 },
+    { re: /^([\d.]+)\s*[wW万萬]$/, mul: 10000 },
+    { re: /^([\d.]+)\s*千$/, mul: 1000 },
+    { re: /^([\d.]+)\s*百$/, mul: 100 },
+  ];
+  for (const u of units) {
+    const m = t.match(u.re);
+    if (m) {
+      const base = parseFloat(m[1]);
+      if (!isNaN(base) && base > 0) return Math.round(base * u.mul);
+      return null;
+    }
   }
   // 純數字
   const num = parseFloat(t);

@@ -452,10 +452,10 @@ function parsePaymentInfo(messageText, agentOverrides = null) {
 // ═══════════════════════════════════════════
 
 // 支援 / 和 * 兩種運算符
-const CONVERSION_LINE_RE = /^([\d,]+(?:\.\d+)?(?:千[万萬]|[万萬]|w)?)\s*[\/\*]\s*([\d.]+)\s*=\s*([\d,]+(?:\.\d+)?(?:千[万萬]|[万萬]|w)?)(?:\s*(USD|HKD|CNY|RMB))?\s*$/i;
+const CONVERSION_LINE_RE = /^([\d,]+(?:\.\d+)?(?:[十百千]?[万萬]|[万萬]|w|億|[十百千])?)\s*[\/\*]\s*([\d.]+)\s*=\s*([\d,]+(?:\.\d+)?(?:[十百千]?[万萬]|[万萬]|w|億|[十百千])?)(?:\s*(USD|HKD|CNY|RMB))?\s*$/i;
 
 // 不加 anchor 的版本，用於在引用消息/長文本中搜尋公式
-const CONVERSION_SEARCH_RE = /([\d,]+(?:\.\d+)?(?:千[万萬]|[万萬]|w)?)\s*[\/\*]\s*([\d.]+)\s*=\s*([\d,]+(?:\.\d+)?(?:千[万萬]|[万萬]|w)?)(?:\s*(USD|HKD|CNY|RMB))?\s*/gi;
+const CONVERSION_SEARCH_RE = /([\d,]+(?:\.\d+)?(?:[十百千]?[万萬]|[万萬]|w|億|[十百千])?)\s*[\/\*]\s*([\d.]+)\s*=\s*([\d,]+(?:\.\d+)?(?:[十百千]?[万萬]|[万萬]|w|億|[十百千])?)(?:\s*(USD|HKD|CNY|RMB))?\s*/gi;
 
 // 去除貨幣裝飾符號（emoji 和獨立貨幣符號，避免干擾數字捕獲）
 function _stripDecorators(text) {
@@ -463,19 +463,24 @@ function _stripDecorators(text) {
 }
 
 function _parseAmount(str) {
-  // 解析带中文单位的金额字符串 → number
-  const qwRe = /千[万萬]$/;
-  const wanRe = /[w万萬]$/;
-  let val;
-  if (qwRe.test(str)) {
-    val = parseFloat(str.replace(qwRe, ""));
-    if (!isNaN(val)) val *= 10000000;
-  } else if (wanRe.test(str)) {
-    val = parseFloat(str.replace(wanRe, ""));
-    if (!isNaN(val)) val *= 10000;
-  } else {
-    val = parseFloat(str);
+  // 解析带中文单位的金额字符串 → number（从大到小匹配，避免 千万 被 万 先捕获）
+  const units = [
+    { re: /億$/, mul: 100000000 },
+    { re: /千[万萬]$/, mul: 10000000 },
+    { re: /百[万萬]$/, mul: 1000000 },
+    { re: /十[万萬]$/, mul: 100000 },
+    { re: /[wW万萬]$/, mul: 10000 },
+    { re: /千$/, mul: 1000 },
+    { re: /百$/, mul: 100 },
+  ];
+  for (const u of units) {
+    if (u.re.test(str)) {
+      const val = parseFloat(str.replace(u.re, ""));
+      if (!isNaN(val)) return Math.round(val * u.mul);
+      return null;
+    }
   }
+  const val = parseFloat(str);
   return isNaN(val) ? null : Math.round(val);
 }
 

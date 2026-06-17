@@ -17,7 +17,7 @@
         }
       }
     </script>
-    <script src="utils.js?v=3"></script>
+    <script src="utils.js?v=4"></script>
     <style>
         @keyframes fadeInUp {
             from { opacity: 0; transform: translateY(16px); }
@@ -922,6 +922,7 @@
                     source_amount: convSourceAmount || existingConv.source_amount || 0,
                     rate: convRate || existingConv.rate || 0,
                     source_currency: convSourceCurrency || existingConv.source_currency || "CNY",
+                    operator: existingConv.operator || (["USDT", "USD"].includes(convSourceCurrency || existingConv.source_currency) ? "*" : "/"),
                     matched: existingConv.matched || false,
                     daily_rate: existingConv.daily_rate || null,
                     autocorrected: existingConv.autocorrected || false,

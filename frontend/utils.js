@@ -150,7 +150,8 @@ function renderPaymentDetails(paymentDetailsJson) {
             const conv = pd.conversion;
             const srcAmt = conv.source_amount.toLocaleString("zh-HK");
             const srcCur = conv.source_currency || "CNY";
-            let convHtml = `<span class="text-amber-400">兌換:</span> ${srcAmt} ${srcCur} / ${conv.rate}`;
+            const opSymbol = conv.operator === "*" ? " × " : " / ";
+            let convHtml = `<span class="text-amber-400">兌換:</span> ${srcAmt} ${srcCur}${opSymbol}${conv.rate}`;
             if (conv.matched) {
                 convHtml += ` <span class="text-green-400">(≈${conv.daily_rate})</span>`;
             }

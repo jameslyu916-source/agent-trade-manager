@@ -64,8 +64,13 @@ def _calculate_profit(db: Session, payment_details, currency: str, timestamp: st
         print(f"🔍 [profit] buy_rate 無效：{buy_rate}")
         return None
 
-    result = round(source_amount / buy_rate - source_amount / sell_rate)
-    print(f"🔍 [profit] 計算成功：{source_amount} / {buy_rate} - {source_amount} / {sell_rate} = {result} {to_currency}")
+    operator = conv.get("operator", "/")
+    if operator == "*":
+        result = round(source_amount * buy_rate - source_amount * sell_rate)
+        print(f"🔍 [profit] 計算成功：{source_amount} * {buy_rate} - {source_amount} * {sell_rate} = {result} {to_currency}")
+    else:
+        result = round(source_amount / buy_rate - source_amount / sell_rate)
+        print(f"🔍 [profit] 計算成功：{source_amount} / {buy_rate} - {source_amount} / {sell_rate} = {result} {to_currency}")
     return result
 
 

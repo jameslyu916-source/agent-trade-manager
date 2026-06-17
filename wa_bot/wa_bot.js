@@ -1712,6 +1712,7 @@ client.on("message", async (msg) => {
         source_amount: sourceAmount,
         rate: pending.sellRate,
         source_currency: pending.sourceCurrency,
+        operator: (pending.sourceCurrency === "USDT" || pending.sourceCurrency === "USD") ? "*" : "/",
         matched: pending.baseRate ? true : false,
         daily_rate: pending.baseRate || null,
         rate_source: pending.baseRate ? "manual_collected" : "manual_skip",

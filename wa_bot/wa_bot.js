@@ -302,6 +302,59 @@ function parseSourceAmount(text) {
   return null;
 }
 
+// ── 自動推算兌換前金額 ──
+function autoCalculateSourceAmount(paymentAmount, sellRate, sourceCurrency) {
+  // 除法型（CNY, HKD）：source = payment × rate
+  // 乘法型（USDT, USD）：source = payment ÷ rate
+  const isMultiply = sourceCurrency === "USDT" || sourceCurrency === "USD";
+  const source = isMultiply
+    ? Math.round(paymentAmount / sellRate)
+    : Math.round(paymentAmount * sellRate);
+  if (isNaN(source) || !isFinite(source) || source <= 0) return null;
+  return source;
+}
+
+// ── 從 pending 構建 conversion 並創建交易 ──
+async function recordTransactionFromPending(pending, sourceAmount, msg, senderId) {
+  pendingExchanges.delete(senderId);
+
+  const pd = pending.paymentInfo.payment_details_dict || {};
+  const conversion = {
+    source_amount: sourceAmount,
+    rate: pending.sellRate,
+    source_currency: pending.sourceCurrency,
+    operator: (pending.sourceCurrency === "USDT" || pending.sourceCurrency === "USD") ? "*" : "/",
+    matched: pending.baseRate ? true : false,
+    daily_rate: pending.baseRate || null,
+    rate_source: pending.baseRate ? "manual_collected" : "manual_skip",
+  };
+  pd.conversion = conversion;
+  pending.paymentInfo.payment_details = JSON.stringify(pd);
+
+  const success = await createTransaction({
+    agent_name: pending.agentName,
+    customer_name: pending.customerName,
+    amount: pending.paymentInfo.amount,
+    currency: pending.paymentInfo.currency,
+    raw_message: pending.paymentInfo.raw_message,
+    source: "whatsapp",
+    group_id: msg.from,
+    payment_details: pending.paymentInfo.payment_details,
+    from_currency: pending.sourceCurrency,
+    to_currency: pending.toCurrency,
+    remarks: pending.paymentInfo.remarks || "",
+    insured_person: pending.paymentInfo.insured_person || ""
+  });
+
+  if (success && WA_SEND_REPLY) {
+    let replyMsg = `✅ 已紀錄收款：${pending.customerName}\n兌換：${pending.sourceCurrency} → ${pending.toCurrency}\n金額：${pending.paymentInfo.amount.toLocaleString()} ${pending.toCurrency}`;
+    replyMsg += `\n📐 賣出匯率：${pending.sellRate} | 來源金額：${sourceAmount.toLocaleString()} ${pending.sourceCurrency}（自動推算）`;
+    if (pending.baseRate) replyMsg += ` | 底價：${pending.baseRate}`;
+    await msg.reply(replyMsg);
+  }
+  return success;
+}
+
 // ── 解析補全欄位：從 agent 補發的文字中提取個別欄位 ──
 function parseCompletionFields(text) {
   if (!text || !text.trim()) return { fields: {}, pd: {} };
@@ -1553,16 +1606,17 @@ client.on("message", async (msg) => {
   const trailingConv = parseConversionLine(text) || findConversionInText(text);
   if (trailingConv) {
     const pendingByFormula = pendingExchanges.get(senderId);
-    if (pendingByFormula && amountsMatch(trailingConv.result_amount, pendingByFormula.paymentInfo.amount)) {
-      const conversionResult = await resolveConversion(pendingByFormula.paymentInfo, text, pendingByFormula.toCurrency);
+    const pfPI = pendingByFormula && (pendingByFormula.paymentInfo || pendingByFormula.partialPaymentInfo);
+    if (pfPI && amountsMatch(trailingConv.result_amount, pfPI.amount)) {
+      const conversionResult = await resolveConversion(pfPI, text, pendingByFormula.toCurrency);
       if (conversionResult && conversionResult.auto_inferred) {
         pendingExchanges.delete(senderId);
-        const pd = pendingByFormula.paymentInfo.payment_details_dict || {};
+        const pd = pfPI.payment_details_dict || {};
         if (conversionResult.conversion) {
           pd.conversion = conversionResult.conversion;
-          pendingByFormula.paymentInfo.payment_details = JSON.stringify(pd);
+          pfPI.payment_details = JSON.stringify(pd);
         }
-        let replyMsg = `✅ 已檢測付款：${pendingByFormula.customerName}\n金額：${pendingByFormula.paymentInfo.amount.toLocaleString()} ${pendingByFormula.toCurrency}`;
+        let replyMsg = `✅ 已檢測付款：${pendingByFormula.customerName}\n金額：${pfPI.amount.toLocaleString()} ${pendingByFormula.toCurrency}`;
         if (pd.bank_name) replyMsg += `\n銀行：${pd.bank_name}`;
         if (pd.account_number) replyMsg += `\n戶口：${pd.account_number}`;
         replyMsg += `\n${conversionResult.note}`;
@@ -1570,14 +1624,14 @@ client.on("message", async (msg) => {
         const resolvedFrom = conversionResult.from_currency || "CNY";
         await createTransaction({
           agent_name: pendingByFormula.agentName, customer_name: pendingByFormula.customerName,
-          amount: pendingByFormula.paymentInfo.amount, currency: pendingByFormula.paymentInfo.currency,
-          raw_message: pendingByFormula.paymentInfo.raw_message, source: "whatsapp",
+          amount: pfPI.amount, currency: pfPI.currency,
+          raw_message: pfPI.raw_message, source: "whatsapp",
           group_id: msg.from,
-          payment_details: pendingByFormula.paymentInfo.payment_details,
+          payment_details: pfPI.payment_details,
           from_currency: resolvedFrom,
           to_currency: pendingByFormula.toCurrency,
-          remarks: pendingByFormula.paymentInfo.remarks || "",
-          insured_person: pendingByFormula.paymentInfo.insured_person || ""
+          remarks: pfPI.remarks || "",
+          insured_person: pfPI.insured_person || ""
         });
         console.log(`💾 付款資訊已記錄（公式後發自動推斷 ${resolvedFrom}→${pendingByFormula.toCurrency}，代理: ${pendingByFormula.agentName}, 客戶: ${pendingByFormula.customerName}）`);
         return;
@@ -1663,16 +1717,17 @@ client.on("message", async (msg) => {
 
     // ── 共用：檢查是否為換匯公式（任何狀態下都可發送公式來捷徑處理）──
     const inlineFormula = parseConversionLine(text) || findConversionInText(text);
-    if (inlineFormula && amountsMatch(inlineFormula.result_amount, pending.paymentInfo.amount)) {
-      const conversionResult = await resolveConversion(pending.paymentInfo, text, pending.toCurrency);
+    const pendingPI = pending.paymentInfo || pending.partialPaymentInfo;
+    if (inlineFormula && pendingPI && amountsMatch(inlineFormula.result_amount, pendingPI.amount)) {
+      const conversionResult = await resolveConversion(pendingPI, text, pending.toCurrency);
       if (conversionResult && conversionResult.auto_inferred) {
         pendingExchanges.delete(senderId);
-        const pd = pending.paymentInfo.payment_details_dict || {};
+        const pd = pendingPI.payment_details_dict || {};
         if (conversionResult.conversion) {
           pd.conversion = conversionResult.conversion;
-          pending.paymentInfo.payment_details = JSON.stringify(pd);
+          pendingPI.payment_details = JSON.stringify(pd);
         }
-        let replyMsg = `✅ 已檢測付款：${pending.customerName}\n金額：${pending.paymentInfo.amount.toLocaleString()} ${pending.toCurrency}`;
+        let replyMsg = `✅ 已檢測付款：${pending.customerName}\n金額：${pendingPI.amount.toLocaleString()} ${pending.toCurrency}`;
         if (pd.bank_name) replyMsg += `\n銀行：${pd.bank_name}`;
         if (pd.account_number) replyMsg += `\n戶口：${pd.account_number}`;
         replyMsg += `\n${conversionResult.note}`;
@@ -1680,14 +1735,14 @@ client.on("message", async (msg) => {
         const inferredFrom = conversionResult.from_currency || "CNY";
         await createTransaction({
           agent_name: pending.agentName, customer_name: pending.customerName,
-          amount: pending.paymentInfo.amount, currency: pending.paymentInfo.currency,
-          raw_message: pending.paymentInfo.raw_message, source: "whatsapp",
+          amount: pendingPI.amount, currency: pendingPI.currency,
+          raw_message: pendingPI.raw_message, source: "whatsapp",
           group_id: msg.from,
-          payment_details: pending.paymentInfo.payment_details,
+          payment_details: pendingPI.payment_details,
           from_currency: inferredFrom,
           to_currency: pending.toCurrency,
-          remarks: pending.paymentInfo.remarks || "",
-          insured_person: pending.paymentInfo.insured_person || ""
+          remarks: pendingPI.remarks || "",
+          insured_person: pendingPI.insured_person || ""
         });
         console.log(`💾 付款資訊已記錄（pending 公式捷徑 ${inferredFrom}→${pending.toCurrency}，代理: ${pending.agentName}, 客戶: ${pending.customerName}）`);
         return;
@@ -1733,15 +1788,71 @@ client.on("message", async (msg) => {
           // 存入 collectedBaseRates
           const key = `${today}:${inferred.from}:${pending.toCurrency}`;
           collectedBaseRates.set(key, fractionRate.cost_rate);
-          // 直接跳到追問兌換前金額
-          pending.state = "awaiting_source_amount";
-          pending.expireAt = Date.now() + 5 * 60 * 1000;
-          const fromLabel = `${inferred.from} → ${pending.toCurrency}`;
+          // 自動推算來源金額並完成
+          const sourceAmount = autoCalculateSourceAmount(pending.paymentInfo.amount, pending.sellRate, pending.sourceCurrency);
+          if (!sourceAmount) {
+            // fallback：推算失敗，回退詢問
+            pending.state = "awaiting_source_amount";
+            pending.expireAt = Date.now() + 5 * 60 * 1000;
+            if (WA_SEND_REPLY) {
+              await msg.reply(`✅ 賣出 ${fractionRate.sell_rate}｜底價 ${fractionRate.cost_rate} 已記錄\n📝 *請回覆兌換前 ${inferred.from} 金額*，例：300w`);
+            }
+            return;
+          }
+          await recordTransactionFromPending(pending, sourceAmount, msg, senderId);
+          return;
+        }
+      }
+
+      // 防止將公式誤當成匯率數字（如 "2000w/7.01=285307usd" → parseFloat 得 2000）
+      const asFormula = parseConversionLine(trimmedText) || findConversionInText(trimmedText);
+      if (asFormula) {
+        const pInfo = pending.paymentInfo || pending.partialPaymentInfo;
+        if (!pInfo) { return; }
+        // 先檢查公式結果金額是否匹配付款金額
+        if (!amountsMatch(asFormula.result_amount, pInfo.amount)) {
           if (WA_SEND_REPLY) {
-            await msg.reply(`✅ 賣出 ${fractionRate.sell_rate}｜底價 ${fractionRate.cost_rate} 已記錄\n📝 *請回覆兌換前 ${inferred.from} 金額*，例：300w\n💡 或發送換匯公式`);
+            await msg.reply(`⚠️ 公式結果金額與付款金額不符\n公式結果：${(asFormula.result_amount || 0).toLocaleString()} ≠ 付款金額：${pInfo.amount.toLocaleString()}\n💡 請檢查公式或回覆賣出匯率數字`);
           }
           return;
         }
+        // 金額匹配 → 嘗試 resolve
+        const convResult = await resolveConversion(pInfo, text, pending.toCurrency);
+        if (convResult && convResult.auto_inferred) {
+          pendingExchanges.delete(senderId);
+          const pd = pInfo.payment_details_dict || {};
+          if (convResult.conversion) {
+            pd.conversion = convResult.conversion;
+            pInfo.payment_details = JSON.stringify(pd);
+          }
+          let replyMsg = `✅ 已檢測付款：${pending.customerName}\n金額：${pInfo.amount.toLocaleString()} ${pending.toCurrency}`;
+          if (pd.bank_name) replyMsg += `\n銀行：${pd.bank_name}`;
+          if (pd.account_number) replyMsg += `\n戶口：${pd.account_number}`;
+          replyMsg += `\n${convResult.note}`;
+          if (WA_SEND_REPLY) { await msg.reply(replyMsg); }
+          const resolvedFrom = convResult.from_currency || "CNY";
+          await createTransaction({
+            agent_name: pending.agentName, customer_name: pending.customerName,
+            amount: pInfo.amount, currency: pInfo.currency,
+            raw_message: pInfo.raw_message, source: "whatsapp",
+            group_id: msg.from,
+            payment_details: pInfo.payment_details,
+            from_currency: resolvedFrom,
+            to_currency: pending.toCurrency,
+            remarks: pInfo.remarks || "",
+            insured_person: pInfo.insured_person || ""
+          });
+          return;
+        }
+        // resolveConversion 失敗（公式內部算術錯誤）→ 提示
+        if (WA_SEND_REPLY) {
+          const isMultiply = asFormula.operator === "*";
+          const expected = isMultiply
+            ? Math.round(asFormula.source_amount * asFormula.rate)
+            : Math.round(asFormula.source_amount / asFormula.rate);
+          await msg.reply(`⚠️ 公式結果金額與付款金額匹配，但公式內部算術不一致\n${asFormula.source_amount.toLocaleString()} ${isMultiply ? "×" : "÷"} ${asFormula.rate} 應為 ${expected.toLocaleString()}，而非 ${asFormula.result_amount.toLocaleString()}\n💡 請檢查公式或回覆賣出匯率數字`);
+        }
+        return;
       }
 
       const rateNum = parseFloat(trimmedText);
@@ -1772,14 +1883,20 @@ client.on("message", async (msg) => {
       // ── 已獲得賣出匯率和來源幣種，檢查底價匯率 ──
       const baseRate = await getBaseRate(pending.sourceCurrency, pending.toCurrency);
       if (baseRate) {
-        // 有底價匯率，跳過追問，直接問兌換前金額
+        // 有底價匯率，自動推算來源金額並完成
         pending.baseRate = baseRate;
-        pending.state = "awaiting_source_amount";
-        pending.expireAt = Date.now() + 5 * 60 * 1000;
-        const fromLabel = `${pending.sourceCurrency} → ${pending.toCurrency}`;
-        if (WA_SEND_REPLY) {
-          await msg.reply(`✅ 賣出 ${rateNum}\n📝 *請回覆兌換前 ${pending.sourceCurrency} 金額*，例：300w\n💡 或發送換匯公式`);
+        const sourceAmount = autoCalculateSourceAmount(pending.paymentInfo.amount, pending.sellRate, pending.sourceCurrency);
+        if (!sourceAmount) {
+          // fallback：推算失敗
+          pending.state = "awaiting_source_amount";
+          pending.expireAt = Date.now() + 5 * 60 * 1000;
+          if (WA_SEND_REPLY) {
+            await msg.reply(`✅ 賣出 ${rateNum}\n📝 *請回覆兌換前 ${pending.sourceCurrency} 金額*，例：300w`);
+          }
+          return;
         }
+        await recordTransactionFromPending(pending, sourceAmount, msg, senderId);
+        return;
       } else {
         // 無底價匯率，追問
         pending.state = "awaiting_base_rate";
@@ -1822,16 +1939,18 @@ client.on("message", async (msg) => {
         } catch (e) { /* 非關鍵 */ }
       }
 
-      // 進入追問兌換前金額
-      pending.state = "awaiting_source_amount";
-      pending.expireAt = Date.now() + 5 * 60 * 1000;
-      if (WA_SEND_REPLY) {
-        if (rateNum === 0) {
-          await msg.reply(`✅ 已跳過底價（不計盈利）\n📝 *請回覆兌換前 ${pending.sourceCurrency} 金額*，例：300w\n💡 或發送換匯公式`);
-        } else {
-          await msg.reply(`✅ 底價已記錄\n📝 *請回覆兌換前 ${pending.sourceCurrency} 金額*，例：300w\n💡 或發送換匯公式`);
+      // 自動推算來源金額並完成
+      const sourceAmount = autoCalculateSourceAmount(pending.paymentInfo.amount, pending.sellRate, pending.sourceCurrency);
+      if (!sourceAmount) {
+        // fallback：推算失敗
+        pending.state = "awaiting_source_amount";
+        pending.expireAt = Date.now() + 5 * 60 * 1000;
+        if (WA_SEND_REPLY) {
+          await msg.reply(`✅ 底價已記錄\n📝 *請回覆兌換前 ${pending.sourceCurrency} 金額*，例：300w`);
         }
+        return;
       }
+      await recordTransactionFromPending(pending, sourceAmount, msg, senderId);
       return;
     }
 

@@ -315,8 +315,8 @@ function autoCalculateSourceAmount(paymentAmount, sellRate, sourceCurrency) {
 }
 
 // ── 從 pending 構建 conversion 並創建交易 ──
-async function recordTransactionFromPending(pending, sourceAmount, msg, senderId) {
-  pendingExchanges.delete(senderId);
+async function recordTransactionFromPending(pending, sourceAmount, msg) {
+  pendingExchanges.delete(msg.from);
 
   const pd = pending.paymentInfo.payment_details_dict || {};
   const conversion = {
@@ -1605,12 +1605,12 @@ client.on("message", async (msg) => {
   // ── 換匯公式後發匹配：若當前消息是換匯公式，檢查是否有待處理的兌換 ──
   const trailingConv = parseConversionLine(text) || findConversionInText(text);
   if (trailingConv) {
-    const pendingByFormula = pendingExchanges.get(senderId);
+    const pendingByFormula = pendingExchanges.get(msg.from);
     const pfPI = pendingByFormula && (pendingByFormula.paymentInfo || pendingByFormula.partialPaymentInfo);
     if (pfPI && amountsMatch(trailingConv.result_amount, pfPI.amount)) {
       const conversionResult = await resolveConversion(pfPI, text, pendingByFormula.toCurrency);
       if (conversionResult && conversionResult.auto_inferred) {
-        pendingExchanges.delete(senderId);
+        pendingExchanges.delete(msg.from);
         const pd = pfPI.payment_details_dict || {};
         if (conversionResult.conversion) {
           pd.conversion = conversionResult.conversion;
@@ -1681,17 +1681,17 @@ client.on("message", async (msg) => {
 
   // ── 檢查是否有待處理的兌換方式選擇 ──
   scheduleSaveState();  // 任何 pending 操作前先排程保存
-  const pending = pendingExchanges.get(senderId);
+  const pending = pendingExchanges.get(msg.from);
   if (pending) {
     // 如果當前消息是新的付款信息，清除舊 pending，交給下方支付處理
     const newPaymentCheck = parsePaymentInfo(text, agentParserOverrides);
     if (newPaymentCheck && newPaymentCheck.amount > 0 && (newPaymentCheck.customer_name || "Unknown") !== "Unknown") {
-      pendingExchanges.delete(senderId);
+      pendingExchanges.delete(msg.from);
       // fall through — 不 return，讓下方支付處理代碼執行
     } else {
     // 強制檢查過期
     if (Date.now() > pending.expireAt) {
-      pendingExchanges.delete(senderId);
+      pendingExchanges.delete(msg.from);
       if (WA_SEND_REPLY) {
         const pInfo = pending.paymentInfo || pending.partialPaymentInfo || {};
         const amt = (pInfo.amount || 0).toLocaleString();
@@ -1704,7 +1704,7 @@ client.on("message", async (msg) => {
     const cancelKeywords = ["取消", "撤銷", "撤销", "undo", "cancel"];
     const trimmedText = text.trim().toLowerCase();
     if (cancelKeywords.some(k => trimmedText.startsWith(k))) {
-      pendingExchanges.delete(senderId);
+      pendingExchanges.delete(msg.from);
       if (WA_SEND_REPLY) {
         const pInfo = pending.paymentInfo || pending.partialPaymentInfo || {};
         const amt = (pInfo.amount || 0).toLocaleString();
@@ -1721,7 +1721,7 @@ client.on("message", async (msg) => {
     if (inlineFormula && pendingPI && amountsMatch(inlineFormula.result_amount, pendingPI.amount)) {
       const conversionResult = await resolveConversion(pendingPI, text, pending.toCurrency);
       if (conversionResult && conversionResult.auto_inferred) {
-        pendingExchanges.delete(senderId);
+        pendingExchanges.delete(msg.from);
         const pd = pendingPI.payment_details_dict || {};
         if (conversionResult.conversion) {
           pd.conversion = conversionResult.conversion;
@@ -1758,7 +1758,7 @@ client.on("message", async (msg) => {
       // 優先檢查是否為菜單數字選擇（處理「1」「2」等同時是有效 parseFloat 的輸入）
       const num = parseInt(trimmedText);
       if (!isNaN(num) && num === options.length + 1) {
-        pendingExchanges.delete(senderId);
+        pendingExchanges.delete(msg.from);
         if (WA_SEND_REPLY) await msg.reply(`❌ 已取消記錄：${pending.customerName} ${pending.paymentInfo.amount.toLocaleString()} ${pending.toCurrency}`);
         return;
       }
@@ -1799,7 +1799,7 @@ client.on("message", async (msg) => {
             }
             return;
           }
-          await recordTransactionFromPending(pending, sourceAmount, msg, senderId);
+          await recordTransactionFromPending(pending, sourceAmount, msg);
           return;
         }
       }
@@ -1819,7 +1819,7 @@ client.on("message", async (msg) => {
         // 金額匹配 → 嘗試 resolve
         const convResult = await resolveConversion(pInfo, text, pending.toCurrency);
         if (convResult && convResult.auto_inferred) {
-          pendingExchanges.delete(senderId);
+          pendingExchanges.delete(msg.from);
           const pd = pInfo.payment_details_dict || {};
           if (convResult.conversion) {
             pd.conversion = convResult.conversion;
@@ -1895,7 +1895,7 @@ client.on("message", async (msg) => {
           }
           return;
         }
-        await recordTransactionFromPending(pending, sourceAmount, msg, senderId);
+        await recordTransactionFromPending(pending, sourceAmount, msg);
         return;
       } else {
         // 無底價匯率，追問
@@ -1950,7 +1950,7 @@ client.on("message", async (msg) => {
         }
         return;
       }
-      await recordTransactionFromPending(pending, sourceAmount, msg, senderId);
+      await recordTransactionFromPending(pending, sourceAmount, msg);
       return;
     }
 
@@ -1966,7 +1966,7 @@ client.on("message", async (msg) => {
         return;
       }
 
-      pendingExchanges.delete(senderId);
+      pendingExchanges.delete(msg.from);
 
       const pd = pending.paymentInfo.payment_details_dict || {};
       const conversion = {
@@ -2034,7 +2034,7 @@ client.on("message", async (msg) => {
         if (!pInfo.amount || pInfo.amount <= 0) newWarnings.push("❌ 缺少或無法解析交易金額");
 
         if (newWarnings.length === 0) {
-          pendingExchanges.delete(senderId);
+          pendingExchanges.delete(msg.from);
           const pd2 = pInfo.payment_details_dict || {};
           text = `戶口全名：${pInfo.customer_name || pd2.account_name || ""}\n銀行名稱：${pd2.bank_name || ""}\n戶口號碼：${pd2.account_number || ""}\n金額：${pInfo.amount} ${pInfo.currency || "USD"}`;
           if (pd2.swift) text += `\nSWIFT：${pd2.swift}`;
@@ -2127,7 +2127,7 @@ client.on("message", async (msg) => {
           `⚠️ 付款資訊不完整，請補充：\n${errWarnings.join("\n")}\n💡 可直接回覆缺失欄位（例：戶口全名：CHEN XIA）\n💡 也可重新發送完整交易信息\n💡 回覆「取消」可取消`
         );
       }
-      pendingExchanges.set(senderId, {
+      pendingExchanges.set(msg.from, {
         partialPaymentInfo: paymentInfo,
         agentName: senderDisplayName,
         customerName: customerName !== "Unknown" ? customerName : "",
@@ -2208,7 +2208,7 @@ client.on("message", async (msg) => {
 
         if (WA_SEND_REPLY) { await msg.reply(replyMsg); }
         // 暫存，等待代理回覆賣出匯率或換匯公式
-        pendingExchanges.set(senderId, {
+        pendingExchanges.set(msg.from, {
           paymentInfo, agentName: senderDisplayName,
           customerName, toCurrency,
           conversionInfo: conversionResult ? conversionResult.conversion : null,

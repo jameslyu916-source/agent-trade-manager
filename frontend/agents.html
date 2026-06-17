@@ -143,6 +143,7 @@
                     <thead>
                         <tr class="bg-slate-800/80">
                             <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">代理名稱</th>
+                            <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">手機號</th>
                             <th class="px-6 py-3.5 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider" id="txAmountHeader">今日交易額</th>
                             <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">累計收益</th>
                             <th class="px-6 py-3.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">狀態</th>
@@ -160,29 +161,40 @@
         </main>
     </div>
 
-    <!-- 添加代理模態框 -->
+    <!-- 添加/編輯代理模態框 -->
     <div id="addAgentModal" class="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center hidden z-50">
         <div class="bg-slate-900 rounded-2xl shadow-2xl p-6 w-full max-w-md animate-fade-in-up">
             <div class="flex items-center justify-between mb-5">
-                <h3 class="text-lg font-bold text-slate-100">添加新代理</h3>
+                <h3 class="text-lg font-bold text-slate-100" id="agentModalTitle">添加新代理</h3>
                 <button onclick="closeAddAgentModal()" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-800 transition-colors text-slate-500 hover:text-slate-400">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
             </div>
             <form id="addAgentForm" class="space-y-4">
+                <input type="hidden" id="editOriginalName" value="">
                 <div>
                     <label class="block text-sm font-semibold text-slate-300 mb-1.5">代理名稱</label>
                     <input
                         type="text"
                         id="agentName"
-                        class="w-full px-4 py-2.5 border border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500/50 transition-all"
+                        class="w-full px-4 py-2.5 border border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500/50 transition-all bg-slate-800 text-slate-100"
                         placeholder="請輸入代理名稱"
                         required
                     >
                 </div>
+                <div>
+                    <label class="block text-sm font-semibold text-slate-300 mb-1.5">手機號（WhatsApp）</label>
+                    <input
+                        type="text"
+                        id="agentPhone"
+                        class="w-full px-4 py-2.5 border border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500/50 transition-all bg-slate-800 text-slate-100 font-mono"
+                        placeholder="例：85267179105@c.us"
+                    >
+                    <p class="text-[10px] text-slate-500 mt-1">WhatsApp 發送者 ID，用於識別 agent 身份</p>
+                </div>
                 <div class="flex justify-end space-x-3 pt-2">
                     <button type="button" onclick="closeAddAgentModal()" class="px-4 py-2.5 border border-slate-700 rounded-xl text-sm font-medium text-slate-400 hover:bg-slate-800 transition-colors">取消</button>
-                    <button type="submit" class="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-xl hover:from-amber-600 hover:to-amber-700 transition-all text-sm font-semibold shadow-md shadow-amber-500/20">確認添加</button>
+                    <button type="submit" class="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-xl hover:from-amber-600 hover:to-amber-700 transition-all text-sm font-semibold shadow-md shadow-amber-500/20" id="agentSubmitBtn">確認添加</button>
                 </div>
             </form>
         </div>
@@ -279,10 +291,12 @@
 
             agents.forEach(agent => {
                 const txAmount = agentTxAmounts[agent.agent_name] || '<span class="text-slate-600">-</span>';
+                const phone = agent.phone || '<span class="text-slate-600">-</span>';
                 const row = document.createElement("tr");
                 row.className = "hover:bg-slate-800/50 transition-colors";
                 row.innerHTML = `
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-200">${agent.agent_name}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-200">${escapeHtml(agent.agent_name)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-mono text-slate-400">${typeof phone === 'string' ? escapeHtml(phone) : phone}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-amber-400 text-right">${txAmount}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-emerald-400">${formatEarnings(agent.total_earnings)}</td>
                     <td class="px-6 py-4 whitespace-nowrap">
@@ -292,17 +306,35 @@
                         </span>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-1">
-                        <button onclick="deleteAgent('${agent.agent_name}')" class="text-red-400 hover:text-red-400 hover:bg-red-500/10 px-2.5 py-1.5 rounded-lg transition-colors text-xs font-semibold">刪除</button>
+                        <button onclick="editAgent('${escapeHtml(agent.agent_name)}', '${escapeHtml(agent.phone || '')}')" class="text-amber-400 hover:text-amber-400 hover:bg-amber-500/10 px-2.5 py-1.5 rounded-lg transition-colors text-xs font-semibold">編輯</button>
+                        <button onclick="deleteAgent('${escapeHtml(agent.agent_name)}')" class="text-red-400 hover:text-red-400 hover:bg-red-500/10 px-2.5 py-1.5 rounded-lg transition-colors text-xs font-semibold">刪除</button>
                     </td>
                 `;
                 tableBody.appendChild(row);
             });
         }
 
-        // ==================== 添加代理 ====================
+        // ==================== 添加/編輯代理 ====================
         function openAddAgentModal() {
+            document.getElementById("editOriginalName").value = "";
+            document.getElementById("agentModalTitle").textContent = "添加新代理";
+            document.getElementById("agentSubmitBtn").textContent = "確認添加";
+            document.getElementById("agentName").value = "";
+            document.getElementById("agentPhone").value = "";
+            document.getElementById("agentName").readOnly = false;
             document.getElementById("addAgentModal").classList.remove("hidden");
             document.getElementById("agentName").focus();
+        }
+
+        function editAgent(agentName, phone) {
+            document.getElementById("editOriginalName").value = agentName;
+            document.getElementById("agentModalTitle").textContent = "編輯代理";
+            document.getElementById("agentSubmitBtn").textContent = "保存變更";
+            document.getElementById("agentName").value = agentName;
+            document.getElementById("agentPhone").value = phone || "";
+            document.getElementById("agentName").readOnly = true;
+            document.getElementById("addAgentModal").classList.remove("hidden");
+            document.getElementById("agentPhone").focus();
         }
 
         function closeAddAgentModal() {
@@ -312,21 +344,28 @@
 
         document.getElementById("addAgentForm").addEventListener("submit", async (e) => {
             e.preventDefault();
+            const originalName = document.getElementById("editOriginalName").value;
             const agentName = document.getElementById("agentName").value;
-            const submitBtn = e.target.querySelector('button[type="submit"]');
+            const phone = document.getElementById("agentPhone").value.trim() || null;
+            const submitBtn = document.getElementById("agentSubmitBtn");
+            const isEdit = !!originalName;
 
             try {
                 submitBtn.disabled = true;
-                submitBtn.textContent = "添加中...";
-                await apiRequest("/agents/", "POST", { agent_name: agentName });
+                submitBtn.textContent = isEdit ? "保存中..." : "添加中...";
+                if (isEdit) {
+                    await apiRequest(`/agents/${encodeURIComponent(originalName)}`, "PUT", { phone });
+                } else {
+                    await apiRequest("/agents/", "POST", { agent_name: agentName, phone });
+                }
                 closeAddAgentModal();
                 await loadAgents();
-                showToast("代理添加成功", "success");
+                showToast(isEdit ? "代理更新成功" : "代理添加成功", "success");
             } catch (error) {
-                showToast("添加失敗：" + error.message, "error");
+                showToast((isEdit ? "更新" : "添加") + "失敗：" + error.message, "error");
             } finally {
                 submitBtn.disabled = false;
-                submitBtn.textContent = "確認添加";
+                submitBtn.textContent = isEdit ? "保存變更" : "確認添加";
             }
         });
 

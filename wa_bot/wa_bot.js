@@ -3,6 +3,8 @@ const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 const axios = require("axios");
 require("dotenv").config();
+const fs = require("fs");
+const path = require("path");
 const { parsePaymentInfo, parseConversionLine, findConversionInText, parseFractionRate } = require("./payment_parser");
 const { extractOrders } = require("./ai_order_parser");
 const { extractPaymentInfo } = require("./ai_payment_parser");
@@ -63,6 +65,22 @@ function getSetting(key, defaultValue) {
   return settingsCache[key] !== undefined ? settingsCache[key] : defaultValue;
 }
 
+// ── Agent 手機號 → 名稱映射快取 ──
+const phoneToAgentName = new Map();
+
+async function refreshAgentMapping() {
+  try {
+    if (!authToken) return;
+    const res = await axios.get(`${API_BASE_URL}/agents/`, { headers: getHeaders() });
+    if (res.status === 200) {
+      phoneToAgentName.clear();
+      for (const agent of res.data) {
+        if (agent.phone) phoneToAgentName.set(agent.phone, agent.agent_name);
+      }
+    }
+  } catch (_) { /* 靜默失敗，保留舊映射 */ }
+}
+
 // ── 貨幣兌換配對（與 bot/payment_parser.py 一致）──
 const EXCHANGE_OPTIONS = {
   HKD: [{ from: "CNY", label: "人民幣 → 港幣" }, { from: "USDT", label: "USDT → 港幣" }],
@@ -119,6 +137,63 @@ function isAccountLookupMessage(text) {
 
 // ── 從 agent 收集的當日底價匯率快取：key = "YYYY-MM-DD:FROM:TO" ──
 const collectedBaseRates = new Map();
+
+// ── 狀態持久化 ──
+const STATE_DIR = path.join(__dirname, ".state");
+const STATE_FILE = path.join(STATE_DIR, "bot_state.json");
+
+function saveState() {
+  try {
+    if (!fs.existsSync(STATE_DIR)) fs.mkdirSync(STATE_DIR, { recursive: true });
+    const state = {
+      pendingExchanges: Array.from(pendingExchanges.entries()),
+      collectedBaseRates: Array.from(collectedBaseRates.entries()),
+      formulaBuffer: Array.from(formulaBuffer.entries()),
+      savedAt: Date.now()
+    };
+    fs.writeFileSync(STATE_FILE, JSON.stringify(state));
+  } catch (e) {
+    console.error("❌ 保存狀態失敗：", e.message);
+  }
+}
+
+let _saveTimer = null;
+function scheduleSaveState() {
+  if (_saveTimer) clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(saveState, 100);
+}
+
+function loadState() {
+  try {
+    if (!fs.existsSync(STATE_FILE)) return;
+    const raw = fs.readFileSync(STATE_FILE, "utf-8");
+    const state = JSON.parse(raw);
+    const now = Date.now();
+    const today = new Date().toISOString().split("T")[0];
+
+    if (state.pendingExchanges) {
+      for (const [key, val] of state.pendingExchanges) {
+        if (val.expireAt && val.expireAt < now) continue;
+        pendingExchanges.set(key, val);
+      }
+    }
+    if (state.collectedBaseRates) {
+      for (const [key, val] of state.collectedBaseRates) {
+        if (key.startsWith(today)) collectedBaseRates.set(key, val);
+      }
+    }
+    if (state.formulaBuffer) {
+      const maxAge = now - 5 * 60 * 1000;
+      for (const [key, entries] of state.formulaBuffer) {
+        const valid = entries.filter(e => e.timestamp > maxAge);
+        if (valid.length > 0) formulaBuffer.set(key, valid);
+      }
+    }
+    console.log(`📂 已恢復狀態：${pendingExchanges.size} pending｜${collectedBaseRates.size} rates｜${formulaBuffer.size} buffers`);
+  } catch (e) {
+    console.log("⚠️ 恢復狀態失敗（使用空白狀態）：", e.message);
+  }
+}
 
 // ── 根據賣出匯率推斷來源幣種 ──
 async function inferSourceCurrency(sellRate, toCurrency) {
@@ -197,10 +272,19 @@ async function getBaseRate(sourceCurrency, toCurrency) {
 function parseSourceAmount(text) {
   if (!text) return null;
   let t = text.trim();
+  // 去掉前導貨幣符號（￥、$ 等）
+  t = t.replace(/^[￥¥$€£]\s*/, "").trim();
   // 去掉可能攜帶的幣種後綴
   t = t.replace(/\s*(CNY|USD|HKD|USDT|RMB|cny|usd|hkd|usdt|rmb)\s*$/i, "").trim();
   // 去掉千分位逗號
   t = t.replace(/,/g, "");
+  // 檢查 千萬 後綴（必須在 萬 之前檢查）
+  const qianWanMatch = t.match(/^([\d.]+)\s*千[万萬]$/);
+  if (qianWanMatch) {
+    const base = parseFloat(qianWanMatch[1]);
+    if (!isNaN(base) && base > 0) return Math.round(base * 10000000);
+    return null;
+  }
   // 檢查 萬/w 後綴
   const wanMatch = t.match(/^([\d.]+)\s*[wW万萬]$/);
   if (wanMatch) {
@@ -981,8 +1065,6 @@ async function sendReminderIfTime() {
 }
 
 // ==================== WhatsApp 客戶端 ====================
-const fs = require("fs");
-const path = require("path");
 const PID_FILE = path.join(__dirname, "wa_bot.pid");
 
 // 寫入 PID 檔案
@@ -995,6 +1077,7 @@ function cleanupPidFile() {
 
 async function gracefulShutdown() {
   console.log("🛑 正在關閉 WhatsApp Bot...");
+  saveState();
   cleanupPidFile();
   try { await client.destroy(); } catch (_) {}
   try {
@@ -1034,8 +1117,10 @@ client.on("ready", async () => {
   lastMessageTime = Date.now();  // 重置消息時間戳
   await login(); // 登錄後端API
   await initSettings(); // 載入系統設置（含重試）
-  // 每 60 秒刷新設置
-  setInterval(refreshSettings, 60 * 1000);
+  loadState(); // 恢復 pending 狀態
+  await refreshAgentMapping(); // 載入手機號→名稱映射
+  // 每 60 秒刷新設置與 agent 映射
+  setInterval(() => { refreshSettings(); refreshAgentMapping(); }, 60 * 1000);
   // 每 60 秒檢查漏單提醒
   setInterval(sendReminderIfTime, 60 * 1000);
   // 每 60 秒健康檢查：超過 15 分鐘無消息 → 判定靜默斷線，強制重連
@@ -1384,7 +1469,59 @@ client.on("message", async (msg) => {
   let text = msg.body;
 
   const senderId = msg.author;
-  const senderDisplayName = (msg._data && msg._data.notifyName) || senderId;
+  const registeredName = phoneToAgentName.get(senderId);
+  const senderDisplayName = registeredName || (msg._data && msg._data.notifyName) || senderId;
+
+  // ── Pending 管理指令 ──
+  const PENDING_STATUS_CMDS = ["pending狀態", "/pending", "pending状态"];
+  const CLEAR_PENDING_PREFIX = "清除pending ";
+  const CLEAR_ALL_PENDING = "清除全部pending";
+
+  if (PENDING_STATUS_CMDS.includes(msgText)) {
+    if (pendingExchanges.size === 0) {
+      if (WA_SEND_REPLY) await msg.reply("📋 目前沒有待處理的兌換");
+    } else {
+      const stateMap = { awaiting_sell_rate: "等待賣出匯率", awaiting_base_rate: "等待底價", awaiting_source_amount: "等待來源金額", awaiting_completion: "等待補全資料" };
+      let reply = `📋 待處理兌換（${pendingExchanges.size} 筆）：`;
+      for (const [, p] of pendingExchanges) {
+        const remaining = Math.max(0, Math.round((p.expireAt - Date.now()) / 1000));
+        const stateLabel = stateMap[p.state] || p.state;
+        const toCur = p.toCurrency || "?";
+        const info = p.paymentInfo || p.partialPaymentInfo || {};
+        reply += `\n  • *${p.agentName}* — ${stateLabel}｜${info.amount?.toLocaleString?.() || "?"} ${toCur}｜${remaining}秒`;
+      }
+      if (WA_SEND_REPLY) await msg.reply(reply);
+    }
+    return;
+  }
+
+  if (msgText.startsWith(CLEAR_PENDING_PREFIX)) {
+    const target = msgText.slice(CLEAR_PENDING_PREFIX.length).trim();
+    if (!target) {
+      if (WA_SEND_REPLY) await msg.reply("❌ 請指定 agent 名稱，例：`清除pending 張三`");
+      return;
+    }
+    let deleted = 0;
+    for (const [sid, p] of pendingExchanges) {
+      if (p.agentName === target || sid === target || sid.includes(target)) {
+        pendingExchanges.delete(sid);
+        deleted++;
+      }
+    }
+    if (WA_SEND_REPLY) {
+      await msg.reply(deleted > 0 ? `✅ 已清除 *${target}* 的 ${deleted} 筆待處理` : `❌ 找不到 *${target}* 的待處理記錄`);
+    }
+    scheduleSaveState();
+    return;
+  }
+
+  if (msgText === CLEAR_ALL_PENDING) {
+    const count = pendingExchanges.size;
+    pendingExchanges.clear();
+    if (WA_SEND_REPLY) await msg.reply(`✅ 已清除全部 ${count} 筆待處理`);
+    scheduleSaveState();
+    return;
+  }
 
   // ── 載入當前群的 Agent Parser 配置（若已設定） ──
   let agentParserOverrides = null;
@@ -1485,6 +1622,7 @@ client.on("message", async (msg) => {
   }
 
   // ── 檢查是否有待處理的兌換方式選擇 ──
+  scheduleSaveState();  // 任何 pending 操作前先排程保存
   const pending = pendingExchanges.get(senderId);
   if (pending) {
     // 如果當前消息是新的付款信息，清除舊 pending，交給下方支付處理
@@ -1875,6 +2013,7 @@ client.on("message", async (msg) => {
         expireAt: Date.now() + 5 * 60 * 1000,
         chat: msg.from,
       });
+      scheduleSaveState();
       return;
     }
 
@@ -1957,6 +2096,7 @@ client.on("message", async (msg) => {
           expireAt: Date.now() + 5 * 60 * 1000,
           chat: msg.from,
         });
+        scheduleSaveState();
       } else {
         // 未知目標貨幣，直接記錄
         if (conversionResult && conversionResult.note) {
@@ -2029,6 +2169,7 @@ client.on("message", async (msg) => {
 
   // ── 簡易交易解析已停用，僅接受結構化付款資訊 ──
   console.log("   ⚪ 訊息非結構化付款格式，已略過");
+  scheduleSaveState();
   } catch (err) {
     console.error("❌ 消息處理異常：", err.message, err.stack);
   }

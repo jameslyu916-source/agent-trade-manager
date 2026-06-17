@@ -39,6 +39,7 @@ class Agent(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     agent_name = Column(String, unique=True, index=True, nullable=False)
+    phone = Column(String, nullable=True, default=None)  # WhatsApp senderId，如 85267179105@c.us
     # commission_rate 已廢棄，改用匯率差價計算盈利
     total_earnings = Column(String, default='{}')    # 累計收益（JSON: {"USD": 1000, "HKD": 500}）
     is_active = Column(Boolean, default=True)      # 是否啟用
@@ -176,6 +177,9 @@ def _migrate():
                         (agent_name,)
                     )
             print("✅ Agent total_earnings 已遷移至多貨幣 JSON 格式")
+        if "phone" not in agent_cols:
+            conn.exec_driver_sql("ALTER TABLE agents ADD COLUMN phone VARCHAR DEFAULT NULL")
+            print("✅ Agent phone 欄位已新增")
 
         # ── 新建 customer_orders 表（若不存在）──
         result = conn.exec_driver_sql(

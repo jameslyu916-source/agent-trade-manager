@@ -157,6 +157,7 @@ def create_agent(db: Session, agent: schemas.AgentCreate):
     """創建新代理"""
     db_agent = Agent(
         agent_name=agent.agent_name,
+        phone=getattr(agent, 'phone', None),
     )
     db.add(db_agent)
     db.commit()
@@ -167,12 +168,33 @@ def get_agent_by_name(db: Session, agent_name: str):
     """根據代理名稱獲取代理"""
     return db.query(Agent).filter(Agent.agent_name == agent_name).first()
 
+def get_agent_by_phone(db: Session, phone: str):
+    """根據手機號獲取代理"""
+    if not phone:
+        return None
+    return db.query(Agent).filter(Agent.phone == phone).first()
+
 def get_all_agents(db: Session, active_only: bool = True):
     """獲取所有代理"""
     query = db.query(Agent)
     if active_only:
         query = query.filter(Agent.is_active == True)
     return query.order_by(Agent.agent_name).all()
+
+def update_agent(db: Session, agent_name: str, updates: dict):
+    """更新代理信息"""
+    agent = get_agent_by_name(db, agent_name)
+    if not agent:
+        return None
+    if "agent_name" in updates and updates["agent_name"] is not None:
+        agent.agent_name = updates["agent_name"]
+    if "phone" in updates:
+        agent.phone = updates["phone"]
+    if "is_active" in updates and updates["is_active"] is not None:
+        agent.is_active = updates["is_active"]
+    db.commit()
+    db.refresh(agent)
+    return agent
 
 def delete_agent(db: Session, agent_name: str):
     """刪除代理"""

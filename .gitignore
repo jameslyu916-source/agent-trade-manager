@@ -49,6 +49,9 @@ node_modules/
 .wwebjs_auth/
 .wwebjs_cache/
 
+# Bot runtime state (pending exchanges, base rates, formula buffer)
+.state/
+
 # Claude Code
 .claude/
 .agents/

@@ -452,14 +452,31 @@ function parsePaymentInfo(messageText, agentOverrides = null) {
 // ═══════════════════════════════════════════
 
 // 支援 / 和 * 兩種運算符
-const CONVERSION_LINE_RE = /^([\d,]+(?:\.\d+)?(?:w|万|萬)?)\s*[\/\*]\s*([\d.]+)\s*=\s*([\d,]+(?:\.\d+)?(?:w|万|萬)?)(?:\s*(USD|HKD|CNY|RMB))?\s*$/i;
+const CONVERSION_LINE_RE = /^([\d,]+(?:\.\d+)?(?:千[万萬]|[万萬]|w)?)\s*[\/\*]\s*([\d.]+)\s*=\s*([\d,]+(?:\.\d+)?(?:千[万萬]|[万萬]|w)?)(?:\s*(USD|HKD|CNY|RMB))?\s*$/i;
 
 // 不加 anchor 的版本，用於在引用消息/長文本中搜尋公式
-const CONVERSION_SEARCH_RE = /([\d,]+(?:\.\d+)?(?:w|万|萬)?)\s*[\/\*]\s*([\d.]+)\s*=\s*([\d,]+(?:\.\d+)?(?:w|万|萬)?)(?:\s*(USD|HKD|CNY|RMB))?\s*/gi;
+const CONVERSION_SEARCH_RE = /([\d,]+(?:\.\d+)?(?:千[万萬]|[万萬]|w)?)\s*[\/\*]\s*([\d.]+)\s*=\s*([\d,]+(?:\.\d+)?(?:千[万萬]|[万萬]|w)?)(?:\s*(USD|HKD|CNY|RMB))?\s*/gi;
 
 // 去除貨幣裝飾符號（emoji 和獨立貨幣符號，避免干擾數字捕獲）
 function _stripDecorators(text) {
   return text.replace(/\p{Extended_Pictographic}/gu, "").replace(/[\$£¥€￥]/g, "");
+}
+
+function _parseAmount(str) {
+  // 解析带中文单位的金额字符串 → number
+  const qwRe = /千[万萬]$/;
+  const wanRe = /[w万萬]$/;
+  let val;
+  if (qwRe.test(str)) {
+    val = parseFloat(str.replace(qwRe, ""));
+    if (!isNaN(val)) val *= 10000000;
+  } else if (wanRe.test(str)) {
+    val = parseFloat(str.replace(wanRe, ""));
+    if (!isNaN(val)) val *= 10000;
+  } else {
+    val = parseFloat(str);
+  }
+  return isNaN(val) ? null : Math.round(val);
 }
 
 function _parseMatch(m) {
@@ -470,13 +487,8 @@ function _parseMatch(m) {
   if (resultCurrency === "RMB") resultCurrency = "CNY";
   if (!resultCurrency) resultCurrency = null;
 
-  const sourceHasWan = /[w万萬]$/.test(sourceStr);
-  let sourceAmount = parseFloat(sourceStr.replace(/[w万萬]$/, ""));
-  if (sourceHasWan) sourceAmount *= 10000;
-
-  const resultHasWan = /[w万萬]$/.test(resultStr);
-  let resultAmount = parseInt(resultStr.replace(/[w万萬]$/, ""), 10);
-  if (resultHasWan) resultAmount *= 10000;
+  const sourceAmount = _parseAmount(sourceStr);
+  const resultAmount = _parseAmount(resultStr);
 
   const operator = m[0].includes("*") ? "*" : "/";
 
@@ -500,15 +512,25 @@ function parseConversionLine(text) {
 }
 
 // 在任意文本中搜尋換匯公式（用於引用消息、長文本等場景）
+// 若有多個公式，優先取帶幣種後綴（USD/HKD/CNY/RMB）的最後一個
 function findConversionInText(text) {
   if (!text || !text.trim()) return null;
 
   const cleaned = _stripDecorators(text);
-  const m = CONVERSION_SEARCH_RE.exec(cleaned);
-  CONVERSION_SEARCH_RE.lastIndex = 0;  // reset
-  if (!m) return null;
+  const matches = [];
+  let m;
+  while ((m = CONVERSION_SEARCH_RE.exec(cleaned)) !== null) {
+    matches.push(m);
+  }
+  CONVERSION_SEARCH_RE.lastIndex = 0;
 
-  return _parseMatch(m);
+  if (matches.length === 0) return null;
+
+  // 優先取帶幣種後綴的匹配
+  const withCurrency = matches.filter(m => m[4] && m[4].trim());
+  const best = withCurrency.length > 0 ? withCurrency[withCurrency.length - 1] : matches[matches.length - 1];
+
+  return _parseMatch(best);
 }
 
 // ═══════════════════════════════════════════

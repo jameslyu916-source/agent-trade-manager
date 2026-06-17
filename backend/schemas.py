@@ -15,9 +15,15 @@ class Token(BaseModel):
 # ==================== Agent ====================
 class AgentBase(BaseModel):
     agent_name: str
+    phone: Optional[str] = None
 
 class AgentCreate(AgentBase):
     pass
+
+class AgentUpdate(BaseModel):
+    agent_name: Optional[str] = None
+    phone: Optional[str] = None
+    is_active: Optional[bool] = None
 
 class AgentResponse(AgentBase):
     id: int

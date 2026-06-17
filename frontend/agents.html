@@ -291,12 +291,12 @@
 
             agents.forEach(agent => {
                 const txAmount = agentTxAmounts[agent.agent_name] || '<span class="text-slate-600">-</span>';
-                const phone = agent.phone || '<span class="text-slate-600">-</span>';
+                const phoneHtml = agent.phone ? escapeHtml(agent.phone) : '<span class="text-slate-600">-</span>';
                 const row = document.createElement("tr");
                 row.className = "hover:bg-slate-800/50 transition-colors";
                 row.innerHTML = `
                     <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-200">${escapeHtml(agent.agent_name)}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-mono text-slate-400">${typeof phone === 'string' ? escapeHtml(phone) : phone}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-mono text-slate-400">${phoneHtml}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-amber-400 text-right">${txAmount}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-emerald-400">${formatEarnings(agent.total_earnings)}</td>
                     <td class="px-6 py-4 whitespace-nowrap">

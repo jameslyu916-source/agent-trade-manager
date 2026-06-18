@@ -94,6 +94,10 @@ const pendingExchanges = new Map();
 const formulaBuffer = new Map();  // chatId -> [{text, timestamp}]
 const MAX_FORMULA_BUFFER = 20;
 
+// ── 已處理消息 ID 去重（防止 WebSocket 重推）──
+const processedMessageIds = new Set();
+const MAX_PROCESSED_IDS = 10000;
+
 // ── 連線健康監控 ──
 let lastMessageTime = Date.now();
 const MESSAGE_TIMEOUT_MS = 15 * 60 * 1000;  // 15 分鐘無消息判定靜默斷線
@@ -149,6 +153,7 @@ function saveState() {
       pendingExchanges: Array.from(pendingExchanges.entries()),
       collectedBaseRates: Array.from(collectedBaseRates.entries()),
       formulaBuffer: Array.from(formulaBuffer.entries()),
+      processedMessageIds: Array.from(processedMessageIds).slice(-MAX_PROCESSED_IDS),
       savedAt: Date.now()
     };
     fs.writeFileSync(STATE_FILE, JSON.stringify(state));
@@ -189,7 +194,11 @@ function loadState() {
         if (valid.length > 0) formulaBuffer.set(key, valid);
       }
     }
-    console.log(`📂 已恢復狀態：${pendingExchanges.size} pending｜${collectedBaseRates.size} rates｜${formulaBuffer.size} buffers`);
+    if (state.processedMessageIds && Array.isArray(state.processedMessageIds)) {
+      const ids = state.processedMessageIds.slice(-MAX_PROCESSED_IDS);
+      for (const id of ids) processedMessageIds.add(id);
+    }
+    console.log(`📂 已恢復狀態：${pendingExchanges.size} pending｜${collectedBaseRates.size} rates｜${formulaBuffer.size} buffers｜${processedMessageIds.size} processed ids`);
   } catch (e) {
     console.log("⚠️ 恢復狀態失敗（使用空白狀態）：", e.message);
   }
@@ -343,7 +352,8 @@ async function recordTransactionFromPending(pending, sourceAmount, msg) {
     from_currency: pending.sourceCurrency,
     to_currency: pending.toCurrency,
     remarks: pending.paymentInfo.remarks || "",
-    insured_person: pending.paymentInfo.insured_person || ""
+    insured_person: pending.paymentInfo.insured_person || "",
+    timestamp: msg.timestamp ? new Date(msg.timestamp * 1000).toISOString() : new Date().toISOString()
   });
 
   if (success && WA_SEND_REPLY) {
@@ -649,7 +659,8 @@ async function createTransaction(data) {
       raw_message: data.raw_message || null,
       source: data.source || "whatsapp",
       group_id: data.group_id || "",
-      payment_details: data.payment_details || null
+      payment_details: data.payment_details || null,
+      timestamp: data.timestamp || undefined
     };
     const res = await axios.post(`${API_BASE_URL}/transactions/`, payload, {
       headers: getHeaders(),
@@ -1196,6 +1207,7 @@ client.on("ready", async () => {
       } catch (e) {
         console.error("❌ 健康檢查重連失敗：", e.message);
       }
+      lastMessageTime = Date.now();  // 重連後重置計時器，防止死循環
       isReconnecting = false;
     }
   }, 60 * 1000);
@@ -1212,6 +1224,7 @@ client.on("change_state", (state) => {
     setTimeout(async () => {
       try { await client.destroy(); } catch (_) {}
       try { await client.initialize(); } catch (_) {}
+      lastMessageTime = Date.now();  // 重連後重置計時器，防止死循環
       isReconnecting = false;
     }, 5000);
   }
@@ -1226,6 +1239,22 @@ client.on("auth_failure", (msg) => {
 // 監聽所有消息
 client.on("message", async (msg) => {
   lastMessageTime = Date.now();
+
+  // ── 消息 ID 去重：防止 WebSocket 重推已處理的消息 ──
+  const msgId = msg.id && msg.id._serialized;
+  if (msgId && processedMessageIds.has(msgId)) {
+    console.log("⏭️ 跳過重複消息：", msgId);
+    return;
+  }
+  if (msgId) {
+    processedMessageIds.add(msgId);
+    if (processedMessageIds.size > MAX_PROCESSED_IDS * 2) {
+      const entries = Array.from(processedMessageIds);
+      processedMessageIds.clear();
+      for (const id of entries.slice(-MAX_PROCESSED_IDS)) processedMessageIds.add(id);
+    }
+  }
+
   try {
   // 第一關：確認事件有觸發（任何消息都會打印）
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -1407,8 +1436,8 @@ client.on("message", async (msg) => {
       const todayOrders = await getDailyOrders(today);
       const existingSet = new Set();
       for (const o of todayOrders) {
-        existingSet.add(`${o.customer_name}:${o.amount}`);
-        if (o.pinyin_name) existingSet.add(`${o.pinyin_name}:${o.amount}`);
+        existingSet.add(`${o.customer_name}:${o.amount}:${o.currency || "CNY"}`);
+        if (o.pinyin_name) existingSet.add(`${o.pinyin_name}:${o.amount}:${o.currency || "CNY"}`);
       }
 
       const CURRENCY_SYMBOL = { USD: "$", HKD: "HK$", CNY: "¥" };
@@ -1430,7 +1459,7 @@ client.on("message", async (msg) => {
             currency: o.currency,
             group_id: msg.from,
             group_name: orderChat.name || "",
-            message_timestamp: new Date().toISOString(),
+            message_timestamp: msg.timestamp ? new Date(msg.timestamp * 1000).toISOString() : new Date().toISOString(),
             raw_message: msgText
           });
           if (order) {
@@ -1631,7 +1660,8 @@ client.on("message", async (msg) => {
           from_currency: resolvedFrom,
           to_currency: pendingByFormula.toCurrency,
           remarks: pfPI.remarks || "",
-          insured_person: pfPI.insured_person || ""
+          insured_person: pfPI.insured_person || "",
+          timestamp: msg.timestamp ? new Date(msg.timestamp * 1000).toISOString() : new Date().toISOString()
         });
         console.log(`💾 付款資訊已記錄（公式後發自動推斷 ${resolvedFrom}→${pendingByFormula.toCurrency}，代理: ${pendingByFormula.agentName}, 客戶: ${pendingByFormula.customerName}）`);
         return;
@@ -1742,7 +1772,8 @@ client.on("message", async (msg) => {
           from_currency: inferredFrom,
           to_currency: pending.toCurrency,
           remarks: pendingPI.remarks || "",
-          insured_person: pendingPI.insured_person || ""
+          insured_person: pendingPI.insured_person || "",
+          timestamp: msg.timestamp ? new Date(msg.timestamp * 1000).toISOString() : new Date().toISOString()
         });
         console.log(`💾 付款資訊已記錄（pending 公式捷徑 ${inferredFrom}→${pending.toCurrency}，代理: ${pending.agentName}, 客戶: ${pending.customerName}）`);
         return;
@@ -1840,7 +1871,8 @@ client.on("message", async (msg) => {
             from_currency: resolvedFrom,
             to_currency: pending.toCurrency,
             remarks: pInfo.remarks || "",
-            insured_person: pInfo.insured_person || ""
+            insured_person: pInfo.insured_person || "",
+            timestamp: msg.timestamp ? new Date(msg.timestamp * 1000).toISOString() : new Date().toISOString()
           });
           return;
         }
@@ -1993,7 +2025,8 @@ client.on("message", async (msg) => {
         from_currency: pending.sourceCurrency,
         to_currency: pending.toCurrency,
         remarks: pending.paymentInfo.remarks || "",
-        insured_person: pending.paymentInfo.insured_person || ""
+        insured_person: pending.paymentInfo.insured_person || "",
+        timestamp: msg.timestamp ? new Date(msg.timestamp * 1000).toISOString() : new Date().toISOString()
       });
 
       if (success && WA_SEND_REPLY) {
@@ -2195,7 +2228,8 @@ client.on("message", async (msg) => {
           from_currency: inferredFrom,
           to_currency: toCurrency,
           remarks: paymentInfo.remarks || "",
-          insured_person: paymentInfo.insured_person || ""
+          insured_person: paymentInfo.insured_person || "",
+          timestamp: msg.timestamp ? new Date(msg.timestamp * 1000).toISOString() : new Date().toISOString()
         });
         console.log(`💾 付款資訊已記錄（自動推斷 ${inferredFrom}→${toCurrency}，代理: ${senderDisplayName}, 客戶: ${customerName}）`);
       } else if (options && options.length > 0) {
@@ -2241,7 +2275,8 @@ client.on("message", async (msg) => {
           from_currency: conversionResult ? conversionResult.from_currency || "" : "",
           to_currency: toCurrency,
           remarks: paymentInfo.remarks || "",
-          insured_person: paymentInfo.insured_person || ""
+          insured_person: paymentInfo.insured_person || "",
+          timestamp: msg.timestamp ? new Date(msg.timestamp * 1000).toISOString() : new Date().toISOString()
         });
         console.log(`   💾 付款資訊已記錄（代理: ${senderDisplayName}, 客戶: ${customerName}）`);
       }

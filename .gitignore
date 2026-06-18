@@ -49,9 +49,14 @@ node_modules/
 .wwebjs_auth/
 .wwebjs_cache/
 
+# Test / debug scripts (local development only)
+wa_bot/test_api.js
+wa_bot/test_parser.js
+
 # Bot runtime state (pending exchanges, base rates, formula buffer)
 .state/
 
 # Claude Code
 .claude/
 .agents/
+skills-lock.json

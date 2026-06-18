@@ -108,6 +108,35 @@ class ExchangeRate(Base):
         UniqueConstraint("date", "from_currency", "to_currency", "source", name="uq_exchange_rate"),
     )
 
+class CustomerAccount(Base):
+    """客戶-帳戶映射表（記錄客戶姓名與銀行帳號的對應關係）"""
+    __tablename__ = "customer_accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    customer_name = Column(String, nullable=False, index=True)
+    customer_name_normalized = Column(String, nullable=False, index=True)
+    account_number = Column(String, nullable=False, index=True)
+    bank_name = Column(String, default="")
+    first_seen = Column(DateTime, nullable=False)
+    last_seen = Column(DateTime, nullable=False)
+    transaction_count = Column(Integer, default=1)
+
+
+class CustomerAccountAlert(Base):
+    """客戶帳戶異常警報記錄（用於去重和查閱）"""
+    __tablename__ = "customer_account_alerts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    alert_type = Column(String, nullable=False)
+    customer_name = Column(String, nullable=False)
+    account_number = Column(String, nullable=False)
+    previous_account_number = Column(String, default="")
+    previous_customer_name = Column(String, default="")
+    transaction_id = Column(Integer, nullable=True)
+    group_id = Column(String, default="")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 # Create all tables in the database (if they don't exist)
 Base.metadata.create_all(bind=engine)
 
@@ -209,6 +238,47 @@ def _migrate():
         if "group_name" not in order_cols:
             conn.exec_driver_sql("ALTER TABLE customer_orders ADD COLUMN group_name VARCHAR DEFAULT ''")
             print("✅ customer_orders.group_name 已添加")
+
+        # ── 新建 customer_accounts 表（若不存在）──
+        result = conn.exec_driver_sql(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='customer_accounts'"
+        ).fetchone()
+        if not result:
+            conn.exec_driver_sql("""
+                CREATE TABLE customer_accounts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    customer_name VARCHAR NOT NULL,
+                    customer_name_normalized VARCHAR NOT NULL,
+                    account_number VARCHAR NOT NULL,
+                    bank_name VARCHAR DEFAULT '',
+                    first_seen TIMESTAMP NOT NULL,
+                    last_seen TIMESTAMP NOT NULL,
+                    transaction_count INTEGER DEFAULT 1
+                )
+            """)
+            conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS idx_ca_name_norm ON customer_accounts(customer_name_normalized)")
+            conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS idx_ca_account ON customer_accounts(account_number)")
+            print("✅ customer_accounts 表已建立")
+
+        # ── 新建 customer_account_alerts 表（若不存在）──
+        result = conn.exec_driver_sql(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='customer_account_alerts'"
+        ).fetchone()
+        if not result:
+            conn.exec_driver_sql("""
+                CREATE TABLE customer_account_alerts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    alert_type VARCHAR NOT NULL,
+                    customer_name VARCHAR NOT NULL,
+                    account_number VARCHAR NOT NULL,
+                    previous_account_number VARCHAR DEFAULT '',
+                    previous_customer_name VARCHAR DEFAULT '',
+                    transaction_id INTEGER,
+                    group_id VARCHAR DEFAULT '',
+                    created_at TIMESTAMP
+                )
+            """)
+            print("✅ customer_account_alerts 表已建立")
 
         # ── 初始化預設設置 ──
         try:

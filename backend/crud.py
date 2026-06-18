@@ -1,7 +1,7 @@
 # backend/crud.py --- IGNORE ---
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from .database import User, Agent, Transaction, SystemSetting, ExchangeRate, CustomerOrder  # 從database.py導入所有模型
+from .database import User, Agent, Transaction, SystemSetting, ExchangeRate, CustomerOrder, CustomerAccount, CustomerAccountAlert  # 從database.py導入所有模型
 from . import schemas
 from datetime import datetime, timezone, timedelta
 from .database import HK_TZ
@@ -252,7 +252,15 @@ def create_transaction(db: Session, transaction: schemas.TransactionCreate):
     # 自動嘗試匹配客戶訂單
     _auto_match_order(db, db_transaction)
 
-    return db_transaction
+    # 客戶帳戶驗證與記錄
+    alert_info = _check_and_record_customer_account(
+        db, db_transaction.customer_name,
+        db_transaction.payment_details,
+        db_transaction.id,
+        db_transaction.group_id
+    )
+
+    return db_transaction, alert_info
 
 def get_daily_total(db: Session, date: str = None):
     """獲取指定日期總成交額（香港時間日期），含貨幣分類統計"""
@@ -868,3 +876,216 @@ def _build_matched_transaction_summary(db: Session, order: CustomerOrder) -> dic
         "amount": tx.amount,
         "currency": tx.currency
     }
+
+
+# ── 客戶帳戶驗證 ──
+
+def _normalize_customer_name(name: str) -> str:
+    """標準化客戶名稱：去多餘空白 + 大寫"""
+    import re
+    return re.sub(r'\s+', ' ', name.strip()).upper() if name else ""
+
+
+def _check_and_record_customer_account(
+    db: Session,
+    customer_name: str,
+    payment_details_str: str | None,
+    transaction_id: int | None = None,
+    group_id: str = ""
+) -> dict | None:
+    """
+    檢查客戶帳戶並記錄映射關係。
+    在 create_transaction() 成功後調用。
+
+    返回 None（正常）或 alert dict（異常）。
+    """
+    if not customer_name or not customer_name.strip():
+        return None
+    if not payment_details_str:
+        return None
+
+    try:
+        pd_obj = json.loads(payment_details_str) if isinstance(payment_details_str, str) else payment_details_str
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+    account_number = (pd_obj.get("account_number") or "").strip()
+    if not account_number:
+        return None
+
+    bank_name = (pd_obj.get("bank_name") or "").strip()
+    name_normalized = _normalize_customer_name(customer_name)
+    now = datetime.now(timezone.utc)
+
+    # 步驟 1：查找是否已有此客戶-帳號的精確配對
+    existing_pair = db.query(CustomerAccount).filter(
+        CustomerAccount.customer_name_normalized == name_normalized,
+        CustomerAccount.account_number == account_number
+    ).first()
+
+    if existing_pair:
+        # 同一客戶、同一帳號 → 更新 last_seen 和計數
+        existing_pair.last_seen = now
+        existing_pair.transaction_count = (existing_pair.transaction_count or 0) + 1
+        if bank_name and not existing_pair.bank_name:
+            existing_pair.bank_name = bank_name
+        db.commit()
+        return None
+
+    # 步驟 2：檢查此客戶是否已有其他帳號（account_changed）
+    existing_by_name = db.query(CustomerAccount).filter(
+        CustomerAccount.customer_name_normalized == name_normalized
+    ).first()
+
+    if existing_by_name:
+        # 同一客戶、不同帳號 → account_changed
+        new_mapping = CustomerAccount(
+            customer_name=customer_name,
+            customer_name_normalized=name_normalized,
+            account_number=account_number,
+            bank_name=bank_name,
+            first_seen=now,
+            last_seen=now,
+            transaction_count=1
+        )
+        db.add(new_mapping)
+        db.commit()
+
+        alert_info = {
+            "alert_type": "account_changed",
+            "customer_name": customer_name,
+            "account_number": account_number,
+            "previous_account_number": existing_by_name.account_number,
+            "previous_customer_name": "",
+            "transaction_id": transaction_id,
+            "group_id": group_id
+        }
+        _create_account_alert(db, alert_info)
+        return alert_info
+
+    # 步驟 2：按帳號反向查找
+    existing_by_account = db.query(CustomerAccount).filter(
+        CustomerAccount.account_number == account_number
+    ).first()
+
+    if existing_by_account:
+        # 不同客戶使用同一帳號 → account_reused
+        new_mapping = CustomerAccount(
+            customer_name=customer_name,
+            customer_name_normalized=name_normalized,
+            account_number=account_number,
+            bank_name=bank_name,
+            first_seen=now,
+            last_seen=now,
+            transaction_count=1
+        )
+        db.add(new_mapping)
+        db.commit()
+
+        alert_info = {
+            "alert_type": "account_reused",
+            "customer_name": customer_name,
+            "account_number": account_number,
+            "previous_account_number": "",
+            "previous_customer_name": existing_by_account.customer_name,
+            "transaction_id": transaction_id,
+            "group_id": group_id
+        }
+        _create_account_alert(db, alert_info)
+        return alert_info
+
+    # 步驟 3：全新客戶-帳戶映射
+    new_mapping = CustomerAccount(
+        customer_name=customer_name,
+        customer_name_normalized=name_normalized,
+        account_number=account_number,
+        bank_name=bank_name,
+        first_seen=now,
+        last_seen=now,
+        transaction_count=1
+    )
+    db.add(new_mapping)
+    db.commit()
+    return None
+
+
+def _create_account_alert(db: Session, alert_info: dict):
+    """創建客戶帳戶警報記錄（24h 內同類型同客戶去重）"""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    existing = db.query(CustomerAccountAlert).filter(
+        CustomerAccountAlert.alert_type == alert_info["alert_type"],
+        CustomerAccountAlert.customer_name == alert_info["customer_name"],
+        CustomerAccountAlert.account_number == alert_info["account_number"],
+        CustomerAccountAlert.created_at >= cutoff
+    ).first()
+    if existing:
+        return None
+
+    alert = CustomerAccountAlert(
+        alert_type=alert_info["alert_type"],
+        customer_name=alert_info["customer_name"],
+        account_number=alert_info["account_number"],
+        previous_account_number=alert_info.get("previous_account_number", ""),
+        previous_customer_name=alert_info.get("previous_customer_name", ""),
+        transaction_id=alert_info.get("transaction_id"),
+        group_id=alert_info.get("group_id", "")
+    )
+    db.add(alert)
+    db.commit()
+    return alert
+
+
+def search_customer_accounts(db: Session, query: str, limit: int = 50):
+    """搜尋客戶帳戶（支援客戶名或帳號模糊查詢）"""
+    q = f"%{query.strip()}%"
+    return db.query(CustomerAccount).filter(
+        (CustomerAccount.customer_name.like(q)) |
+        (CustomerAccount.account_number.like(q))
+    ).order_by(CustomerAccount.last_seen.desc()).limit(limit).all()
+
+
+def get_customer_accounts_by_name(db: Session, customer_name: str):
+    """依客戶名查詢所有歷史帳戶記錄"""
+    name_norm = _normalize_customer_name(customer_name)
+    results = db.query(CustomerAccount).filter(
+        CustomerAccount.customer_name_normalized == name_norm
+    ).order_by(CustomerAccount.last_seen.desc()).all()
+
+    if not results:
+        results = db.query(CustomerAccount).filter(
+            CustomerAccount.customer_name_normalized.like(f"%{name_norm}%")
+        ).order_by(CustomerAccount.last_seen.desc()).limit(20).all()
+
+    return results
+
+
+def list_all_customer_accounts(db: Session, limit: int = 200):
+    """列出全部客戶帳戶記錄（按最近使用倒序）"""
+    return db.query(CustomerAccount).order_by(
+        CustomerAccount.last_seen.desc()
+    ).limit(limit).all()
+
+
+def update_customer_account(db: Session, account_id: int, customer_name: str, account_number: str, bank_name: str):
+    """更新客戶帳戶記錄"""
+    record = db.query(CustomerAccount).filter(CustomerAccount.id == account_id).first()
+    if not record:
+        return None
+
+    record.customer_name = customer_name
+    record.customer_name_normalized = _normalize_customer_name(customer_name)
+    record.account_number = account_number
+    record.bank_name = bank_name or ""
+    db.commit()
+    db.refresh(record)
+    return record
+
+
+def delete_customer_account(db: Session, account_id: int):
+    """刪除客戶帳戶記錄"""
+    record = db.query(CustomerAccount).filter(CustomerAccount.id == account_id).first()
+    if not record:
+        return False
+    db.delete(record)
+    db.commit()
+    return True

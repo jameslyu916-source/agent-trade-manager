@@ -16,8 +16,8 @@ async def create_transaction(
     current_user = Depends(get_current_user)
 ):
     """創建新交易記錄"""
-    tx = crud.create_transaction(db=db, transaction=transaction)
-    return _tx_to_response(tx, db)
+    tx, alert_info = crud.create_transaction(db=db, transaction=transaction)
+    return _tx_to_response(tx, db, alert_info)
 
 @router.get("/daily", response_model=schemas.DailyStats)
 async def get_daily_stats(
@@ -118,9 +118,9 @@ async def update_transaction(
     return _tx_to_response(tx, db)
 
 
-def _tx_to_response(tx, db: Session):
-    """構建包含 matched_order 的交易回應"""
-    return {
+def _tx_to_response(tx, db: Session, alert_info=None):
+    """構建包含 matched_order 和 account_alert 的交易回應"""
+    resp = {
         "id": tx.id,
         "agent_name": tx.agent_name,
         "customer_name": getattr(tx, 'customer_name', '') or '',
@@ -137,3 +137,6 @@ def _tx_to_response(tx, db: Session):
         "payment_details": getattr(tx, 'payment_details', None),
         "matched_order": crud._build_matched_order_summary(db, tx.id)
     }
+    if alert_info:
+        resp["account_alert"] = alert_info
+    return resp

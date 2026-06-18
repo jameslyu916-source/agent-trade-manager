@@ -354,7 +354,7 @@ async function recordTransactionFromPending(pending, sourceAmount, msg) {
     remarks: pending.paymentInfo.remarks || "",
     insured_person: pending.paymentInfo.insured_person || "",
     timestamp: msg.timestamp ? new Date(msg.timestamp * 1000).toISOString() : new Date().toISOString()
-  });
+  }, msg);
 
   if (success && WA_SEND_REPLY) {
     let replyMsg = `✅ 已紀錄收款：${pending.customerName}\n兌換：${pending.sourceCurrency} → ${pending.toCurrency}\n金額：${pending.paymentInfo.amount.toLocaleString()} ${pending.toCurrency}`;
@@ -645,7 +645,7 @@ function getHeaders() {
   return { Authorization: `Bearer ${authToken}` };
 }
 
-async function createTransaction(data) {
+async function createTransaction(data, msg = null) {
   try {
     const payload = {
       agent_name: data.agent_name,
@@ -665,11 +665,30 @@ async function createTransaction(data) {
     const res = await axios.post(`${API_BASE_URL}/transactions/`, payload, {
       headers: getHeaders(),
     });
-    return res.status === 200;
+    const result = res.data;
+
+    // 檢查客戶帳戶警報
+    if (msg && result.account_alert) {
+      const a = result.account_alert;
+      let alertText;
+      if (a.alert_type === "account_changed") {
+        alertText = `⚠️ *客戶帳戶變更提醒*\n客戶：${a.customer_name}\n新帳號：${a.account_number}\n舊帳號：${a.previous_account_number}\n請確認是否為同一客戶的新帳戶`;
+      } else if (a.alert_type === "account_reused") {
+        alertText = `🚨 *帳戶重複使用提醒*\n帳號：${a.account_number}\n當前客戶：${a.customer_name}\n原記錄客戶：${a.previous_customer_name}\n請確認是否打錯客戶`;
+      }
+      if (alertText) {
+        try {
+          const chat = await msg.getChat();
+          await chat.sendMessage(alertText);
+        } catch (e) { console.error("發送帳戶警報失敗:", e.message); }
+      }
+    }
+
+    return result;
   } catch (err) {
     if (err.response?.status === 401) {
       await login();
-      return createTransaction(data);
+      return createTransaction(data, msg);
     }
     console.error("❌ 創建交易失敗：", err.response?.data || err.message);
     return false;
@@ -1147,11 +1166,20 @@ async function gracefulShutdown() {
   console.log("🛑 正在關閉 WhatsApp Bot...");
   saveState();
   cleanupPidFile();
+
+  // 正常關閉瀏覽器並等待 Chrome 完全退出，確保 session 資料完整寫入
   try { await client.destroy(); } catch (_) {}
-  try {
-    const { execSync } = require("child_process");
-    execSync("pkill -f 'Google Chrome for Testing'", { timeout: 3000 });
-  } catch (_) {}
+
+  // 等待 Chrome 完全退出（確保 session 資料寫入磁碟）
+  const { execSync } = require("child_process");
+  for (let i = 0; i < 5; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    try {
+      const out = execSync("pgrep -f 'Google Chrome for Testing'", { encoding: "utf-8" }).trim();
+      if (!out) break;
+    } catch (_) { break; }
+  }
+
   process.exit(0);
 }
 
@@ -1166,6 +1194,7 @@ process.on("SIGINT", () => { gracefulShutdown(); });
 const client = new Client({
   // LocalAuth 會將登錄狀態保存到本地，重啟後不需要重新掃碼
   authStrategy: new LocalAuth({ clientId: "wa-bot" }),
+  webVersionCache: { type: "none" },  // 禁用本地緩存，避免 WWebJS 注入失敗
   puppeteer: {
     executablePath: "/Users/james.lyu916gmail.com/.cache/puppeteer/chrome/mac_arm-146.0.7680.31/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
@@ -1178,8 +1207,24 @@ client.on("qr", (qr) => {
   qrcode.generate(qr, { small: true });
 });
 
+// ready 超時恢復：authenticated 後若 ready 遲遲不來，重試 initialize
+let readyTimeout = null;
+
+client.on("authenticated", () => {
+  if (readyTimeout) clearTimeout(readyTimeout);
+  readyTimeout = setTimeout(async () => {
+    console.warn("⚠️ authenticated 後 60 秒仍未 ready，嘗試重連...");
+    readyTimeout = null;
+    try { await client.destroy(); } catch (_) {}
+    try { await client.initialize(); } catch (e) {
+      console.error("❌ 重連失敗：", e.message);
+    }
+  }, 60000);
+});
+
 // 登錄成功
 client.on("ready", async () => {
+  if (readyTimeout) { clearTimeout(readyTimeout); readyTimeout = null; }
   console.log("✅ WhatsApp Bot 已就緒！");
   console.log(`📌 監控群組：${WATCH_GROUP_NAMES.join(", ") || "（未設置）"}`);
   lastMessageTime = Date.now();  // 重置消息時間戳
@@ -1662,7 +1707,7 @@ client.on("message", async (msg) => {
           remarks: pfPI.remarks || "",
           insured_person: pfPI.insured_person || "",
           timestamp: msg.timestamp ? new Date(msg.timestamp * 1000).toISOString() : new Date().toISOString()
-        });
+        }, msg);
         console.log(`💾 付款資訊已記錄（公式後發自動推斷 ${resolvedFrom}→${pendingByFormula.toCurrency}，代理: ${pendingByFormula.agentName}, 客戶: ${pendingByFormula.customerName}）`);
         return;
       }
@@ -1774,7 +1819,7 @@ client.on("message", async (msg) => {
           remarks: pendingPI.remarks || "",
           insured_person: pendingPI.insured_person || "",
           timestamp: msg.timestamp ? new Date(msg.timestamp * 1000).toISOString() : new Date().toISOString()
-        });
+        }, msg);
         console.log(`💾 付款資訊已記錄（pending 公式捷徑 ${inferredFrom}→${pending.toCurrency}，代理: ${pending.agentName}, 客戶: ${pending.customerName}）`);
         return;
       }
@@ -1873,7 +1918,7 @@ client.on("message", async (msg) => {
             remarks: pInfo.remarks || "",
             insured_person: pInfo.insured_person || "",
             timestamp: msg.timestamp ? new Date(msg.timestamp * 1000).toISOString() : new Date().toISOString()
-          });
+          }, msg);
           return;
         }
         // resolveConversion 失敗（公式內部算術錯誤）→ 提示
@@ -2027,7 +2072,7 @@ client.on("message", async (msg) => {
         remarks: pending.paymentInfo.remarks || "",
         insured_person: pending.paymentInfo.insured_person || "",
         timestamp: msg.timestamp ? new Date(msg.timestamp * 1000).toISOString() : new Date().toISOString()
-      });
+      }, msg);
 
       if (success && WA_SEND_REPLY) {
         let replyMsg = `✅ 已紀錄收款：${pending.customerName}\n兌換：${pending.sourceCurrency} → ${pending.toCurrency}\n金額：${pending.paymentInfo.amount.toLocaleString()} ${pending.toCurrency}`;
@@ -2230,7 +2275,7 @@ client.on("message", async (msg) => {
           remarks: paymentInfo.remarks || "",
           insured_person: paymentInfo.insured_person || "",
           timestamp: msg.timestamp ? new Date(msg.timestamp * 1000).toISOString() : new Date().toISOString()
-        });
+        }, msg);
         console.log(`💾 付款資訊已記錄（自動推斷 ${inferredFrom}→${toCurrency}，代理: ${senderDisplayName}, 客戶: ${customerName}）`);
       } else if (options && options.length > 0) {
         // 有兌換選項，先追問賣出匯率
@@ -2277,7 +2322,7 @@ client.on("message", async (msg) => {
           remarks: paymentInfo.remarks || "",
           insured_person: paymentInfo.insured_person || "",
           timestamp: msg.timestamp ? new Date(msg.timestamp * 1000).toISOString() : new Date().toISOString()
-        });
+        }, msg);
         console.log(`   💾 付款資訊已記錄（代理: ${senderDisplayName}, 客戶: ${customerName}）`);
       }
     } else if (paymentInfo.amount <= 0 && WA_SEND_REPLY) {

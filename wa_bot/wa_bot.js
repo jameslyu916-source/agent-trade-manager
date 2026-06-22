@@ -106,6 +106,10 @@ const MAX_RECONNECT_DELAY_MS = 5 * 60 * 1000;  // 最大重連延遲 5 分鐘
 let isReconnecting = false;  // 防止重連重疊
 let healthCheckInterval = null;  // 健康檢查定時器
 
+// ── 啟動訊息隊列（防止 ready 前處理訊息導致設定不完整）──
+let startupComplete = false;
+const pendingMessages = [];
+
 // 從緩衝區中查找與付款金額匹配的換匯公式（從新到舊）
 function findFormulaInBuffer(chatId, paymentAmount) {
   const buffer = formulaBuffer.get(chatId);
@@ -195,8 +199,12 @@ function loadState() {
       }
     }
     if (state.processedMessageIds && Array.isArray(state.processedMessageIds)) {
-      const ids = state.processedMessageIds.slice(-MAX_PROCESSED_IDS);
-      for (const id of ids) processedMessageIds.add(id);
+      // 僅在狀態較新（≤30 分鐘）時恢復，避免跨 session 誤傷新訊息
+      const maxAge = 30 * 60 * 1000;
+      if (state.savedAt && (now - state.savedAt) <= maxAge) {
+        const ids = state.processedMessageIds.slice(-MAX_PROCESSED_IDS);
+        for (const id of ids) processedMessageIds.add(id);
+      }
     }
     console.log(`📂 已恢復狀態：${pendingExchanges.size} pending｜${collectedBaseRates.size} rates｜${formulaBuffer.size} buffers｜${processedMessageIds.size} processed ids`);
   } catch (e) {
@@ -1256,6 +1264,20 @@ client.on("ready", async () => {
       isReconnecting = false;
     }
   }, 60 * 1000);
+
+  // ── 啟動完成，處理暫存訊息 ──
+  startupComplete = true;
+  if (pendingMessages.length > 0) {
+    console.log(`📬 啟動完成，處理 ${pendingMessages.length} 條暫存訊息...`);
+    for (const m of pendingMessages) {
+      try {
+        await processMessage(m);
+      } catch (e) {
+        console.error("處理暫存訊息失敗：", e.message);
+      }
+    }
+    pendingMessages.length = 0;
+  }
 });
 
 // WhatsApp 內部狀態監聽
@@ -1300,6 +1322,16 @@ client.on("message", async (msg) => {
     }
   }
 
+  // ── 啟動閘：ready 尚未完成初始化前先暫存訊息 ──
+  if (!startupComplete) {
+    pendingMessages.push(msg);
+    return;
+  }
+
+  return processMessage(msg);
+});
+
+async function processMessage(msg) {
   try {
   // 第一關：確認事件有觸發（任何消息都會打印）
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -1846,7 +1878,7 @@ client.on("message", async (msg) => {
         if (WA_SEND_REPLY) {
           await msg.reply(`✅ 已選 ${chosen.label}\n📝 *請回覆賣出匯率*，例：7.08`);
         }
-        pending.expireAt = Date.now() + 5 * 60 * 1000;
+        pending.expireAt = Date.now() + 10 * 60 * 1000;
         return;
       }
 
@@ -1869,7 +1901,7 @@ client.on("message", async (msg) => {
           if (!sourceAmount) {
             // fallback：推算失敗，回退詢問
             pending.state = "awaiting_source_amount";
-            pending.expireAt = Date.now() + 5 * 60 * 1000;
+            pending.expireAt = Date.now() + 10 * 60 * 1000;
             if (WA_SEND_REPLY) {
               await msg.reply(`✅ 賣出 ${fractionRate.sell_rate}｜底價 ${fractionRate.cost_rate} 已記錄\n📝 *請回覆兌換前 ${inferred.from} 金額*，例：300w`);
             }
@@ -1966,7 +1998,7 @@ client.on("message", async (msg) => {
         if (!sourceAmount) {
           // fallback：推算失敗
           pending.state = "awaiting_source_amount";
-          pending.expireAt = Date.now() + 5 * 60 * 1000;
+          pending.expireAt = Date.now() + 10 * 60 * 1000;
           if (WA_SEND_REPLY) {
             await msg.reply(`✅ 賣出 ${rateNum}\n📝 *請回覆兌換前 ${pending.sourceCurrency} 金額*，例：300w`);
           }
@@ -1977,7 +2009,7 @@ client.on("message", async (msg) => {
       } else {
         // 無底價匯率，追問
         pending.state = "awaiting_base_rate";
-        pending.expireAt = Date.now() + 5 * 60 * 1000;
+        pending.expireAt = Date.now() + 10 * 60 * 1000;
         const fromLabel = `${pending.sourceCurrency} → ${pending.toCurrency}`;
         if (WA_SEND_REPLY) {
           await msg.reply(`✅ 賣出 ${rateNum}\n📝 *請回覆今天底價匯率*，例：0.99（0=跳過）`);
@@ -2021,7 +2053,7 @@ client.on("message", async (msg) => {
       if (!sourceAmount) {
         // fallback：推算失敗
         pending.state = "awaiting_source_amount";
-        pending.expireAt = Date.now() + 5 * 60 * 1000;
+        pending.expireAt = Date.now() + 10 * 60 * 1000;
         if (WA_SEND_REPLY) {
           await msg.reply(`✅ 底價已記錄\n📝 *請回覆兌換前 ${pending.sourceCurrency} 金額*，例：300w`);
         }
@@ -2121,7 +2153,7 @@ client.on("message", async (msg) => {
           completed = true;
         } else {
           pending.partialPaymentInfo = pInfo;
-          pending.expireAt = Date.now() + 5 * 60 * 1000;
+          pending.expireAt = Date.now() + 10 * 60 * 1000;
           if (WA_SEND_REPLY) {
             await msg.reply(`⚠️ 仍缺少以下欄位，請繼續補充：\n${newWarnings.join("\n")}\n💡 也可重新發送完整交易信息\n💡 回覆「取消」可取消`);
           }
@@ -2205,13 +2237,19 @@ client.on("message", async (msg) => {
           `⚠️ 付款資訊不完整，請補充：\n${errWarnings.join("\n")}\n💡 可直接回覆缺失欄位（例：戶口全名：CHEN XIA）\n💡 也可重新發送完整交易信息\n💡 回覆「取消」可取消`
         );
       }
+      // 提醒同群舊 pending 被覆蓋
+      if (pendingExchanges.has(msg.from) && WA_SEND_REPLY) {
+        const old = pendingExchanges.get(msg.from);
+        const oldName = old.customerName || old.agentName || "Unknown";
+        const oldAmt = ((old.paymentInfo || old.partialPaymentInfo || {}).amount || 0).toLocaleString();
+        await msg.reply(`⚠️ 上一筆待處理交易已被新交易取代：${oldName} ${oldAmt}`);
+      }
       pendingExchanges.set(msg.from, {
-        partialPaymentInfo: paymentInfo,
         agentName: senderDisplayName,
         customerName: customerName !== "Unknown" ? customerName : "",
         toCurrency,
         state: "awaiting_completion",
-        expireAt: Date.now() + 5 * 60 * 1000,
+        expireAt: Date.now() + 10 * 60 * 1000,
         chat: msg.from,
       });
       scheduleSaveState();
@@ -2287,6 +2325,12 @@ client.on("message", async (msg) => {
 
         if (WA_SEND_REPLY) { await msg.reply(replyMsg); }
         // 暫存，等待代理回覆賣出匯率或換匯公式
+        if (pendingExchanges.has(msg.from) && WA_SEND_REPLY) {
+          const old = pendingExchanges.get(msg.from);
+          const oldName = old.customerName || old.agentName || "Unknown";
+          const oldAmt = ((old.paymentInfo || old.partialPaymentInfo || {}).amount || 0).toLocaleString();
+          await msg.reply(`⚠️ 上一筆待處理交易已被新交易取代：${oldName} ${oldAmt}`);
+        }
         pendingExchanges.set(msg.from, {
           paymentInfo, agentName: senderDisplayName,
           customerName, toCurrency,
@@ -2295,7 +2339,7 @@ client.on("message", async (msg) => {
           sellRate: null,
           sourceCurrency: null,
           baseRate: null,
-          expireAt: Date.now() + 5 * 60 * 1000,
+          expireAt: Date.now() + 10 * 60 * 1000,
           chat: msg.from,
         });
         scheduleSaveState();
@@ -2376,7 +2420,7 @@ client.on("message", async (msg) => {
   } catch (err) {
     console.error("❌ 消息處理異常：", err.message, err.stack);
   }
-});
+}
 
 // 處理斷線重連（指數退避）
 client.on("disconnected", (reason) => {

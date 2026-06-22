@@ -452,10 +452,13 @@ function parsePaymentInfo(messageText, agentOverrides = null) {
 // ═══════════════════════════════════════════
 
 // 支援 / 和 * 兩種運算符
-const CONVERSION_LINE_RE = /^([\d,]+(?:\.\d+)?(?:[十百千]?[万萬]|[万萬]|w|億|[十百千])?)\s*[\/\*]\s*([\d.]+)\s*=\s*([\d,]+(?:\.\d+)?(?:[十百千]?[万萬]|[万萬]|w|億|[十百千])?)(?:\s*(USD|HKD|CNY|RMB))?\s*$/i;
+// 支援括號加法：例如 (200,000+405,958) / 0.897 = 675,538 HKD
+const SRC_AMT_RE = /\(?[\d,]+(?:\.\d+)?(?:\s*\+\s*[\d,]+(?:\.\d+)?)*\)?(?:[十百千]?[万萬]|[万萬]|w|億|[十百千])?/;
+const CONV_LINE_SRC = SRC_AMT_RE.source;
+const CONV_LINE_DST = /[\d,]+(?:\.\d+)?(?:[十百千]?[万萬]|[万萬]|w|億|[十百千])?/.source;
 
-// 不加 anchor 的版本，用於在引用消息/長文本中搜尋公式
-const CONVERSION_SEARCH_RE = /([\d,]+(?:\.\d+)?(?:[十百千]?[万萬]|[万萬]|w|億|[十百千])?)\s*[\/\*]\s*([\d.]+)\s*=\s*([\d,]+(?:\.\d+)?(?:[十百千]?[万萬]|[万萬]|w|億|[十百千])?)(?:\s*(USD|HKD|CNY|RMB))?\s*/gi;
+const CONVERSION_LINE_RE = new RegExp(`^(${CONV_LINE_SRC})\\s*[\\/\\*]\\s*([\\d.]+)\\s*=\\s*(${CONV_LINE_DST})(?:\\s*(USD|HKD|CNY|RMB))?\\s*$`, "i");
+const CONVERSION_SEARCH_RE = new RegExp(`(${CONV_LINE_SRC})\\s*[\\/\\*]\\s*([\\d.]+)\\s*=\\s*(${CONV_LINE_DST})(?:\\s*(USD|HKD|CNY|RMB))?\\s*`, "gi");
 
 // 去除貨幣裝飾符號（emoji 和獨立貨幣符號，避免干擾數字捕獲）
 function _stripDecorators(text) {
@@ -485,14 +488,25 @@ function _parseAmount(str) {
 }
 
 function _parseMatch(m) {
-  const sourceStr = m[1].replace(/,/g, "");
+  // 處理 source 中的括號加法，如 "(200,000+405,958)" → 605,958
+  const sourceStrRaw = m[1].replace(/,/g, "");
+  let sourceAmount;
+  if (sourceStrRaw.includes("+")) {
+    sourceAmount = sourceStrRaw
+      .replace(/[()]/g, "")
+      .split("+")
+      .map(p => _parseAmount(p.trim()))
+      .reduce((a, b) => (a !== null && b !== null ? a + b : null), 0);
+  } else {
+    sourceAmount = _parseAmount(sourceStrRaw);
+  }
+
   const rate = parseFloat(m[2]);
   const resultStr = m[3].replace(/,/g, "");
   let resultCurrency = (m[4] || "").toUpperCase();
   if (resultCurrency === "RMB") resultCurrency = "CNY";
   if (!resultCurrency) resultCurrency = null;
 
-  const sourceAmount = _parseAmount(sourceStr);
   const resultAmount = _parseAmount(resultStr);
 
   const operator = m[0].includes("*") ? "*" : "/";

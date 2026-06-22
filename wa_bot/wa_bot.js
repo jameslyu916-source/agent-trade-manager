@@ -5,6 +5,7 @@ const axios = require("axios");
 require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
+const { execSync } = require("child_process");
 const { parsePaymentInfo, parseConversionLine, findConversionInText, parseFractionRate } = require("./payment_parser");
 const { extractOrders } = require("./ai_order_parser");
 const { extractPaymentInfo } = require("./ai_payment_parser");
@@ -22,22 +23,49 @@ const WA_SEND_REPLY = (process.env.WA_SEND_REPLY || "true") === "true";
 // ── 系統設置快取 ──
 let settingsCache = {};
 
+// ── 統一的重新連線函數：正確關閉 Chrome 後再重啟 ──
+async function reconnect(reason = "unknown") {
+  console.warn(`🔄 嘗試重連（原因: ${reason}）...`);
+  try { await client.destroy(); } catch (_) {}
+  // 等待 Chrome 完全退出（確保 session 資料完整寫入）
+  for (let i = 0; i < 10; i++) {
+    await new Promise(r => setTimeout(r, 1500));
+    try {
+      const out = execSync("pgrep -f 'Google Chrome for Testing'", { encoding: "utf-8" }).trim();
+      if (!out) break;
+    } catch (_) { break; }
+  }
+  // 若仍未退出則強制清理
+  try { execSync("pkill -f 'Google Chrome for Testing'", { encoding: "utf-8" }); } catch (_) {}
+  await new Promise(r => setTimeout(r, 2000));
+  await client.initialize();
+  lastMessageTime = Date.now();
+  console.log("✅ 重連完成");
+}
+
+let _lastSettingsHash = "";
+
 async function refreshSettings() {
   try {
     if (!authToken) return false;
     const res = await axios.get(`${API_BASE_URL}/settings`, { headers: getHeaders() });
     if (res.status === 200) {
-      settingsCache = res.data;
       const tg = res.data.telegram_enabled !== false ? "啟用" : "停用";
       const wa = res.data.whatsapp_enabled !== false ? "啟用" : "停用";
       const groups = (res.data.whatsapp_group_names || []).join(", ") || "無";
-      console.log(`🔄 系統設置已刷新（TG: ${tg} | WA: ${wa} | 群組: ${groups}）`);
+      const hash = `${tg}|${wa}|${groups}`;
+      settingsCache = res.data;
+      if (hash !== _lastSettingsHash) {
+        _lastSettingsHash = hash;
+        console.log(`🔄 系統設置已刷新（TG: ${tg} | WA: ${wa} | 群組: ${groups}）`);
+      }
       return true;
     }
     return false;
   } catch (err) {
     if (err.response?.status === 401) {
       console.log("🔄 設置刷新時 token 過期，重新登錄...");
+      _lastSettingsHash = "";  // 重登後強制刷新
       await login();
       if (authToken) {
         return refreshSettings();
@@ -100,10 +128,11 @@ const MAX_PROCESSED_IDS = 10000;
 
 // ── 連線健康監控 ──
 let lastMessageTime = Date.now();
-const MESSAGE_TIMEOUT_MS = 15 * 60 * 1000;  // 15 分鐘無消息判定靜默斷線
+const MESSAGE_TIMEOUT_MS = 60 * 60 * 1000;  // 60 分鐘無消息判定靜默斷線
 let reconnectAttempts = 0;
 const MAX_RECONNECT_DELAY_MS = 5 * 60 * 1000;  // 最大重連延遲 5 分鐘
-let isReconnecting = false;  // 防止重連重疊
+let isReconnecting = false;  // 防止重連重疊（disconnected / change_state 事件）
+let isHealthReconnecting = false;  // 健康檢查觸發的重連
 let healthCheckInterval = null;  // 健康檢查定時器
 
 // ── 啟動訊息隊列（防止 ready 前處理訊息導致設定不完整）──
@@ -158,6 +187,7 @@ function saveState() {
       collectedBaseRates: Array.from(collectedBaseRates.entries()),
       formulaBuffer: Array.from(formulaBuffer.entries()),
       processedMessageIds: Array.from(processedMessageIds).slice(-MAX_PROCESSED_IDS),
+      lastReminderDate: lastReminderDate,
       savedAt: Date.now()
     };
     fs.writeFileSync(STATE_FILE, JSON.stringify(state));
@@ -205,6 +235,10 @@ function loadState() {
         const ids = state.processedMessageIds.slice(-MAX_PROCESSED_IDS);
         for (const id of ids) processedMessageIds.add(id);
       }
+    }
+    // 僅恢復當天的 lastReminderDate（跨天則重置，讓新一天的提醒正常觸發）
+    if (state.lastReminderDate && state.lastReminderDate === today) {
+      lastReminderDate = state.lastReminderDate;
     }
     console.log(`📂 已恢復狀態：${pendingExchanges.size} pending｜${collectedBaseRates.size} rates｜${formulaBuffer.size} buffers｜${processedMessageIds.size} processed ids`);
   } catch (e) {
@@ -1093,7 +1127,10 @@ async function sendReminderIfTime() {
     const hkNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Hong_Kong" }));
     const todayStr = `${hkNow.getFullYear()}-${String(hkNow.getMonth() + 1).padStart(2, "0")}-${String(hkNow.getDate()).padStart(2, "0")}`;
 
-    if (hkNow.getHours() !== hour || hkNow.getMinutes() !== minute) return;
+    // 在設定時間或之後觸發（避免因斷線錯過當天提醒）
+    const scheduledMin = hour * 60 + minute;
+    const currentMin = hkNow.getHours() * 60 + hkNow.getMinutes();
+    if (currentMin < scheduledMin) return;
     if (lastReminderDate === todayStr) return;
 
     console.log(`⏰ 觸發漏單提醒（${todayStr} ${hour}:${String(minute).padStart(2, "0")} HKT）`);
@@ -1179,7 +1216,6 @@ async function gracefulShutdown() {
   try { await client.destroy(); } catch (_) {}
 
   // 等待 Chrome 完全退出（確保 session 資料寫入磁碟）
-  const { execSync } = require("child_process");
   for (let i = 0; i < 5; i++) {
     await new Promise(r => setTimeout(r, 1000));
     try {
@@ -1244,24 +1280,18 @@ client.on("ready", async () => {
   setInterval(() => { refreshSettings(); refreshAgentMapping(); }, 60 * 1000);
   // 每 60 秒檢查漏單提醒
   setInterval(sendReminderIfTime, 60 * 1000);
-  // 每 60 秒健康檢查：超過 15 分鐘無消息 → 判定靜默斷線，強制重連
+  // 每 60 秒健康檢查：超過 60 分鐘無消息 → 判定靜默斷線，強制重連
   if (healthCheckInterval) clearInterval(healthCheckInterval);
   healthCheckInterval = setInterval(async () => {
-    if (isReconnecting) return;  // 已在重連中，跳過
+    if (isHealthReconnecting || isReconnecting) return;
     const idleMs = Date.now() - lastMessageTime;
     if (idleMs > MESSAGE_TIMEOUT_MS) {
-      console.warn(`⏰ 已 ${Math.round(idleMs / 60000)} 分鐘未收到消息，可能靜默斷線，強制重連...`);
-      isReconnecting = true;
-      reconnectAttempts = 0;
-      try {
-        await client.destroy();
-        await new Promise(r => setTimeout(r, 3000));  // 等 Chrome 完全退出
-        await client.initialize();
-      } catch (e) {
+      console.warn(`⏰ 已 ${Math.round(idleMs / 60000)} 分鐘未收到消息，可能靜默斷線...`);
+      isHealthReconnecting = true;
+      try { await reconnect("health_check"); } catch (e) {
         console.error("❌ 健康檢查重連失敗：", e.message);
       }
-      lastMessageTime = Date.now();  // 重連後重置計時器，防止死循環
-      isReconnecting = false;
+      isHealthReconnecting = false;
     }
   }, 60 * 1000);
 
@@ -1289,9 +1319,7 @@ client.on("change_state", (state) => {
     isReconnecting = true;
     reconnectAttempts = 0;
     setTimeout(async () => {
-      try { await client.destroy(); } catch (_) {}
-      try { await client.initialize(); } catch (_) {}
-      lastMessageTime = Date.now();  // 重連後重置計時器，防止死循環
+      try { await reconnect(`state:${state}`); } catch (_) {}
       isReconnecting = false;
     }, 5000);
   }
@@ -1770,7 +1798,7 @@ async function processMessage(msg) {
         }
       }
     } catch (e) {
-      // hasQuotedMsg 但無法獲取引用消息，忽略
+      console.log("   ⚠️ 無法獲取引用消息：", e.message);
     }
   }
 
@@ -2436,8 +2464,7 @@ client.on("disconnected", (reason) => {
   const delay = Math.min(5000 * Math.pow(2, reconnectAttempts - 1), MAX_RECONNECT_DELAY_MS);
   console.log(`🔄 ${Math.round(delay / 1000)} 秒後嘗試重連（第 ${reconnectAttempts} 次）...`);
   setTimeout(async () => {
-    try { await client.destroy(); } catch (_) {}
-    try { await client.initialize(); } catch (err) {
+    try { await reconnect(`disconnected:${reason}`); } catch (err) {
       console.error("❌ 重連失敗：", err.message);
     }
     isReconnecting = false;

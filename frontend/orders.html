@@ -187,7 +187,7 @@
                         <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                     </div>
                     <div>
-                        <p class="text-xs font-medium text-slate-500">總金額（CNY）</p>
+                        <p class="text-xs font-medium text-slate-500">總金額</p>
                         <p id="summaryAmount" class="text-xl font-bold text-slate-200">-</p>
                     </div>
                 </div>
@@ -431,9 +431,13 @@
                 document.getElementById("orderCount").textContent = `共 ${allOrders.length} 筆訂單`;
 
                 document.getElementById("summaryCount").textContent = allOrders.length;
-                const totalAmount = allOrders.reduce((s, o) => s + o.amount, 0);
-                const mainCurrency = allOrders.length > 0 ? (allOrders[0].currency || "CNY") : "CNY";
-                document.getElementById("summaryAmount").textContent = `${currencySymbol(mainCurrency)}${totalAmount.toLocaleString('zh-HK')}`;
+                const currencyBreakdown = {};
+                allOrders.forEach(o => {
+                  const cur = o.currency || "CNY";
+                  if (!currencyBreakdown[cur]) currencyBreakdown[cur] = { amount: 0 };
+                  currencyBreakdown[cur].amount += o.amount;
+                });
+                document.getElementById("summaryAmount").innerHTML = formatCurrencyBreakdown(currencyBreakdown);
                 const matchedCount = allOrders.filter(o => o.matched_transaction_id).length;
                 document.getElementById("summaryMatched").textContent = `${matchedCount} / ${allOrders.length}`;
 

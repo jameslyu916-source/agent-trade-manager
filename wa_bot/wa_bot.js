@@ -1990,7 +1990,12 @@ async function processMessage(msg) {
       }
 
       // ── 已獲得賣出匯率和來源幣種，檢查底價匯率 ──
-      const baseRate = await getBaseRate(pending.sourceCurrency, pending.toCurrency);
+      let baseRate = await getBaseRate(pending.sourceCurrency, pending.toCurrency);
+      // USDT → USD：若無當天收集底價，從 preset 或預設 0.99 取，不追問
+      if (baseRate === null && pending.sourceCurrency === "USDT" && pending.toCurrency === "USD") {
+        const presetRates = getSetting("preset_exchange_rates", {});
+        baseRate = presetRates["USDT:USD"] !== undefined ? presetRates["USDT:USD"] : 0.99;
+      }
       if (baseRate) {
         // 有底價匯率，自動推算來源金額並完成
         pending.baseRate = baseRate;

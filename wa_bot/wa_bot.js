@@ -1267,46 +1267,52 @@ client.on("authenticated", () => {
 });
 
 // 登錄成功
+let isFirstReady = true;
+
 client.on("ready", async () => {
   if (readyTimeout) { clearTimeout(readyTimeout); readyTimeout = null; }
-  console.log("✅ WhatsApp Bot 已就緒！");
-  console.log(`📌 監控群組：${WATCH_GROUP_NAMES.join(", ") || "（未設置）"}`);
-  lastMessageTime = Date.now();  // 重置消息時間戳
-  await login(); // 登錄後端API
-  await initSettings(); // 載入系統設置（含重試）
-  loadState(); // 恢復 pending 狀態
-  await refreshAgentMapping(); // 載入手機號→名稱映射
-  // 每 60 秒刷新設置與 agent 映射
-  setInterval(() => { refreshSettings(); refreshAgentMapping(); }, 60 * 1000);
-  // 每 60 秒檢查漏單提醒
-  setInterval(sendReminderIfTime, 60 * 1000);
-  // 每 60 秒健康檢查：超過 60 分鐘無消息 → 判定靜默斷線，強制重連
-  if (healthCheckInterval) clearInterval(healthCheckInterval);
-  healthCheckInterval = setInterval(async () => {
-    if (isHealthReconnecting || isReconnecting) return;
-    const idleMs = Date.now() - lastMessageTime;
-    if (idleMs > MESSAGE_TIMEOUT_MS) {
-      console.warn(`⏰ 已 ${Math.round(idleMs / 60000)} 分鐘未收到消息，可能靜默斷線...`);
-      isHealthReconnecting = true;
-      try { await reconnect("health_check"); } catch (e) {
-        console.error("❌ 健康檢查重連失敗：", e.message);
-      }
-      isHealthReconnecting = false;
-    }
-  }, 60 * 1000);
+  lastMessageTime = Date.now();
 
-  // ── 啟動完成，處理暫存訊息 ──
-  startupComplete = true;
-  if (pendingMessages.length > 0) {
-    console.log(`📬 啟動完成，處理 ${pendingMessages.length} 條暫存訊息...`);
-    for (const m of pendingMessages) {
-      try {
-        await processMessage(m);
-      } catch (e) {
-        console.error("處理暫存訊息失敗：", e.message);
+  if (isFirstReady) {
+    isFirstReady = false;
+    console.log("✅ WhatsApp Bot 已就緒！");
+    console.log(`📌 監控群組：${WATCH_GROUP_NAMES.join(", ") || "（未設置）"}`);
+    await login();
+    await initSettings();
+    loadState();
+    await refreshAgentMapping();
+    // 每 60 秒刷新設置與 agent 映射
+    setInterval(() => { refreshSettings(); refreshAgentMapping(); }, 60 * 1000);
+    // 每 60 秒檢查漏單提醒
+    setInterval(sendReminderIfTime, 60 * 1000);
+    // 每 60 秒健康檢查
+    healthCheckInterval = setInterval(async () => {
+      if (isHealthReconnecting || isReconnecting) return;
+      const idleMs = Date.now() - lastMessageTime;
+      if (idleMs > MESSAGE_TIMEOUT_MS) {
+        console.warn(`⏰ 已 ${Math.round(idleMs / 60000)} 分鐘未收到消息，可能靜默斷線...`);
+        isHealthReconnecting = true;
+        try { await reconnect("health_check"); } catch (e) {
+          console.error("❌ 健康檢查重連失敗：", e.message);
+        }
+        isHealthReconnecting = false;
       }
+    }, 60 * 1000);
+    // ── 處理啟動期間暫存的訊息 ──
+    startupComplete = true;
+    if (pendingMessages.length > 0) {
+      console.log(`📬 啟動完成，處理 ${pendingMessages.length} 條暫存訊息...`);
+      for (const m of pendingMessages) {
+        try { await processMessage(m); } catch (e) {
+          console.error("處理暫存訊息失敗：", e.message);
+        }
+      }
+      pendingMessages.length = 0;
     }
-    pendingMessages.length = 0;
+  } else {
+    // 重連：只做輕量恢復，不重跑完整 init（避免 interval 重複、loadState 覆蓋記憶體狀態）
+    console.log("🔁 WhatsApp Bot 已重新連接");
+    startupComplete = true;
   }
 });
 
@@ -1413,12 +1419,15 @@ async function processMessage(msg) {
     // 英文停用詞：去標點 → 小寫 → 精確匹配（僅純 ASCII 才檢查，避免誤傷拼音名）
     const cleaned = name.replace(/[.\-_\s]/g, "").toLowerCase();
     if (/^[a-zA-Z]+$/.test(cleaned) && NAME_STOP_WORDS.has(cleaned)) return false;
+    // 中文指令性開頭（避免「今日要操作」「下午3点打款」等被誤判為客戶名）
+    if (/^(今日|明天|一陣|稍後|下午|早上|晚上|優先|馬上|立刻|等等)/.test(name)) return false;
     return true;
   }
 
   // ── @mention 客戶訂單檢測（群組消息）──
-  // WhatsApp body 中 @mention 顯示為 @phone_number，需用 mentionedIds 判斷
-  if (msg.from.endsWith("@g.us") && msg.mentionedIds && msg.mentionedIds.length > 0) {
+  // 優先看 mentionedIds，若沒抓到（新版 WhatsApp 格式差異）則從 body 中偵測 @數字
+  const hasMention = (msg.mentionedIds && msg.mentionedIds.length > 0) || /@\d{5,}/.test(msgText);
+  if (msg.from.endsWith("@g.us") && hasMention) {
     const orderChat = await msg.getChat();
     // 移除所有 @mention（格式為 @phone_number），再逐行匹配訂單
     const afterMention = msgText.replace(/@\S+/g, "").trim();

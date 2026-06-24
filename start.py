@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""LINKBIZ GLOBAL TradeManager — 一鍵啟動腳本"""
+"""TradeManager — 一鍵啟動腳本"""
 
 import subprocess
 import sys
@@ -17,9 +17,9 @@ processes = []
 
 def print_banner():
     print("\033[38;5;214m")
-    print("  ╔══════════════════════════════════════════════════╗")
-    print("  ║       LINKBIZ GLOBAL TradeManager 啟動中...      ║")
-    print("  ╚══════════════════════════════════════════════════╝")
+    print("  ╔══════════════════════════════════════════╗")
+    print("  ║        TradeManager 啟動中 ...           ║")
+    print("  ╚══════════════════════════════════════════╝")
     print("\033[0m")
 
 
@@ -137,7 +137,7 @@ def cleanup(signum=None, frame=None):
     except Exception:
         pass
 
-    print("\033[38;5;214m  LINKBIZ GLOBAL TradeManager 已停止\033[0m")
+    print("\033[38;5;214m  TradeManager 已停止\033[0m")
     sys.exit(0)
 
 

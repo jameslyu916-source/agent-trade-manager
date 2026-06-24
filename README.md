@@ -1,4 +1,4 @@
-# LINKBIZ GLOBAL TradeManager
+# TradeManager
 
 A multi-platform currency exchange transaction management system. Automates payment processing, customer order tracking, exchange rate profit calculation, and risk monitoring across WhatsApp and Telegram — with a web-based admin dashboard.
 

@@ -8,7 +8,7 @@
 
 A multi-platform currency exchange transaction management system. Automates payment processing, customer order tracking, exchange rate profit calculation, and risk monitoring across WhatsApp and Telegram — with a web-based admin dashboard.
 
-![Platform](https://img.shields.io/badge/platform-macOS-lightgrey) ![Python](https://img.shields.io/badge/python-3.11%2B-blue) ![Node](https://img.shields.io/badge/node-18%2B-green) ![License](https://img.shields.io/badge/license-private-red)
+![Platform](https://img.shields.io/badge/platform-macOS-lightgrey) [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/) [![Node](https://img.shields.io/badge/node-18%2B-green)](https://nodejs.org/) ![License](https://img.shields.io/badge/license-private-red)
 
 ## Overview
 

@@ -1240,7 +1240,7 @@ const client = new Client({
   authStrategy: new LocalAuth({ clientId: "wa-bot" }),
   webVersionCache: { type: "none" },  // 禁用本地緩存，避免 WWebJS 注入失敗
   puppeteer: {
-    executablePath: "/Users/james.lyu916gmail.com/.cache/puppeteer/chrome/mac_arm-146.0.7680.31/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
   },
 });

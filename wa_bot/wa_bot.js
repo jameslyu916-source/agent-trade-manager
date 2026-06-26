@@ -2269,6 +2269,25 @@ async function processMessage(msg) {
     const hasErrors = warnings.some(w => w.startsWith("❌"));
     const hasWarnings = warnings.some(w => w.startsWith("⚠️"));
 
+    // ── KYC 預填訊息檢測：MSO 金額為 "xxx" / "xxxx" 佔位符 → 僅記錄客戶帳戶，不創建交易 ──
+    if (/(?:Mso[- ]?Pobo|MSO)\s*[：:]\s*x{2,}/i.test(paymentInfo.raw_message || msgText)) {
+      console.log("   📋 檢測到 KYC 預填訊息，僅記錄客戶帳戶資訊");
+      if (customerName !== "Unknown" && paymentInfo.payment_details) {
+        try {
+          await axios.post(`${API_BASE_URL}/customer-accounts/record`, {
+            customer_name: customerName,
+            payment_details: paymentInfo.payment_details,
+            group_id: msg.from
+          }, { headers: getHeaders() });
+          console.log("   📋 客戶帳戶資訊已記錄");
+        } catch (e) {
+          if (e.response?.status === 401) { await login(); }
+          console.log("   ⚠️ 記錄客戶帳戶失敗：", e.message);
+        }
+      }
+      return;
+    }
+
     // ── 有嚴重錯誤（缺必填欄位）→ 暫存並讓 agent 補全 ──
     if (hasErrors) {
       const toCurrency = (paymentInfo.currency || "HKD").toUpperCase();

@@ -91,3 +91,21 @@ async def delete_account(
     if not ok:
         raise HTTPException(status_code=404, detail="找不到該記錄")
     return {"deleted": account_id}
+
+
+@router.post("/record")
+async def record_account_only(
+    body: dict,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    """僅記錄客戶帳戶映射，不創建交易（用於 KYC 預填訊息等場景）"""
+    customer_name = (body.get("customer_name") or "").strip()
+    payment_details = body.get("payment_details")
+    group_id = body.get("group_id", "")
+    if not customer_name or not payment_details:
+        raise HTTPException(status_code=400, detail="缺少 customer_name 或 payment_details")
+    alert = crud._check_and_record_customer_account(
+        db, customer_name, payment_details, transaction_id=None, group_id=group_id
+    )
+    return {"recorded": True, "alert": alert}

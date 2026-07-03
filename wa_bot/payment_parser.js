@@ -6,19 +6,19 @@
 // ═══════════════════════════════════════════
 const HK_BANKS = [
   { name: "Standard Chartered Bank (Hong Kong) Limited", code: "003",
-    swift: ["SCBLHKHHXXX", "SCBLHKHH"], aliases: ["渣打銀行", "渣打银行", "渣打", "Standard Chartered"] },
+    swift: ["SCBLHKHHXXX", "SCBLHKHH"], aliases: ["渣打銀行", "渣打银行", "渣打", "渣打銀行（香港）有限公司", "渣打银行（香港）有限公司", "Standard Chartered", "Standard Chartered Bank (Hong Kong) Limited"] },
   { name: "The Hongkong and Shanghai Banking Corporation Limited", code: "004",
-    swift: ["HSBCHKHHXXX", "HSBCHKHHHKH", "HSBCHKHH"], aliases: ["匯豐銀行", "汇丰银行", "匯豐", "汇丰", "HSBC", "Hongkong Bank"] },
+    swift: ["HSBCHKHHXXX", "HSBCHKHHHKH", "HSBCHKHH"], aliases: ["匯豐銀行", "汇丰银行", "匯豐", "汇丰", "香港上海滙豐銀行有限公司", "香港上海汇丰银行有限公司", "HSBC", "Hongkong Bank"] },
   { name: "Bank of China (Hong Kong) Limited", code: "012",
-    swift: ["BKCHHKHHXXX", "BKCHHKHH"], aliases: ["中國銀行(香港)", "中国银行(香港)", "中銀香港", "中银香港", "中銀", "中银", "BOCHK", "BOC"] },
+    swift: ["BKCHHKHHXXX", "BKCHHKHH"], aliases: ["中國銀行(香港)", "中国银行(香港)", "中國銀行（香港）有限公司", "中国银行（香港）有限公司", "中銀香港", "中银香港", "中銀", "中银", "BOCHK", "BOC"] },
   { name: "Hang Seng Bank Limited", code: "024",
-    swift: ["HASEHKHHXXX", "HASEHKHH"], aliases: ["恒生銀行", "恒生银行", "恆生銀行", "恒生", "Hang Seng"] },
+    swift: ["HASEHKHHXXX", "HASEHKHH"], aliases: ["恒生銀行", "恒生银行", "恆生銀行", "恒生", "恒生銀行有限公司", "Hang Seng"] },
   { name: "Citibank (Hong Kong) Limited", code: "006",
     swift: ["CITIHKAXXXX", "CITIHKAX", "CITIHKA"], aliases: ["花旗銀行", "花旗银行", "花旗", "Citibank", "Citi"] },
   { name: "The Bank of East Asia, Limited", code: "015",
     swift: ["BEASHKHHXXX", "BEASHKHH"], aliases: ["東亞銀行", "东亚银行", "東亞", "东亚", "BEA"] },
   { name: "DBS Bank (Hong Kong) Limited", code: "016",
-    swift: ["DHBKHKHHXXX", "DHBKHKHH"], aliases: ["星展銀行", "星展银行", "星展", "DBS"] },
+    swift: ["DHBKHKHHXXX", "DHBKHKHH"], aliases: ["星展銀行", "星展银行", "星展", "星展銀行（香港）有限公司", "DBS", "DBS Bank (Hong Kong) Limited"] },
   { name: "Industrial and Commercial Bank of China (Asia) Limited", code: "029",
     swift: ["ICBKHKHHXXX", "ICBKHKHH"], aliases: ["中國工商銀行(亞洲)", "中国工商银行(亚洲)", "工銀亞洲", "工银亚洲", "工行", "ICBC"] },
   { name: "China Construction Bank (Asia) Corporation Limited", code: "009",
@@ -195,6 +195,15 @@ function parseAmountWithCurrency(rawValue, currencyMap = CN_CURRENCY_MAP) {
     return [isNaN(amount) ? null : amount, currency];
   }
 
+  // 貨幣前綴: HKD 2,247,207
+  const mPre = v.match(/^([A-Za-z]{2,4})\s+([\d,]+(?:\.\d+)?)\s*$/);
+  if (mPre) {
+    let currency = mPre[1].toUpperCase();
+    if (currency === "RMB") currency = "CNY";
+    const amount = parseInt(mPre[2].replace(/,/g, ""), 10);
+    return [isNaN(amount) ? null : amount, currency];
+  }
+
   // 字母貨幣後綴: 222456USD
   const m1 = v.match(/([\d,]+(?:\.\d+)?)\s*([A-Za-z]{2,4})\s*$/);
   if (m1) {
@@ -350,7 +359,7 @@ function parsePaymentInfo(messageText, agentOverrides = null) {
       const [fk] = matchField(lines[i], fieldPatterns);
       if (fk && matchedKeys.has(fk)) continue; // 已是已知欄位
       const cleaned = lines[i].trim().replace(/^\*+|\*+$/g, "").trim();
-      const hasCurrency = /[A-Za-z]{2,4}\s*$/.test(cleaned) || cnCurrencyRe.test(cleaned);
+      const hasCurrency = /[A-Za-z]{2,4}\s*$/.test(cleaned) || /^[A-Za-z]{2,4}\s+/.test(cleaned) || cnCurrencyRe.test(cleaned);
       if (/\d/.test(cleaned) && hasCurrency && !fk) {
         const [fallbackAmt, fallbackCur] = parseAmountWithCurrency(cleaned, currencyMap);
         if (fallbackAmt !== null) {
@@ -457,8 +466,11 @@ const SRC_AMT_RE = /\(?[\d,]+(?:\.\d+)?(?:\s*\+\s*[\d,]+(?:\.\d+)?)*\)?(?:[十�
 const CONV_LINE_SRC = SRC_AMT_RE.source;
 const CONV_LINE_DST = /[\d,]+(?:\.\d+)?(?:[十百千]?[万萬]|[万萬]|w|億|[十百千])?/.source;
 
-const CONVERSION_LINE_RE = new RegExp(`^(${CONV_LINE_SRC})\\s*[\\/\\*]\\s*([\\d.]+)\\s*=\\s*(${CONV_LINE_DST})(?:\\s*(USD|HKD|CNY|RMB))?\\s*$`, "i");
-const CONVERSION_SEARCH_RE = new RegExp(`(${CONV_LINE_SRC})\\s*[\\/\\*]\\s*([\\d.]+)\\s*=\\s*(${CONV_LINE_DST})(?:\\s*(USD|HKD|CNY|RMB))?\\s*`, "gi");
+// 支援手續費扣除：202500 / 7.01 = 28,887 - 30 = 28,857 USD
+const CONV_FEE_NET = `(?:\\s*-\\s*[\\d,]+\\s*=\\s*(${CONV_LINE_DST}))?`;
+
+const CONVERSION_LINE_RE = new RegExp(`^(${CONV_LINE_SRC})\\s*[\\/\\*]\\s*([\\d.]+)\\s*=\\s*(${CONV_LINE_DST})${CONV_FEE_NET}(?:\\s*(USD|HKD|CNY|RMB))?\\s*$`, "i");
+const CONVERSION_SEARCH_RE = new RegExp(`(${CONV_LINE_SRC})\\s*[\\/\\*]\\s*([\\d.]+)\\s*=\\s*(${CONV_LINE_DST})${CONV_FEE_NET}(?:\\s*(USD|HKD|CNY|RMB))?\\s*`, "gi");
 
 // 去除貨幣裝飾符號（emoji 和獨立貨幣符號，避免干擾數字捕獲）
 function _stripDecorators(text) {
@@ -502,12 +514,16 @@ function _parseMatch(m) {
   }
 
   const rate = parseFloat(m[2]);
-  const resultStr = m[3].replace(/,/g, "");
-  let resultCurrency = (m[4] || "").toUpperCase();
+  // 支援手續費扣除：m[4] 存在時為最終淨額，否則用 m[3]（毛額）
+  const hasFee = m[4] !== undefined;
+  const resultStr = (hasFee ? m[4] : m[3]).replace(/,/g, "");
+  let resultCurrency = (m[5] || "").toUpperCase();
   if (resultCurrency === "RMB") resultCurrency = "CNY";
   if (!resultCurrency) resultCurrency = null;
 
   const resultAmount = _parseAmount(resultStr);
+  // 手續費扣除時同時記錄毛額，供緩衝區匹配使用
+  const grossAmount = hasFee ? _parseAmount(m[3].replace(/,/g, "")) : null;
 
   const operator = m[0].includes("*") ? "*" : "/";
 
@@ -517,6 +533,7 @@ function _parseMatch(m) {
     result_amount: resultAmount,
     result_currency: resultCurrency,
     operator: operator,
+    gross_amount: grossAmount,
   };
 }
 

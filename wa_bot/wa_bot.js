@@ -145,7 +145,8 @@ function findFormulaInBuffer(chatId, paymentAmount) {
   if (!buffer || buffer.length === 0) return null;
   for (let i = buffer.length - 1; i >= 0; i--) {
     const conv = parseConversionLine(buffer[i].text) || findConversionInText(buffer[i].text);
-    if (conv && amountsMatch(conv.result_amount, paymentAmount)) {
+    if (conv && (amountsMatch(conv.result_amount, paymentAmount) ||
+                 (conv.gross_amount && amountsMatch(conv.gross_amount, paymentAmount)))) {
       return buffer[i].text;
     }
   }
@@ -491,7 +492,9 @@ async function resolveConversion(paymentInfo, prevText, toCurrency) {
   const expectedResult = isMultiply
     ? Math.round(sourceAmount * conv.rate)
     : conv.rate !== 0 ? Math.round(sourceAmount / conv.rate) : 0;
-  if (!amountsMatch(expectedResult, conv.result_amount)) {
+  // 若有手續費扣除，以毛額（gross_amount）驗證算術
+  const checkAmount = conv.gross_amount !== null ? conv.gross_amount : conv.result_amount;
+  if (!amountsMatch(expectedResult, checkAmount)) {
     // 嘗試補全萬位
     const correctedSource = sourceAmount * 10000;
     const correctedResult = isMultiply
@@ -506,16 +509,19 @@ async function resolveConversion(paymentInfo, prevText, toCurrency) {
   }
 
   // ── 嚴格驗證公式內部算術（僅允許個位數誤差）──
+  // 若有手續費扣除，以毛額（gross_amount）驗證算術，而非淨額
+  const validateAmount = conv.gross_amount !== null ? conv.gross_amount : conv.result_amount;
   let formulaWarning = null;
   if (!autocorrected) {
-    const mathError = Math.abs(expectedResult - conv.result_amount);
+    const mathError = Math.abs(expectedResult - validateAmount);
     if (mathError > 5) {
-      formulaWarning = `⚠️ 換匯公式驗算異常：${sourceAmount.toLocaleString()} ${isMultiply ? "×" : "/"} ${conv.rate} 應為 ${expectedResult.toLocaleString()}，但公式寫的是 ${conv.result_amount.toLocaleString()}（差 ${mathError}）\n💡 如需取消，請回覆「取消」或「取消 上一筆」`;
+      formulaWarning = `⚠️ 換匯公式驗算異常：${sourceAmount.toLocaleString()} ${isMultiply ? "×" : "/"} ${conv.rate} 應為 ${expectedResult.toLocaleString()}，但公式寫的是 ${validateAmount.toLocaleString()}（差 ${mathError}）\n💡 如需取消，請回覆「取消」或「取消 上一筆」`;
     }
   }
 
-  // 驗證 result_amount 與付款 amount 是否匹配
-  if (!amountsMatch(conv.result_amount, paymentInfo.amount)) return null;
+  // 驗證 result_amount 與付款 amount 是否匹配（手續費時也檢查毛額）
+  if (!amountsMatch(conv.result_amount, paymentInfo.amount) &&
+      !(conv.gross_amount !== null && amountsMatch(conv.gross_amount, paymentInfo.amount))) return null;
 
   // 獲取今日匯率
   const today = new Date().toISOString().split("T")[0];
@@ -1246,21 +1252,27 @@ const client = new Client({
 });
 
 // 顯示二維碼（首次登錄需要掃碼）
+// ⚠️ QR 碼僅在終端機正常顯示，log 文件/前端日誌檢視器會因換行而斷開
 client.on("qr", (qr) => {
-  console.log("\n📱 請用手機 WhatsApp 掃描以下二維碼登錄：\n");
+  console.log("\n📱 請用手機 WhatsApp 掃描【終端機】中的二維碼登錄（勿看日誌文件）：\n");
   qrcode.generate(qr, { small: true });
 });
 
-// ready 超時恢復：authenticated 後若 ready 遲遲不來，重試 initialize
+// ready 超時恢復：authenticated 後若 ready 遲遲不來，重試 initialize（最多 1 次）
 let readyTimeout = null;
+let readyTimeoutRetries = 0;
 
 client.on("authenticated", () => {
   if (readyTimeout) clearTimeout(readyTimeout);
   readyTimeout = setTimeout(async () => {
-    console.warn("⚠️ authenticated 後 60 秒仍未 ready，嘗試重連...");
     readyTimeout = null;
-    try { await client.destroy(); } catch (_) {}
-    try { await client.initialize(); } catch (e) {
+    readyTimeoutRetries++;
+    if (readyTimeoutRetries > 3) {
+      console.error("❌ 已嘗試重連 3 次仍未 ready，請手動重啟 bot（Ctrl+C 後重新啟動 start.py）");
+      return;
+    }
+    console.warn("⚠️ authenticated 後 60 秒仍未 ready，嘗試重連...");
+    try { await reconnect("authenticated_timeout"); } catch (e) {
       console.error("❌ 重連失敗：", e.message);
     }
   }, 60000);
@@ -1271,6 +1283,7 @@ let isFirstReady = true;
 
 client.on("ready", async () => {
   if (readyTimeout) { clearTimeout(readyTimeout); readyTimeout = null; }
+  readyTimeoutRetries = 0;  // ready 成功，重置重試計數
   lastMessageTime = Date.now();
 
   if (isFirstReady) {
@@ -1954,8 +1967,10 @@ async function processMessage(msg) {
       if (asFormula) {
         const pInfo = pending.paymentInfo || pending.partialPaymentInfo;
         if (!pInfo) { return; }
-        // 先檢查公式結果金額是否匹配付款金額
-        if (!amountsMatch(asFormula.result_amount, pInfo.amount)) {
+        // 先檢查公式結果金額是否匹配付款金額（手續費時也檢查毛額）
+        const formulaMatchesAmount = amountsMatch(asFormula.result_amount, pInfo.amount) ||
+          (asFormula.gross_amount !== null && amountsMatch(asFormula.gross_amount, pInfo.amount));
+        if (!formulaMatchesAmount) {
           if (WA_SEND_REPLY) {
             await msg.reply(`⚠️ 公式結果金額與付款金額不符\n公式結果：${(asFormula.result_amount || 0).toLocaleString()} ≠ 付款金額：${pInfo.amount.toLocaleString()}\n💡 請檢查公式或回覆賣出匯率數字`);
           }
@@ -1963,13 +1978,12 @@ async function processMessage(msg) {
         }
         // 金額匹配 → 嘗試 resolve
         const convResult = await resolveConversion(pInfo, text, pending.toCurrency);
-        if (convResult && convResult.auto_inferred) {
+        // 接受公式：auto_inferred 成功 或 有 conversion（無參考匯率仍接受）
+        if (convResult && convResult.conversion) {
           pendingExchanges.delete(msg.from);
           const pd = pInfo.payment_details_dict || {};
-          if (convResult.conversion) {
-            pd.conversion = convResult.conversion;
-            pInfo.payment_details = JSON.stringify(pd);
-          }
+          pd.conversion = convResult.conversion;
+          pInfo.payment_details = JSON.stringify(pd);
           let replyMsg = `✅ 已檢測付款：${pending.customerName}\n金額：${pInfo.amount.toLocaleString()} ${pending.toCurrency}`;
           if (pd.bank_name) replyMsg += `\n銀行：${pd.bank_name}`;
           if (pd.account_number) replyMsg += `\n戶口：${pd.account_number}`;
@@ -1990,13 +2004,9 @@ async function processMessage(msg) {
           }, msg);
           return;
         }
-        // resolveConversion 失敗（公式內部算術錯誤）→ 提示
+        // 公式完全無法解析 → 提示
         if (WA_SEND_REPLY) {
-          const isMultiply = asFormula.operator === "*";
-          const expected = isMultiply
-            ? Math.round(asFormula.source_amount * asFormula.rate)
-            : Math.round(asFormula.source_amount / asFormula.rate);
-          await msg.reply(`⚠️ 公式結果金額與付款金額匹配，但公式內部算術不一致\n${asFormula.source_amount.toLocaleString()} ${isMultiply ? "×" : "÷"} ${asFormula.rate} 應為 ${expected.toLocaleString()}，而非 ${asFormula.result_amount.toLocaleString()}\n💡 請檢查公式或回覆賣出匯率數字`);
+          await msg.reply(`⚠️ 無法從換匯公式推斷幣種，請直接回覆賣出匯率數字\n💡 例：7.01（人→美）`);
         }
         return;
       }

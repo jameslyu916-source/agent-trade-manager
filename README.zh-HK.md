@@ -8,7 +8,7 @@
 
 一個多平台外匯交易管理系統。自動化處理付款資訊、客戶訂單追蹤、匯率差價盈利計算與風險監控，同時支援 WhatsApp 與 Telegram——並提供網頁後台管理介面。
 
-![Platform](https://img.shields.io/badge/platform-macOS-lightgrey) [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/) [![Node](https://img.shields.io/badge/node-18%2B-green)](https://nodejs.org/) ![License](https://img.shields.io/badge/license-private-red)
+![Platform](https://img.shields.io/badge/platform-macOS-lightgrey) [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/) [![Node](https://img.shields.io/badge/node-18%2B-green)](https://nodejs.org/) [![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 
 ## 概述
 

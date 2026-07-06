@@ -1316,8 +1316,9 @@ client.on("ready", async () => {
     if (pendingMessages.length > 0) {
       console.log(`📬 啟動完成，處理 ${pendingMessages.length} 條暫存訊息...`);
       for (const m of pendingMessages) {
+        console.log(`   📨 [${pendingMessages.indexOf(m) + 1}/${pendingMessages.length}] ${m.from} | ${(m.body || "").substring(0, 80)}`);
         try { await processMessage(m); } catch (e) {
-          console.error("處理暫存訊息失敗：", e.message);
+          console.error(`   ❌ 處理失敗 [${pendingMessages.indexOf(m) + 1}]:`, e.message);
         }
       }
       pendingMessages.length = 0;
@@ -1903,6 +1904,30 @@ async function processMessage(msg) {
           timestamp: msg.timestamp ? new Date(msg.timestamp * 1000).toISOString() : new Date().toISOString()
         }, msg);
         console.log(`💾 付款資訊已記錄（pending 公式捷徑 ${inferredFrom}→${pending.toCurrency}，代理: ${pending.agentName}, 客戶: ${pending.customerName}）`);
+        return;
+      }
+    }
+
+    // ── 通用分數匯率處理（不限 pending state，避免 awaiting_completion 時無法處理）──
+    const fractionRate = parseFractionRate(text);
+    if (fractionRate && (pending.state === "awaiting_sell_rate" || pending.state === "awaiting_base_rate" || pending.state === "awaiting_source_amount")) {
+      const today = new Date().toISOString().split("T")[0];
+      const inferred = await inferSourceCurrency(fractionRate.sell_rate, pending.toCurrency);
+      if (inferred) {
+        pending.sellRate = fractionRate.sell_rate;
+        pending.sourceCurrency = inferred.from;
+        pending.baseRate = fractionRate.cost_rate;
+        const key = `${today}:${inferred.from}:${pending.toCurrency}`;
+        collectedBaseRates.set(key, fractionRate.cost_rate);
+        const pInfo = pending.paymentInfo || pending.partialPaymentInfo || {};
+        const sourceAmount = autoCalculateSourceAmount(pInfo.amount, pending.sellRate, pending.sourceCurrency);
+        if (!sourceAmount) {
+          pending.state = "awaiting_source_amount";
+          pending.expireAt = Date.now() + 10 * 60 * 1000;
+          if (WA_SEND_REPLY) await msg.reply(`✅ 賣出 ${fractionRate.sell_rate}｜底價 ${fractionRate.cost_rate} 已記錄\n📝 *請回覆兌換前 ${inferred.from} 金額*，例：300w`);
+          return;
+        }
+        await recordTransactionFromPending(pending, sourceAmount, msg);
         return;
       }
     }

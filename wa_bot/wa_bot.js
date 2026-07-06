@@ -1246,8 +1246,15 @@ const client = new Client({
   authStrategy: new LocalAuth({ clientId: "wa-bot" }),
   webVersionCache: { type: "none" },  // 禁用本地緩存，避免 WWebJS 注入失敗
   puppeteer: {
+    headless: process.env.PUPPETEER_HEADLESS !== "false",  // 設 false 可顯示瀏覽器視窗
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-background-timer-throttling",       // 防止背景計時器被節流
+      "--disable-backgrounding-occluded-windows",    // 防止被 macOS 隱藏時降級
+      "--disable-renderer-backgrounding",            // 防止渲染器被背景化
+    ],
   },
 });
 

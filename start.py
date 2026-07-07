@@ -11,8 +11,13 @@ import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_DIR = os.path.join(BASE_DIR, "logs")
+PID_FILE = os.path.join(BASE_DIR, "scripts", ".trademanager.pid")
 os.makedirs(LOG_DIR, exist_ok=True)
 processes = []
+
+# 寫入 PID 檔（供排程器和關閉腳本使用）
+with open(PID_FILE, "w") as f:
+    f.write(str(os.getpid()))
 
 
 def print_banner():
@@ -135,6 +140,12 @@ def cleanup(signum=None, frame=None):
             capture_output=True, timeout=5
         )
     except Exception:
+        pass
+
+    # 清除 PID 檔案
+    try:
+        os.remove(PID_FILE)
+    except OSError:
         pass
 
     print("\033[38;5;214m  TradeManager 已停止\033[0m")

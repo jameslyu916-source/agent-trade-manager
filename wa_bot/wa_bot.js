@@ -1244,7 +1244,7 @@ process.on("SIGINT", () => { gracefulShutdown(); });
 const client = new Client({
   // LocalAuth 會將登錄狀態保存到本地，重啟後不需要重新掃碼
   authStrategy: new LocalAuth({ clientId: "wa-bot" }),
-  webVersionCache: { type: "none" },  // 禁用本地緩存，避免 WWebJS 注入失敗
+  // 使用預設 local 緩存（避免每次拉最新版 WhatsApp Web 導致注入不相容）
   puppeteer: {
     headless: process.env.PUPPETEER_HEADLESS !== "false",  // 設 false 可顯示瀏覽器視窗
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
@@ -1278,11 +1278,22 @@ client.on("authenticated", () => {
       console.error("❌ 已嘗試重連 3 次仍未 ready，請手動重啟 bot（Ctrl+C 後重新啟動 start.py）");
       return;
     }
-    console.warn("⚠️ authenticated 後 60 秒仍未 ready，嘗試重連...");
-    try { await reconnect("authenticated_timeout"); } catch (e) {
-      console.error("❌ 重連失敗：", e.message);
+    console.warn("⚠️ authenticated 後 30 秒仍未 ready，嘗試刷新頁面...");
+    try {
+      // 先嘗試輕量刷新 WhatsApp Web 頁面（避免完整重啟 Chrome）
+      if (client.pupPage) {
+        await client.pupPage.reload({ waitUntil: "domcontentloaded", timeout: 30000 });
+        console.log("   🔄 頁面已刷新，等待 ready...");
+      } else {
+        await reconnect("authenticated_timeout");
+      }
+    } catch (e) {
+      console.warn("   ⚠️ 刷新失敗，嘗試重連...");
+      try { await reconnect("authenticated_timeout"); } catch (e2) {
+        console.error("❌ 重連失敗：", e2.message);
+      }
     }
-  }, 60000);
+  }, 30000);  // 30 秒（WWebJS 注入有時需要多次頁面刷新）
 });
 
 // 登錄成功

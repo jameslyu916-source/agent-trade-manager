@@ -5,13 +5,20 @@
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PID_FILE="$PROJECT_DIR/scripts/.trademanager.pid"
 
-# 檢查是否已在運行
+# 檢查是否已在運行（PID 檔案 + pgrep 備援）
+RUNNING_PID=""
 if [ -f "$PID_FILE" ]; then
     PID=$(cat "$PID_FILE")
     if ps -p "$PID" > /dev/null 2>&1; then
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] TradeManager 已在運行 (PID: $PID)，跳過啟動"
-        exit 0
+        RUNNING_PID="$PID"
     fi
+fi
+if [ -z "$RUNNING_PID" ]; then
+    RUNNING_PID=$(pgrep -f "python.*start\.py" 2>/dev/null | head -1)
+fi
+if [ -n "$RUNNING_PID" ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] TradeManager 已在運行 (PID: $RUNNING_PID)，跳過啟動"
+    exit 0
 fi
 
 # 啟動服務（背景執行，輸出寫入日誌）

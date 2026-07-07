@@ -163,7 +163,17 @@ def main():
     print("  按 \033[33mCtrl+C\033[0m 停止所有服務")
     print()
 
-    webbrowser.open("http://localhost:8000/frontend/index.html")
+    # 等待後端就緒後再開瀏覽器
+    import urllib.request
+    for i in range(30):
+        try:
+            urllib.request.urlopen("http://localhost:8000", timeout=1)
+            webbrowser.open("http://localhost:8000/frontend/index.html")
+            break
+        except Exception:
+            time.sleep(1)
+    else:
+        print("  \033[33m⚠️ 後端啟動逾時，請手動打開 http://localhost:8000\033[0m")
 
     # 用 while 循環代替 signal.pause()，避免子進程 SIGCHLD 導致提前退出
     while True:

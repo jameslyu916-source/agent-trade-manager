@@ -236,16 +236,24 @@ WhatsApp Bot 需要 Chrome for Testing。從 [Chrome for Testing](https://google
 
 ### 執行
 
+**手動啟動（日常使用推薦）：**
+雙擊 `scripts/start.command` — 開啟終端機視窗，顯示即時日誌。按 `Ctrl+C` 關閉。
+
+**首次掃碼：**
+雙擊 `scripts/scan_qr.command` — 在終端機中顯示 WhatsApp QR 碼。掃一次即可，會話會在重啟後保持。
+
+**定時自動啟停：**
+參見 `scripts/README.md` 設定 launchd 排程。預設每日 10:00 啟動、19:00 關閉。
+
+**終端機指令：**
 ```bash
 python3 start.py
 ```
 
 此指令啟動全部三個服務，並在 `http://localhost:8000` 開啟後台。預設管理員帳號：`admin` / `admin123`。
 
-首次啟動 WhatsApp 時，使用手機 WhatsApp 掃描終端機顯示的 QR 碼。會話會在重啟後保持。
-
 > [!NOTE]
-> 請保持終端機開啟。`Ctrl+C` 會優雅地停止所有服務，並正確清理 Chrome 進程。
+> 請使用關閉腳本或 `Ctrl+C` 停止服務，切勿直接強制關閉。正確關閉會等待 Chrome 完全退出，避免 session 損壞。
 
 ## 技術棧
 

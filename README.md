@@ -236,16 +236,24 @@ Chrome for Testing is required for the WhatsApp bot. Download from [Chrome for T
 
 ### Running
 
+**Manual start (recommended for daily use):**
+Double-click `scripts/start.command` — opens a terminal with live logs. `Ctrl+C` to stop.
+
+**First-time QR scan:**
+Double-click `scripts/scan_qr.command` to display the WhatsApp QR code in terminal. Scan once — the session persists across restarts.
+
+**Scheduled auto-start/stop:**
+See `scripts/README.md` for launchd setup. Defaults to 10:00 AM start, 7:00 PM stop daily.
+
+**Terminal:**
 ```bash
 python3 start.py
 ```
 
-This starts all three services and opens the dashboard at `http://localhost:8000`. Default admin credentials: `admin` / `admin123`.
-
-On first WhatsApp launch, scan the QR code shown in the terminal with your WhatsApp mobile app. The session persists across restarts.
+All three services start and the dashboard opens at `http://localhost:8000`. Default admin credentials: `admin` / `admin123`.
 
 > [!NOTE]
-> Keep the terminal open. `Ctrl+C` gracefully stops all services with proper Chrome cleanup.
+> Always use the stop scripts or `Ctrl+C` — never force-quit. Proper shutdown waits for Chrome to exit completely, preventing session corruption.
 
 ## Tech Stack
 

@@ -55,6 +55,7 @@ wa_bot/test_parser.js
 
 # Bot runtime state (pending exchanges, base rates, formula buffer)
 .state/
+scripts/.trademanager.pid
 
 # Claude Code
 .claude/

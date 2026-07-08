@@ -466,11 +466,15 @@ const SRC_AMT_RE = /\(?[\d,]+(?:\.\d+)?(?:\s*\+\s*[\d,]+(?:\.\d+)?)*\)?(?:[十�
 const CONV_LINE_SRC = SRC_AMT_RE.source;
 const CONV_LINE_DST = /[\d,]+(?:\.\d+)?(?:[十百千]?[万萬]|[万萬]|w|億|[十百千])?/.source;
 
-// 支援手續費扣除：202500 / 7.01 = 28,887 - 30 = 28,857 USD
-const CONV_FEE_NET = `(?:\\s*-\\s*[\\d,]+\\s*=\\s*(${CONV_LINE_DST}))?`;
-
-const CONVERSION_LINE_RE = new RegExp(`^(${CONV_LINE_SRC})\\s*[\\/\\*]\\s*([\\d.]+)\\s*=\\s*(${CONV_LINE_DST})${CONV_FEE_NET}(?:\\s*(USD|HKD|CNY|RMB))?\\s*$`, "i");
-const CONVERSION_SEARCH_RE = new RegExp(`(${CONV_LINE_SRC})\\s*[\\/\\*]\\s*([\\d.]+)\\s*=\\s*(${CONV_LINE_DST})${CONV_FEE_NET}(?:\\s*(USD|HKD|CNY|RMB))?\\s*`, "gi");
+	// 支援兩種手續費扣除格式：
+	//   等號後：202500 / 7.01 = 28,887 - 30 = 28,857 USD
+	//   等號前：310589 / 6.99 - 30 = 44,403 USD
+	const CONV_FEE_BEFORE_EQ = `(?:\\s*-\\s*([\\d,]+)\\s*)?`;
+	const CONV_FEE_AFTER_EQ = `(?:\\s*-\\s*([\\d,]+)\\s*=\\s*(${CONV_LINE_DST}))?`;
+	const CONVERSION_LINE_RE = new RegExp(
+	  `^(${CONV_LINE_SRC})\\s*[\\/\\*]\\s*([\\d.]+)\\s*${CONV_FEE_BEFORE_EQ}=\\s*(${CONV_LINE_DST})${CONV_FEE_AFTER_EQ}(?:\\s*(USD|HKD|CNY|RMB))?\\s*$`, "i");
+	const CONVERSION_SEARCH_RE = new RegExp(
+	  `(${CONV_LINE_SRC})\\s*[\\/\\*]\\s*([\\d.]+)\\s*${CONV_FEE_BEFORE_EQ}=\\s*(${CONV_LINE_DST})${CONV_FEE_AFTER_EQ}(?:\\s*(USD|HKD|CNY|RMB))?\\s*`, "gi");
 
 // 去除貨幣裝飾符號（emoji 和獨立貨幣符號，避免干擾數字捕獲）
 function _stripDecorators(text) {
@@ -514,16 +518,37 @@ function _parseMatch(m) {
   }
 
   const rate = parseFloat(m[2]);
-  // 支援手續費扣除：m[4] 存在時為最終淨額，否則用 m[3]（毛額）
-  const hasFee = m[4] !== undefined;
-  const resultStr = (hasFee ? m[4] : m[3]).replace(/,/g, "");
-  let resultCurrency = (m[5] || "").toUpperCase();
+
+  // 判斷手續費格式（group index 已重排，見檔案頂部註解）
+  //   m[3] = 等號前手續費（新格式）  m[4] = 等號後結果/毛額
+  //   m[5] = 等號後手續費（舊格式）  m[6] = 等號後淨額（舊格式）  m[7] = 幣種
+  const hasFeeBeforeEq = m[3] !== undefined;   // 新：SOURCE / RATE - FEE = RESULT
+  const hasFeeAfterEq = m[5] !== undefined && m[6] !== undefined;  // 舊：= GROSS - FEE = NET
+
+  let resultStr, resultAmount, grossAmount;
+
+  if (hasFeeBeforeEq) {
+    // 新格式：手續費在等號前 → result_amount 直接取 m[4]，gross 由 source/rate 算出
+    resultStr = m[4].replace(/,/g, "");
+    resultAmount = _parseAmount(resultStr);
+    grossAmount = (rate !== 0 && sourceAmount !== null)
+      ? Math.round(sourceAmount / rate)
+      : null;
+  } else if (hasFeeAfterEq) {
+    // 舊格式：手續費在等號後 → net = m[6], gross = m[4]
+    resultStr = m[6].replace(/,/g, "");
+    resultAmount = _parseAmount(resultStr);
+    grossAmount = _parseAmount(m[4].replace(/,/g, ""));
+  } else {
+    // 無手續費
+    resultStr = m[4].replace(/,/g, "");
+    resultAmount = _parseAmount(resultStr);
+    grossAmount = null;
+  }
+
+  let resultCurrency = (m[7] || "").toUpperCase();
   if (resultCurrency === "RMB") resultCurrency = "CNY";
   if (!resultCurrency) resultCurrency = null;
-
-  const resultAmount = _parseAmount(resultStr);
-  // 手續費扣除時同時記錄毛額，供緩衝區匹配使用
-  const grossAmount = hasFee ? _parseAmount(m[3].replace(/,/g, "")) : null;
 
   const operator = m[0].includes("*") ? "*" : "/";
 
@@ -563,7 +588,7 @@ function findConversionInText(text) {
   if (matches.length === 0) return null;
 
   // 優先取帶幣種後綴的匹配
-  const withCurrency = matches.filter(m => m[4] && m[4].trim());
+  const withCurrency = matches.filter(m => m[7] && m[7].trim());
   const best = withCurrency.length > 0 ? withCurrency[withCurrency.length - 1] : matches[matches.length - 1];
 
   return _parseMatch(best);

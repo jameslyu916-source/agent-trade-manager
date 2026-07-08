@@ -8,6 +8,9 @@ PID_FILE="$PROJECT_DIR/scripts/.trademanager.pid"
 LOG_FILE="$PROJECT_DIR/logs/launchd.log"
 CURRENT_HOUR=$(date +%H | sed 's/^0//')
 
+# launchd 環境精簡，確保能找到 python3.11
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
 # ── 查找運行中的 start.py ──
 find_running_pid() {
     if [ -f "$PID_FILE" ]; then

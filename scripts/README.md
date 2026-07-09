@@ -32,6 +32,11 @@
 Supervisor 每 10 分鐘檢查一次：在 10:00-19:00 窗口內自動啟動，窗口外自動關閉。
 
 ```bash
+# 建立 supervisor 腳本副本（macOS 不允許 launchd 存取 Desktop 目錄）
+cp scripts/tm_supervisor.sh ~/.trademanager_supervisor.sh
+# 若專案路徑不同，需編輯 ~/.trademanager_supervisor.sh 中的 PROJECT_DIR
+
+
 # 複製排程配置到 launchd
 cp scripts/com.trademanager.supervisor.plist ~/Library/LaunchAgents/
 

@@ -7,6 +7,7 @@ PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PID_FILE="$PROJECT_DIR/scripts/.trademanager.pid"
 LOG_FILE="$PROJECT_DIR/logs/launchd.log"
 CURRENT_HOUR=$(date +%H | sed 's/^0//')
+DAY_OF_WEEK=$(date +%u)  # 1=Mon ... 5=Fri, 6=Sat, 7=Sun
 
 # launchd 環境精簡，確保能找到 python3.11
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
@@ -39,7 +40,7 @@ if [ -f "$PAUSE_FILE" ]; then
 fi
 
 # ── 決策邏輯 ──
-if [ "$CURRENT_HOUR" -ge 10 ] && [ "$CURRENT_HOUR" -lt 19 ]; then
+if [ "$CURRENT_HOUR" -ge 10 ] && [ "$CURRENT_HOUR" -lt 19 ] && [ "$DAY_OF_WEEK" -le 5 ]; then
     # 運行窗口內（10:00-18:59）
     if [ -z "$RUNNING" ]; then
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] 運行窗口內且未啟動 → 正在啟動" >> "$LOG_FILE"

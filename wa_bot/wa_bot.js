@@ -96,6 +96,9 @@ function getSetting(key, defaultValue) {
 // ── Agent 手機號 → 名稱映射快取 ──
 const phoneToAgentName = new Map();
 
+// ── 群組 ID → 群組名稱快取（減少 getChat Puppeteer 調用，避免 execution context 錯誤）──
+const groupNameCache = new Map();
+
 async function refreshAgentMapping() {
   try {
     if (!authToken) return;
@@ -1332,6 +1335,8 @@ client.on("ready", async () => {
     // ── 處理啟動期間暫存的訊息 ──
     startupComplete = true;
     if (pendingMessages.length > 0) {
+      // 等待 WhatsApp Web 頁面 execution context 穩定（避免 getChat 拋錯）
+      await new Promise(r => setTimeout(r, 3000));
       console.log(`📬 啟動完成，處理 ${pendingMessages.length} 條暫存訊息...`);
       for (const m of pendingMessages) {
         console.log(`   📨 [${pendingMessages.indexOf(m) + 1}/${pendingMessages.length}] ${m.from} | ${(m.body || "").substring(0, 80)}`);
@@ -1406,16 +1411,20 @@ async function processMessage(msg) {
   console.log("   body:", msg.body);
   console.log("   是否群組消息:", msg.from.endsWith("@g.us"));
 
-  // 第二關：確認群組名稱（使用系統設置優先，與實際過濾邏輯一致）
+  // 第二關：確認群組名稱（僅供 debug，失敗不影響處理）
   if (msg.from.endsWith("@g.us")) {
-    const chat = await msg.getChat();
-    const effectiveGroups = getSetting("whatsapp_group_names", null) || WATCH_GROUP_NAMES;
-    console.log("   群組名稱:", `「${chat.name}」`);
-    console.log("   監控列表:", effectiveGroups);
-    console.log(
-      "   名稱是否匹配:",
-      effectiveGroups.length === 0 || effectiveGroups.includes(chat.name)
-    );
+    try {
+      const chat = await msg.getChat();
+      const effectiveGroups = getSetting("whatsapp_group_names", null) || WATCH_GROUP_NAMES;
+      console.log("   群組名稱:", `「${chat.name}」`);
+      console.log("   監控列表:", effectiveGroups);
+      console.log(
+        "   名稱是否匹配:",
+        effectiveGroups.length === 0 || effectiveGroups.includes(chat.name)
+      );
+    } catch (e) {
+      console.warn("   ⚠️ getChat debug 失敗（不影響處理）:", e.message);
+    }
   }
 
   // 以下保持原有邏輯不變
@@ -1460,7 +1469,13 @@ async function processMessage(msg) {
   // 優先看 mentionedIds，若沒抓到（新版 WhatsApp 格式差異）則從 body 中偵測 @數字
   const hasMention = (msg.mentionedIds && msg.mentionedIds.length > 0) || /@\d{5,}/.test(msgText);
   if (msg.from.endsWith("@g.us") && hasMention) {
-    const orderChat = await msg.getChat();
+    let orderChat;
+    try {
+      orderChat = await msg.getChat();
+      groupNameCache.set(msg.from, orderChat.name);  // 順便快取
+    } catch (e) {
+      orderChat = { name: groupNameCache.get(msg.from) || msg.from };
+    }
     // 移除所有 @mention（格式為 @phone_number），再逐行匹配訂單
     const afterMention = msgText.replace(/@\S+/g, "").trim();
     const lines = afterMention.split(/\r?\n/);
@@ -1685,17 +1700,38 @@ async function processMessage(msg) {
   // ── 檢查 WhatsApp Bot 是否啟用 ──
   if (getSetting("whatsapp_enabled", true) === false) return;
 
-  const chat = await msg.getChat();
-  const groupName = chat.name;
+  // 優先從快取取得群組名稱（減少 Puppeteer getChat 調用）
+  let groupName = groupNameCache.get(msg.from);
+  let groupNameResolved = groupName !== undefined;  // true = 真實名稱, false = fallback
+  if (!groupNameResolved) {
+    for (let retry = 0; retry < 3; retry++) {
+      try {
+        const chat = await msg.getChat();
+        groupName = chat.name;
+        groupNameCache.set(msg.from, groupName);
+        groupNameResolved = true;
+        break;
+      } catch (e) {
+        if (retry < 2) {
+          await new Promise(r => setTimeout(r, 1000));
+        } else {
+          console.warn(`   ⚠️ getChat 三次失敗，略過群組過濾`);
+          groupName = msg.from;
+        }
+      }
+    }
+  }
 
-  // 優先使用系統設置中的群組列表，若無則回退至 .env
-  const groupNames = getSetting("whatsapp_group_names", null) || WATCH_GROUP_NAMES;
-  if (
-    groupNames.length > 0 &&
-    !groupNames.includes(groupName)
-  ) {
-    console.log(`   ⚠️ 群組「${groupName}」不在監控列表，已跳過`);
-    return;
+  // 群組過濾（僅在成功取得群組名稱時執行；getChat 失敗則直接放行）
+  if (groupNameResolved) {
+    const groupNames = getSetting("whatsapp_group_names", null) || WATCH_GROUP_NAMES;
+    if (
+      groupNames.length > 0 &&
+      !groupNames.includes(groupName)
+    ) {
+      console.log(`   ⚠️ 群組「${groupName}」不在監控列表，已跳過`);
+      return;
+    }
   }
 
   let text = msg.body;

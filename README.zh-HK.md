@@ -28,7 +28,7 @@ TradeManager 專為外匯找換業務設計，agent 透過 WhatsApp 群組協調
 ```
 ┌────────────────────────────────────┐
 │        Supervisor (launchd)        │
-│    Auto start/stop 10:00–19:00     │
+│        Weekdays 10:00–19:00        │
 └──────────────────┬─────────────────┘
                    │ launches
 ┌──────────────────▼─────────────────┐
@@ -55,7 +55,7 @@ TradeManager 專為外匯找換業務設計，agent 透過 WhatsApp 群組協調
 
 關閉時（SIGINT），`start.py` 執行優雅退出：終止子程序、等待 Chrome 完全退出（防止 session 損壞）、然後清理殘留程序。Telegram Bot 由背景執行緒監控，崩潰時自動重啟（最多 5 次）。
 
-由 macOS launchd 驅動的[監督腳本](scripts/tm_supervisor.sh)每 10 分鐘執行一次：在 10:00–19:00 窗口內且未運行時自動啟動，窗口外則自動關閉。設定方式參見 [scripts/README.md](scripts/README.md)。
+由 macOS launchd 驅動的[監督腳本](scripts/tm_supervisor.sh)每 10 分鐘執行一次：僅工作日 10:00–19:00 窗口內且未運行時自動啟動，窗口外則自動關閉。設定方式參見 [scripts/README.md](scripts/README.md)。
 
 ## 專案結構
 

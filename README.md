@@ -28,7 +28,7 @@ TradeManager is built for currency exchange brokerages where agents coordinate d
 ```
 ┌────────────────────────────────────┐
 │        Supervisor (launchd)        │
-│    Auto start/stop 10:00–19:00     │
+│        Weekdays 10:00–19:00        │
 └──────────────────┬─────────────────┘
                    │ launches
 ┌──────────────────▼─────────────────┐
@@ -55,7 +55,7 @@ All three services are launched by a single `start.py` script, which writes a PI
 
 On shutdown (SIGINT), `start.py` performs a graceful teardown: terminate subprocesses, wait for Chrome to exit (preventing session corruption), then clean up residual processes. The Telegram bot process is monitored and auto-restarted up to 5 times if it crashes.
 
-A [supervisor script](scripts/tm_supervisor.sh) driven by macOS launchd runs every 10 minutes: it starts the system if inside the 10:00–19:00 window and not already running, and stops it if outside the window. See [scripts/README.md](scripts/README.md) for setup.
+A [supervisor script](scripts/tm_supervisor.sh) driven by macOS launchd runs every 10 minutes: it starts the system on weekdays if inside the 10:00–19:00 window and not already running, and stops it if outside the window. See [scripts/README.md](scripts/README.md) for setup.
 
 ## Project Structure
 

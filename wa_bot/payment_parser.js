@@ -481,6 +481,12 @@ function _stripDecorators(text) {
   return text.replace(/\p{Extended_Pictographic}/gu, "").replace(/[\$£¥€￥]/g, "");
 }
 
+// 去除換匯公式中常見的非結構化填充詞（如 agent 備註的「現金」等），避免干擾正則匹配
+const FORMULA_FILLER_WORDS = /現金|现金|\bcash\b/gi;
+function _cleanFormulaText(text) {
+  return text.replace(FORMULA_FILLER_WORDS, "");
+}
+
 function _parseAmount(str) {
   // 解析带中文单位的金额字符串 → number（从大到小匹配，避免 千万 被 万 先捕获）
   const units = [
@@ -565,7 +571,7 @@ function _parseMatch(m) {
 function parseConversionLine(text) {
   if (!text || !text.trim()) return null;
 
-  const cleaned = _stripDecorators(text.trim()).trim();
+  const cleaned = _cleanFormulaText(_stripDecorators(text.trim()).trim());
   const m = cleaned.match(CONVERSION_LINE_RE);
   if (!m) return null;
 
@@ -577,7 +583,7 @@ function parseConversionLine(text) {
 function findConversionInText(text) {
   if (!text || !text.trim()) return null;
 
-  const cleaned = _stripDecorators(text);
+  const cleaned = _cleanFormulaText(_stripDecorators(text));
   const matches = [];
   let m;
   while ((m = CONVERSION_SEARCH_RE.exec(cleaned)) !== null) {

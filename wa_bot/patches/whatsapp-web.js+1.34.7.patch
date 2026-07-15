@@ -1,3 +1,25 @@
+diff --git a/node_modules/whatsapp-web.js/src/structures/Message.js b/node_modules/whatsapp-web.js/src/structures/Message.js
+index dd977e8..4bcd81f 100644
+--- a/node_modules/whatsapp-web.js/src/structures/Message.js
++++ b/node_modules/whatsapp-web.js/src/structures/Message.js
+@@ -405,7 +405,7 @@ class Message extends Base {
+             this.mentionedIds.map(
+                 async (m) =>
+                     await this.client.getContactById(
+-                        typeof m === 'string' ? m : m._serialized,
++                        typeof m === 'string' ? m : (m._serialized || m.$1),
+                     ),
+             ),
+         );
+@@ -443,7 +443,7 @@ class Message extends Base {
+                 .require('WAWebQuotedMsgModelUtils')
+                 .getQuotedMsgObj(msg);
+             return window.WWebJS.getMessageModel(quotedMsg);
+-        }, this.id._serialized);
++        }, (this.id._serialized || this.id.$1));
+ 
+         return new Message(this.client, quotedMsg);
+     }
 diff --git a/node_modules/whatsapp-web.js/src/util/Injected/Utils.js b/node_modules/whatsapp-web.js/src/util/Injected/Utils.js
 index 540078a..6386f84 100644
 --- a/node_modules/whatsapp-web.js/src/util/Injected/Utils.js

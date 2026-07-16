@@ -67,6 +67,8 @@ const FIELD_PATTERNS = {
     /(?:收款銀行\s*)?SWIFT\s*(?:代[號号碼码]|代碼|コード|Code|CODE|code|編號|编号)/i,
     /(?:收款銀行\s*)?BIC\s*(?:代[號号碼码]|Code|CODE|code|編號|编号)?/i,
     /Beneficiary\s*BIC/i,
+    /銀行國際代[碼码]/i,
+    /银行国际代[碼码]/i,
     /SWIFT\s*/i,
     /BIC\s*/i,
   ],
@@ -74,6 +76,7 @@ const FIELD_PATTERNS = {
     /Beneficiary\s*Bank/i,
     /收款銀行\s*(?:名稱|名称|名)\s*/i,
     /銀行\s*(?:名稱|名称|名)\s*/i,
+    /银行\s*(?:名稱|名称|名)\s*/i,
     /^(?:銀行\s*)?名稱\s*/i,
     /^(?:银行\s*)?名称\s*/i,
     /(?:Bank|BANK)\s*(?:Name|NAME|name)\s*/i,
@@ -93,6 +96,7 @@ const FIELD_PATTERNS = {
   ],
   bank_code: [
     /銀行\s*(?:代[碼码號号]|Code|CODE|code)\s*/i,
+    /银行\s*(?:代[碼码號号]|Code|CODE|code)\s*/i,
     /(?:Bank|BANK)\s*(?:Code|CODE|code)\s*/i,
     /金融機構\s*(?:代[碼码號号]|Code)/i,
   ],
@@ -111,13 +115,13 @@ const FIELD_PATTERNS = {
     /收款\s*(?:账号|帳號)/i,
   ],
   account_name: [
-    /(?:戶口|户口|帳戶|账户|賬戶)\s*(?:全名|名稱|名称|姓名|戶名|户名)/i,
+    /(?:戶口|户口|帳戶|账户|帐户|賬戶)\s*(?:全名|名稱|名称|姓名|戶名|户名|名字)/i,
     /(?:Account|ACCOUNT|account)\s*(?:Name|NAME|name|Holder|HOLDER)/i,
     /(?:Beneficiary|BENEFICIARY)\s*(?:Name|NAME|name)/i,
     /收款人\s*(?:名稱|名称|姓名|全名|名字)/i,
     /^Beneficiary\s*$/i,
     /^收款人\s*$/i,
-    /收款\s*(?:账户名|帳戶名|戶口名)/i,
+    /收款\s*(?:账户名|帐户名|帳戶名|戶口名)/i,
   ],
   amount: [
     /Mso[- ]?Pobo/i,
@@ -484,7 +488,7 @@ function _stripDecorators(text) {
 // 去除換匯公式中常見的非結構化填充詞（如 agent 備註的「現金」等），避免干擾正則匹配
 const FORMULA_FILLER_WORDS = /現金|现金|\bcash\b/gi;
 function _cleanFormulaText(text) {
-  return text.replace(FORMULA_FILLER_WORDS, "");
+  return text.replace(FORMULA_FILLER_WORDS, "").trim();
 }
 
 function _parseAmount(str) {

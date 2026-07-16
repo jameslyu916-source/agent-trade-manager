@@ -134,6 +134,8 @@ def _tx_to_response(tx, db: Session, alert_info=None):
         "timestamp": tx.timestamp,
         "raw_message": tx.raw_message,
         "source": tx.source,
+        "group_id": getattr(tx, 'group_id', '') or '',
+        "group_name": getattr(tx, 'group_name', '') or '',
         "payment_details": getattr(tx, 'payment_details', None),
         "matched_order": crud._build_matched_order_summary(db, tx.id)
     }

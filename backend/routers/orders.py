@@ -27,15 +27,15 @@ async def list_groups(
             if gid not in groups or (gname and not groups[gid]):
                 groups[gid] = gname or ""
 
-    # 從交易表查詢（沒有 group_name 列，只取 group_id）
-    tx_rows = db.query(distinct(Transaction.group_id)).filter(
+    # 從交易表查詢（現在也支援 group_name）
+    tx_rows = db.query(Transaction.group_id, Transaction.group_name).filter(
         Transaction.group_id != ""
     ).all()
-    for (gid,) in tx_rows:
+    for gid, gname in tx_rows:
         if gid and gid.strip():
             gid = gid.strip()
-            if gid not in groups:
-                groups[gid] = ""
+            if gid not in groups or (gname and not groups[gid]):
+                groups[gid] = gname or ""
 
     result = [
         {"group_id": gid, "group_name": gname}

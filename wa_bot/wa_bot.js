@@ -394,6 +394,7 @@ async function recordTransactionFromPending(pending, sourceAmount, msg) {
     raw_message: pending.paymentInfo.raw_message,
     source: "whatsapp",
     group_id: msg.from,
+    group_name: groupNameCache.get(msg.from) || "",
     payment_details: pending.paymentInfo.payment_details,
     from_currency: pending.sourceCurrency,
     to_currency: pending.toCurrency,
@@ -710,6 +711,7 @@ async function createTransaction(data, msg = null) {
       raw_message: data.raw_message || null,
       source: data.source || "whatsapp",
       group_id: data.group_id || "",
+      group_name: data.group_name || "",
       payment_details: data.payment_details || null,
       timestamp: data.timestamp || undefined
     };
@@ -1838,6 +1840,7 @@ async function processMessage(msg) {
           amount: pfPI.amount, currency: pfPI.currency,
           raw_message: pfPI.raw_message, source: "whatsapp",
           group_id: msg.from,
+          group_name: groupName,
           payment_details: pfPI.payment_details,
           from_currency: resolvedFrom,
           to_currency: pendingByFormula.toCurrency,
@@ -1897,7 +1900,11 @@ async function processMessage(msg) {
   if (pending) {
     // 如果當前消息是新的付款信息，清除舊 pending，交給下方支付處理
     const newPaymentCheck = parsePaymentInfo(text, agentParserOverrides);
-    if (newPaymentCheck && newPaymentCheck.amount > 0 && (newPaymentCheck.customer_name || "Unknown") !== "Unknown") {
+    // 有金額 +（有客戶名 或 有 banking 欄位）→ 視為新付款。後者走 AI 兜底補客戶名
+    const _pd = newPaymentCheck && newPaymentCheck.payment_details_dict;
+    const _hasBanking = _pd && (_pd.account_number || _pd.bank_name || _pd.swift || _pd.bank_code);
+    if (newPaymentCheck && newPaymentCheck.amount > 0 &&
+        ((newPaymentCheck.customer_name || "Unknown") !== "Unknown" || _hasBanking)) {
       pendingExchanges.delete(msg.from);
       // fall through — 不 return，讓下方支付處理代碼執行
     } else {
@@ -1950,6 +1957,7 @@ async function processMessage(msg) {
           amount: pendingPI.amount, currency: pendingPI.currency,
           raw_message: pendingPI.raw_message, source: "whatsapp",
           group_id: msg.from,
+          group_name: groupName,
           payment_details: pendingPI.payment_details,
           from_currency: inferredFrom,
           to_currency: pending.toCurrency,
@@ -2074,6 +2082,7 @@ async function processMessage(msg) {
             amount: pInfo.amount, currency: pInfo.currency,
             raw_message: pInfo.raw_message, source: "whatsapp",
             group_id: msg.from,
+            group_name: groupName,
             payment_details: pInfo.payment_details,
             from_currency: resolvedFrom,
             to_currency: pending.toCurrency,
@@ -2229,6 +2238,7 @@ async function processMessage(msg) {
         raw_message: pending.paymentInfo.raw_message,
         source: "whatsapp",
         group_id: msg.from,
+        group_name: groupName,
         payment_details: pending.paymentInfo.payment_details,
         from_currency: pending.sourceCurrency,
         to_currency: pending.toCurrency,
@@ -2398,6 +2408,7 @@ async function processMessage(msg) {
         agentName: senderDisplayName,
         customerName: customerName !== "Unknown" ? customerName : "",
         toCurrency,
+        partialPaymentInfo: paymentInfo,
         state: "awaiting_completion",
         expireAt: Date.now() + 10 * 60 * 1000,
         chat: msg.from,
@@ -2457,6 +2468,7 @@ async function processMessage(msg) {
           amount: paymentInfo.amount, currency: paymentInfo.currency,
           raw_message: paymentInfo.raw_message, source: "whatsapp",
           group_id: msg.from,
+          group_name: groupName,
           payment_details: paymentInfo.payment_details,
           from_currency: inferredFrom,
           to_currency: toCurrency,
@@ -2510,6 +2522,7 @@ async function processMessage(msg) {
           amount: paymentInfo.amount, currency: paymentInfo.currency,
           raw_message: paymentInfo.raw_message, source: "whatsapp",
           group_id: msg.from,
+          group_name: groupName,
           payment_details: paymentInfo.payment_details,
           from_currency: conversionResult ? conversionResult.from_currency || "" : "",
           to_currency: toCurrency,

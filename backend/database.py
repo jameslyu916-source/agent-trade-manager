@@ -64,6 +64,7 @@ class Transaction(Base):
     raw_message = Column(String)
     source = Column(String, default="telegram")  # 數據來源：telegram/crawler/manual
     group_id = Column(String, default="")  # 來源群組 ID（WhatsApp chatId / Telegram chat_id）
+    group_name = Column(String, default="")  # 來源群組名稱
     payment_details = Column(String)  # JSON格式的銀行付款詳情（可選）
 
 class SystemSetting(Base):
@@ -185,6 +186,17 @@ def _migrate():
             conn.exec_driver_sql("ALTER TABLE transactions ADD COLUMN insured_person VARCHAR DEFAULT ''")
         if "group_id" not in existing_cols:
             conn.exec_driver_sql("ALTER TABLE transactions ADD COLUMN group_id VARCHAR DEFAULT ''")
+        if "group_name" not in existing_cols:
+            conn.exec_driver_sql("ALTER TABLE transactions ADD COLUMN group_name VARCHAR DEFAULT ''")
+            # 從 customer_orders 表補全現有交易的 group_name
+            conn.exec_driver_sql("""
+                UPDATE transactions SET group_name = (
+                    SELECT customer_orders.group_name FROM customer_orders
+                    WHERE customer_orders.group_id = transactions.group_id AND customer_orders.group_name != ''
+                    LIMIT 1
+                ) WHERE transactions.group_id != '' AND (transactions.group_name IS NULL OR transactions.group_name = '')
+            """)
+            print("✅ transactions.group_name 已添加並從訂單補全")
 
         # Migrate agent total_earnings from Integer to JSON string
         result = conn.exec_driver_sql("PRAGMA table_info(agents)")

@@ -60,6 +60,7 @@ class TransactionBase(BaseModel):
     raw_message: Optional[str] = None
     source: str = "telegram"
     group_id: Optional[str] = ""  # 來源群組 ID
+    group_name: Optional[str] = ""  # 來源群組名稱
     payment_details: Optional[str] = None  # JSON格式的銀行付款詳情
 
 class TransactionCreate(TransactionBase):
@@ -76,6 +77,7 @@ class TransactionUpdate(BaseModel):
     insured_person: Optional[str] = None
     payment_details: Optional[str] = None
     group_id: Optional[str] = None
+    group_name: Optional[str] = None
 
 class TransactionResponse(TransactionBase):
     id: int

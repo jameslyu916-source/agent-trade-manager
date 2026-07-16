@@ -242,6 +242,7 @@ def create_transaction(db: Session, transaction: schemas.TransactionCreate):
         raw_message=transaction.raw_message,
         source=transaction.source,
         group_id=getattr(transaction, 'group_id', None) or "",
+        group_name=getattr(transaction, 'group_name', None) or "",
         payment_details=payment_details
     )
 
@@ -454,6 +455,8 @@ def update_transaction(db: Session, transaction_id: int, updates: dict):
         tx.payment_details = updates["payment_details"]
     if "group_id" in updates:
         tx.group_id = updates["group_id"]
+    if "group_name" in updates:
+        tx.group_name = updates["group_name"]
 
     # 重新計算盈利
     tx.profit = _calculate_profit(db, tx.payment_details, tx.currency or "USD", tx.timestamp)

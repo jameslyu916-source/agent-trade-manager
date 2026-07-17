@@ -106,17 +106,25 @@ async function extractOrders(messageText) {
 
 10. **人名與地點/備註連寫**：例如「XU JIANXIN在多倫多」或「陳大文香港」→ 提取人名部分「XU JIANXIN」或「陳大文」，忽略地點後綴。
 
+11. **「由...轉」結構**：「由[人名] 轉 [金額]」表示該人名是**轉出方（sender）**，正在把錢轉給真正的客戶，絕對不要把「由」後面的人名提取為 customer_name。正確做法：識別整段消息中誰是「需要戶口」、「收款」、「收」的一方，將其作為客戶。例如：
+   - 「由吴宁 轉 45 萬」→ 吴宁是轉出方，不是客戶，不提取
+   - 「由魏越 轉75萬」→ 魏越是轉出方，不是客戶，不提取
+   - 消息「gong wei需要戶口¥120萬\n由吴宁 轉 45 萬」→ 客戶是 gong wei（需要戶口的收款方），金額 ¥1,200,000
+
 ## 正例（應提取）
 - 「li heyi 安排704,000」→ customer_name="li heyi", amount=704000
 - 「李鹏 需要2千万」→ customer_name="李鹏", amount=20000000
 - 「Chu duo 需要戶口 單筆100w 200w / 7.01 = 285,307 USD」→ customer_name="Chu duo", amount=2000000（取公式前的 200w，非單筆 100w）
 - 「XU JIANXIN在多倫多 時差12個小時\n今日要操作 5-10萬美金」→ customer_name="XU JIANXIN", amount=50000, currency="USD"（跨行提取，範圍取低值）
+- 「gong wei需要戶口¥120萬\n由吴宁 轉 45 萬\n由魏越 轉75萬」→ customer_name="gong wei", amount=1200000, currency="CNY"（gong wei 是收款方，吴宁和魏越是轉出方，不提取）
 
 ## 反例（不應提取）
 - 「@~信@ only. 1000W.」→ 無訂單（"only" 不是人名，無交易動詞）
 - 「@某人 今天匯率多少」→ 無訂單（詢問，無數字金額）
 - 「還需要一筆1千w的」→ 無訂單（條件式閒聊，無明確客戶名）
 - 「6.92 / 1.002 x 1.004 = 6.934」→ 無訂單（換匯公式）
+- 「由吴宁 轉 45 萬」→ 無訂單（吴宁是轉出方，不是客戶）
+- 「@綺凌 gong wei需要戶口¥120萬\n\n由吴宁 轉 45 萬\n由魏越 轉75萬」→ 只提取 1 筆：customer_name="gong wei", amount=1200000（吴宁和魏越是轉出方，不應提取為客戶）
 
 僅返回 JSON，不要任何其他文字：
 {"orders": [{"customer_name": "...", "amount": 數字, "currency": "CNY"}]}

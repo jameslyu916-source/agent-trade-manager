@@ -280,6 +280,11 @@ async function inferSourceCurrency(sellRate, toCurrency) {
     if (dailyRateMap[pair] === undefined && presetRates[pair] !== undefined) {
       dailyRateMap[pair] = presetRates[pair];
     }
+    // 反向查詢：例如 CNY:USD 不在 preset 中，但 USD:CNY 在 → 1/USD:CNY ≈ CNY:USD
+    const inversePair = `${toCurrency}:${opt.from}`;
+    if (dailyRateMap[pair] === undefined && presetRates[inversePair] !== undefined && presetRates[inversePair] > 0) {
+      dailyRateMap[pair] = 1 / presetRates[inversePair];
+    }
   }
 
   // 找最接近的
@@ -565,6 +570,13 @@ async function resolveConversion(paymentInfo, prevText, toCurrency) {
     } else if (presetRates[pair] !== undefined) {
       referenceRate = presetRates[pair];
       rateSource = "preset";
+    } else {
+      // 反向查詢：例如 CNY:USD 不在 preset 中，但 USD:CNY 在 → 1/USD:CNY ≈ CNY:USD
+      const inversePair = `${resultCurrency}:${candidate.from}`;
+      if (presetRates[inversePair] !== undefined && presetRates[inversePair] > 0) {
+        referenceRate = 1 / presetRates[inversePair];
+        rateSource = "preset_inverse";
+      }
     }
 
     if (referenceRate && referenceRate > 0) {

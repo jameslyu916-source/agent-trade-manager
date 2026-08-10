@@ -191,6 +191,12 @@ async def _resolve_conversion(payment_info: dict, prev_text: str | None, to_curr
         elif pair_key in preset_rates:
             reference_rate = preset_rates[pair_key]
             rate_source = "preset"
+        else:
+            # 反向查詢：例如 CNY:USD 不在 preset 中，但 USD:CNY 在 → 1/USD:CNY ≈ CNY:USD
+            inverse_key = f"{result_currency}:{from_cur}"
+            if inverse_key in preset_rates and preset_rates[inverse_key] > 0:
+                reference_rate = 1 / preset_rates[inverse_key]
+                rate_source = "preset_inverse"
 
         if reference_rate and reference_rate > 0:
             pct_diff = abs(conv["rate"] - reference_rate) / reference_rate

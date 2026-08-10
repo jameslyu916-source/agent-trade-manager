@@ -1406,6 +1406,14 @@ client.on("message", async (msg) => {
 
 async function processMessage(msg) {
   try {
+  // ── 過期訊息靜默處理：重連後避免對數小時前的舊訊息大量回覆 ──
+  const STALE_THRESHOLD_MS = 3 * 60 * 60 * 1000; // 3 小時
+  if (msg.timestamp && Date.now() - msg.timestamp * 1000 > STALE_THRESHOLD_MS) {
+    const ageHours = Math.round((Date.now() - msg.timestamp * 1000) / 3600000);
+    console.log(`   ⏰ 訊息約 ${ageHours} 小時前，靜默處理（只解析不回覆）`);
+    msg.reply = async () => {};  // 覆蓋 reply 為空操作
+  }
+
   // 第一關：確認事件有觸發（任何消息都會打印）
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   console.log("📩 收到消息");

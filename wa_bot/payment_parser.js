@@ -476,9 +476,9 @@ const CONV_LINE_DST = /[\d,]+(?:\.\d+)?(?:[十百千]?[万萬]|[万萬]|w|億|[�
 	const CONV_FEE_BEFORE_EQ = `(?:\\s*-\\s*([\\d,]+)\\s*)?`;
 	const CONV_FEE_AFTER_EQ = `(?:\\s*-\\s*([\\d,]+)\\s*=\\s*(${CONV_LINE_DST}))?`;
 	const CONVERSION_LINE_RE = new RegExp(
-	  `^(${CONV_LINE_SRC})\\s*[\\/\\*]\\s*([\\d.]+)\\s*${CONV_FEE_BEFORE_EQ}=\\s*(${CONV_LINE_DST})${CONV_FEE_AFTER_EQ}(?:\\s*(USD|HKD|CNY|RMB))?\\s*$`, "i");
+	  `^(${CONV_LINE_SRC})(?:\\s+[A-Z]{3,5})?\\s*[\\/\\*]\\s*([\\d.]+)\\s*${CONV_FEE_BEFORE_EQ}=\\s*(${CONV_LINE_DST})${CONV_FEE_AFTER_EQ}(?:\\s*(USD|HKD|CNY|RMB))?\\s*$`, "i");
 	const CONVERSION_SEARCH_RE = new RegExp(
-	  `(${CONV_LINE_SRC})\\s*[\\/\\*]\\s*([\\d.]+)\\s*${CONV_FEE_BEFORE_EQ}=\\s*(${CONV_LINE_DST})${CONV_FEE_AFTER_EQ}(?:\\s*(USD|HKD|CNY|RMB))?\\s*`, "gi");
+	  `(${CONV_LINE_SRC})(?:\\s+[A-Z]{3,5})?\\s*[\\/\\*]\\s*([\\d.]+)\\s*${CONV_FEE_BEFORE_EQ}=\\s*(${CONV_LINE_DST})${CONV_FEE_AFTER_EQ}(?:\\s*(USD|HKD|CNY|RMB))?\\s*`, "gi");
 
 // 去除貨幣裝飾符號（emoji 和獨立貨幣符號，避免干擾數字捕獲）
 function _stripDecorators(text) {
